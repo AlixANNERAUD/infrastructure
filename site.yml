@@ -9,6 +9,8 @@
 - name: Cockpit
   ansible.builtin.import_playbook: services/cockpit/deploy.yml
 
+- name: Deployment (Semaphore)
+  ansible.builtin.import_playbook: services/deploiement/deploy.yml
 - name: Gatus
   ansible.builtin.import_playbook: services/etat/deploy.yml
 - name: Vigie
