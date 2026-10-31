@@ -1,15 +1,15 @@
 ---
 - name: Deploy Zitadel
-  hosts: zitadel
+  hosts: authentification
   become: true
   vars_files:
     - ../../vault/ansible/vault.yml
-    - ../../vault/zitadel/vault.yml
+    - ../../vault/authentification/vault.yml
     - ../../vault/cloudflare/vault.yml
   roles:
     - role: compose_service
       vars:
-        compose_service_name: zitadel
+        compose_service_name: authentification
         compose_service_directory: Zitadel
         compose_service_environment:
           ZITADEL_DOMAIN: authentification.anneraud.fr

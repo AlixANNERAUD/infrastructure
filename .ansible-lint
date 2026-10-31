@@ -1,7 +1,7 @@
 ---
 kinds:
   # Task files included by a playbook, listed before the playbook pattern
-  - tasks: "services/traefik/check_published_ports.yml"
+  - tasks: "services/proxy/check_published_ports.yml"
   - playbook: "services/*/*.yml"
   - playbook: "dns/*.yml"
   - playbook: "hosts/*/*.yml"
@@ -14,8 +14,9 @@ exclude_paths:
   - vault/
   - services/website/website/
   - services/*/compose.yml
-  - services/traefik/policy.yml
-  - services/gatus_*/config.yml
+  - services/proxy/policy.yml
+  - services/etat_anneraud/config.yml
+  - services/status_dera_page/config.yml
   - services/vigie/grafana/*.yml
   - roles/*/molecule/*/compose.yml
   - roles/*/molecule/*/config.yml

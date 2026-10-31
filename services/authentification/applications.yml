@@ -6,7 +6,7 @@
     zitadel_issuer: https://authentification.anneraud.fr
     zitadel_secret_directory: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/infrastructure/zitadel"
   vars_files:
-    - ../../vault/zitadel/vault.yml
+    - ../../vault/authentification/vault.yml
   roles:
     - role: zitadel_applications
   tasks:
@@ -46,4 +46,4 @@
 
         - name: Remind to commit the state
           ansible.builtin.debug:
-            msg: Commit vault/zitadel/opentofu.tfstate in the vault repository.
+            msg: Commit vault/authentification/opentofu.tfstate in the vault repository.

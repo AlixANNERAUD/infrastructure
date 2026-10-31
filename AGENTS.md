@@ -7,8 +7,8 @@ Ansible playbooks and Docker Compose files that deploy Alix's self-hosted servic
 - `services/<service>/` — one folder per service: `deploy.yml` (playbook), `compose.yml`, and any `*.j2` templates or config it copies.
 - `hosts/<host>/` — host-level playbooks (packages, networking, `hosts/bruxelles/nextcloud_after_update.yml`); `hosts/bootstrap.yml` and `hosts/replication.yml` apply to several hosts.
 - `dns/<zone>.yml` — one playbook per Cloudflare DNS zone (`anneraud.yml`, `xila.yml`, `minitrainstore.yml`, `guenola_sahut.yml`), applied on their own, not by `site.yml`.
-- `services/zitadel/applications.yml` + `opentofu/zitadel/` — Zitadel OIDC applications for services outside Ansible; see the readme's "Zitadel applications" section. A service that needs Zitadel login gets an entry in `opentofu/zitadel/applications.auto.tfvars` and uses `roles/zitadel_applications` from its `deploy.yml` (see `services/vigie/deploy.yml`).
-- `inventory/hosts.yml` — hosts, plus one group per service naming the host it runs on (`tolgee_anneraud: {hosts: {luxembourg:}}`). Group names use underscores (`ha_linky`).
+- `services/authentification/applications.yml` + `opentofu/zitadel/` — Zitadel OIDC applications for services outside Ansible; see the readme's "Zitadel applications" section. A service that needs Zitadel login gets an entry in `opentofu/zitadel/applications.auto.tfvars` and uses `roles/zitadel_applications` from its `deploy.yml` (see `services/vigie/deploy.yml`).
+- `inventory/hosts.yml` — hosts, plus one group per service naming the host it runs on (`translate: {hosts: {luxembourg:}}`). Group names use underscores (`status_dera_page`).
 - `inventory/host_vars/<host>.yml` (or a folder, `inventory/host_vars/bruxelles/`) — per-host settings: connection, `local_dns_host` / `global_dns_host`, `services_root`, `proxy_network`. Put host facts here, not in playbooks.
 - `vault/` — **private submodule** (`Infrastructure_vault`) with Ansible Vault files, one per service: `vault/<service>/vault.yml`, plus `vault/ansible/vault.yml` (sudo password) and `vault/cloudflare/vault.yml`.
 - `services/website/website` — separate submodule; not part of this repo's code.
@@ -17,8 +17,8 @@ Ansible playbooks and Docker Compose files that deploy Alix's self-hosted servic
 
 | Host | Role | Service root | Reverse proxy |
 |---|---|---|---|
-| `luxembourg` | Cloud VM with a public IP | `/opt/<service>` | Traefik (`services/traefik`), labels on the external `traefik` network |
-| `bruxelles` | Home TrueNAS server | `/mnt/Donnees/Applications_chiffrees/<Service>` | Traefik (`services/traefik`) on the external `proxy` network, routes in `inventory/host_vars/bruxelles/traefik.yml` |
+| `luxembourg` | Cloud VM with a public IP | `/opt/<service>` | Traefik (`services/proxy`), labels on the external `traefik` network |
+| `bruxelles` | Home TrueNAS server | `/mnt/Donnees/Applications_chiffrees/<Service>` | Traefik (`services/proxy`) on the external `proxy` network, routes in `inventory/host_vars/bruxelles/traefik.yml` |
 | `pristina` | Home machine | — | — |
 | `paris` | Desktop client | — | — |
 
@@ -65,7 +65,7 @@ Compose services are deployed with the shared role `roles/compose_service` (see 
         compose_service_dns_records: [{record: wakapi.dera.page}]   # visibility: private for local_dns_host
 ```
 
-The role creates the folder under the host's `services_root` (permissions only on creation, existing TrueNAS folders keep their ACLs), copies `compose.yml`, writes `.env`, starts the stack and points the DNS records at the host. Stacks are only recreated when their image or configuration changes, and restarted when an extra file changes. Every Compose service uses the role except `services/vault_xila`, which bootstraps its own TLS certificate and must stay unsealed; keep it hand-written. `site.yml` imports every service playbook (`mise deploy site.yml --limit <host>`); add new services to it.
+The role creates the folder under the host's `services_root` (permissions only on creation, existing TrueNAS folders keep their ACLs), copies `compose.yml`, writes `.env`, starts the stack and points the DNS records at the host. Stacks are only recreated when their image or configuration changes, and restarted when an extra file changes. Every Compose service uses the role except `services/secrets_xila`, which bootstraps its own TLS certificate and must stay unsealed; keep it hand-written. `site.yml` imports every service playbook (`mise deploy site.yml --limit <host>`); add new services to it.
 
 Rules:
 
@@ -75,7 +75,7 @@ Rules:
 - Pin image tags (no `latest`, no untagged images); Dependabot (`.github/dependabot.yml`) opens one grouped PR per ecosystem every Monday. It does not cover `requirements.yml` or `.python-version`: update those by hand.
 - Ansible style: FQCN modules (`ansible.builtin.copy`), `true`/`false`, `changed_when` on `command`/`shell`, handlers for restarts.
 - Lines that can't be split (DNS TXT records, Traefik rules, long commands) get `# yamllint disable-line rule:line-length`. Never put that comment inside a `|` block scalar: it would become part of the file content; wrap the task in `# yamllint disable/enable rule:line-length` instead.
-- New public endpoints should also get a Gatus check in `services/gatus_anneraud/config.yml` or `services/gatus_dera_page/config.yml`, and a row in `readme.md`.
+- New public endpoints should also get a Gatus check in `services/etat_anneraud/config.yml` or `services/status_dera_page/config.yml`, and a row in `readme.md`.
 
 ## Hosts access
 

@@ -31,7 +31,7 @@ variable "state_passphrase" {
 variable "state_path" {
   description = "Path of the encrypted state file."
   type        = string
-  default     = "../../vault/zitadel/opentofu.tfstate"
+  default     = "../../vault/authentification/opentofu.tfstate"
 }
 
 variable "applications" {

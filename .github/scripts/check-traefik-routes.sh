@@ -12,15 +12,15 @@ cleanup() {
 trap cleanup EXIT
 
 if ! output=$(uv run ansible bruxelles -c local -e "ansible_python_interpreter=$(uv run which python)" \
-    -m ansible.builtin.template -a "src=services/traefik/routes.yml.j2 dest=$directory/routes.yml"); then
+    -m ansible.builtin.template -a "src=services/proxy/routes.yml.j2 dest=$directory/routes.yml"); then
     echo "$output"
     exit 1
 fi
-cp services/traefik/policy.yml "$directory/policy.yml"
+cp services/proxy/policy.yml "$directory/policy.yml"
 chmod -R a+rX "$directory"
 
 # Same image as the deployed Traefik, so Dependabot bumps both at once
-image=$(sed -n 's/^ *image: "\{0,1\}\(traefik:[^"]*\)"\{0,1\}$/\1/p' services/traefik/compose.yml)
+image=$(sed -n 's/^ *image: "\{0,1\}\(traefik:[^"]*\)"\{0,1\}$/\1/p' services/proxy/compose.yml)
 
 # The ACME server is unreachable on purpose: certificates are never requested
 docker run -d --name "$container" -p 127.0.0.1::8080 -v "$directory:/dynamic:ro" "$image" \

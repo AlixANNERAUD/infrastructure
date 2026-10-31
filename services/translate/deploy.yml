@@ -1,15 +1,16 @@
 ---
 - name: Deploy Tolgee
-  hosts: tolgee_anneraud
+  hosts: translate
   become: true
   vars_files:
     - ../../vault/ansible/vault.yml
-    - ../../vault/tolgee_anneraud/vault.yml
+    - ../../vault/translate/vault.yml
     - ../../vault/cloudflare/vault.yml
   roles:
     - role: compose_service
       vars:
-        compose_service_name: tolgee_anneraud
+        compose_service_name: translate
+        compose_service_directory: tolgee_anneraud   # previous name, kept so containers and volumes stay the same
         compose_service_environment:
           DATABASE_NAME: tolgee
           DATABASE_USER: "{{ database_user }}"

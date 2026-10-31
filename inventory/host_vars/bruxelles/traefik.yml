@@ -1,5 +1,5 @@
 ---
-# Bruxelles routes, rendered by services/traefik/routes.yml.j2 into dynamic/routes.yml
+# Bruxelles routes, rendered by services/proxy/routes.yml.j2 into dynamic/routes.yml
 traefik_directory: Traefik
 traefik_dashboard_host: traefik.bruxelles.anneraud.fr
 traefik_federation_publish: "127.0.0.1:8448:8448"

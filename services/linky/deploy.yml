@@ -1,14 +1,14 @@
 ---
 - name: Deploy HA-Linky
-  hosts: ha_linky
+  hosts: linky
   become: true
   vars_files:
     - ../../vault/ansible/vault.yml
-    - ../../vault/ha-linky/vault.yml
+    - ../../vault/linky/vault.yml
   roles:
     - role: compose_service
       vars:
-        compose_service_name: ha_linky
+        compose_service_name: linky
         compose_service_directory: HA-Linky
         compose_service_user: 568
         compose_service_templates:
