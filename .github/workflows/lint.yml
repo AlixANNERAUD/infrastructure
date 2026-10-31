@@ -77,8 +77,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      # Installs the OpenTofu version pinned in mise.toml
+      # Installs the OpenTofu version pinned in mise.toml; its env (the vault
+      # password client, which needs a keyring) is for workstations only
       - uses: jdx/mise-action@v5.2.4
+        with:
+          env: false
 
       - name: Check formatting
         run: tofu fmt -check -recursive opentofu
@@ -101,6 +104,8 @@ jobs:
           enable-cache: true
 
       - uses: jdx/mise-action@v5.2.4
+        with:
+          env: false
 
       - name: Install tools
         run: |
