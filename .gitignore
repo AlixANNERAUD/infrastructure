@@ -4,3 +4,6 @@
 
 # OpenTofu providers and modules, installed by tofu init
 .terraform/
+
+# Personal mise settings (EDITOR…)
+mise.local.toml

@@ -63,7 +63,6 @@ Install [uv](https://docs.astral.sh/uv/) and [mise](https://mise.jdx.dev/), then
 ```bash
 mise install
 mise run setup
-source source.sh          # once per session: caches the vault password
 ```
 
 Common commands are mise tasks (`mise tasks` lists them). They run with the tools from `mise.toml` on `PATH`, so OpenTofu is there for the Zitadel role. Arguments are passed on to the command:
@@ -141,15 +140,12 @@ OIDC applications of services managed outside Ansible are declared in `opentofu/
 
 ## Vault
 
-Source the vault password file path:
+The vault password lives in the system keyring (Secret Service on Linux, Keychain on macOS, Credential Locker on Windows). `mise.toml` points Ansible at `vault-password-client.py`, which reads it from there. The first time on a machine, the first command that needs it asks for it, checks it against `vault/ansible/vault.yml` and stores it. Nothing to source.
 
 ```bash
-source source.sh
+mise vault vault/<service>/vault.yml            # edit (EDITOR, e.g. in mise.local.toml: [env] EDITOR = "zed --wait")
+mise exec -- uv run ansible-vault view vault/<service>/vault.yml
+./vault-password-client.py --forget             # after changing the password, or to remove it from this machine
 ```
 
-Then edit or view vault files with:
-
-```bash
-ansible-vault edit vault/...
-ansible-vault view vault/...
-```
+`ANSIBLE_VAULT_PASSWORD`, when set, takes precedence over the keyring (for machines without one).

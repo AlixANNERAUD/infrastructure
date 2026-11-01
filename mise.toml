@@ -1,9 +1,13 @@
 [tools]
 opentofu = "1.13.2"
 
+[env]
+# Ansible runs this script for the vault password: it keeps it in the system keyring
+# and asks for it the first time (vault-password-client.py --forget removes it)
+ANSIBLE_VAULT_PASSWORD_FILE = "{{ config_root }}/vault-password-client.py"
+
 # Shortcuts: `mise run <task> [arguments]`, or `mise <task>` when no mise command has that name.
 # Tasks run with the tools above on PATH, so OpenTofu is there for the Zitadel role.
-# Playbooks and ansible-lint read the vault: run `source source.sh` once per session first.
 
 [tasks.setup]
 description = "Install the pinned tools and Ansible collections"

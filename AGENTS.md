@@ -84,7 +84,7 @@ Rules:
 
 ## Secrets
 
-- Never decrypt, print or commit vault contents. Vault files are edited with `ansible-vault edit` after `source source.sh` (caches the password in `$XDG_RUNTIME_DIR`).
+- Never decrypt, print or commit vault contents. Vault files are edited with `mise vault <file>`; the password comes from the system keyring through `vault-password-client.py` (`ANSIBLE_VAULT_PASSWORD_FILE` in `mise.toml`). Never read the keyring entry or run that script yourself.
 - Changing secrets means two commits: one in the `vault` repo (push it first), then one here updating the submodule pointer. Never point the submodule at a commit that isn't pushed.
 
 ## Safety
