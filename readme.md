@@ -19,7 +19,7 @@ Hosts and the service-to-host mapping are in [inventory/hosts.yml](inventory/hos
 | [Maison](https://maison.anneraud.fr/)                                  | Home automation (Home Assistant)             | Public  | Bruxelles  | TrueNAS Apps | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/services_maison-(home-assistant)/uptimes/30d/badge.svg>)                      |
 | [Médiathèque](https://mediatheque.anneraud.fr/)                        | Media server (Jellyfin)                      | Public  | Bruxelles  | TrueNAS Apps | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/services_médiathèque-(jellyfin)/uptimes/30d/badge.svg>)                       |
 | [MeTube](https://metube.anneraud.fr/)                                  | Video downloader                              | Private | Bruxelles  | TrueNAS Apps | ![Status](https://etat.anneraud.fr/api/v1/endpoints/services_metube/uptimes/30d/badge.svg)                                         |
-| [MeshCentral](https://parc.anneraud.fr/)                               | Remote device management                      | Public  | Bruxelles  | TrueNAS Apps | ![Status](https://etat.anneraud.fr/api/v1/endpoints/services_meshcentral/uptimes/30d/badge.svg)                                    |
+| [MeshCentral](https://parc.anneraud.fr/)                               | Remote device management                      | Private | Bruxelles  | TrueNAS Apps | ![Status](https://etat.anneraud.fr/api/v1/endpoints/services_meshcentral/uptimes/30d/badge.svg)                                    |
 | [Téléchargement](https://telechargement.anneraud.fr/)                  | Download manager (qBittorrent)               | Private | Bruxelles  | Ansible      | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/services_téléchargement-(qbittorrent)/uptimes/30d/badge.svg>)                 |
 | [Matrix](https://matrix.anneraud.fr/)                                  | Matrix server (Synapse)                      | Public  | Bruxelles  | Ansible      | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/services_matrix-(synapse)/uptimes/30d/badge.svg>)                             |
 | [Archive](https://archive.anneraud.fr/)                                | Document management (Paperless-ngx)          | Private | Bruxelles  | TrueNAS Apps | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/services_archive-(paperless-ngx)/uptimes/30d/badge.svg>)                      |
@@ -51,6 +51,7 @@ Hosts and the service-to-host mapping are in [inventory/hosts.yml](inventory/hos
 | [Databasus](https://databasus.anneraud.fr/)                            | Database management (Adminer)                | Private | Bruxelles  | TrueNAS Apps | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/administration_databasus/uptimes/30d/badge.svg>)                    |
 | [Cockpit (Luxembourg)](https://cockpit.luxembourg.anneraud.fr/)        | Server management (Cockpit)                  | Private | Luxembourg | Ansible      | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/administration_cockpit-(luxembourg)/uptimes/30d/badge.svg>)                      |
 | [Vigie](https://vigie.anneraud.fr/)                                    | Monitoring (VictoriaMetrics, Grafana)        | Private | Luxembourg | Ansible      | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/administration_vigie-(grafana)/uptimes/30d/badge.svg>)                           |
+| Protection (Luxembourg)                                                | Intrusion prevention (CrowdSec)              | Private | Luxembourg | Ansible      | -                                                                                                                                  |
 | [État](https://etat.anneraud.fr/)                                      | Service status page                          | Public  | Bruxelles  | TrueNAS Apps | -                                                                                                                                  |
 | [VPN](https://netbird.anneraud.fr/)                                    | Virtual private network (Netbird)            | Public  | Luxembourg | Ansible      | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/administration_vpn-(netbird)/uptimes/30d/badge.svg>)                          |
 | [VPN console](https://netbird.anneraud.fr/admin/)                      | VPN administration console                   | Public  | Luxembourg | Ansible      | ![Status](https://etat.anneraud.fr/api/v1/endpoints/administration_vpn-(netbird)/uptimes/30d/badge.svg)                              |
@@ -143,6 +144,32 @@ site.yml                # Deploys every service (DNS zones are applied with dns/
 vault/                  # Private submodule with encrypted secrets
 .github/                # CI workflows and check scripts
 ```
+
+## Protection
+
+Every request to the `web-secure` entrypoint of a Traefik whose host is in the `protection` group (Luxembourg for now) goes through CrowdSec's bouncer, internal routes included. CrowdSec (`services/protection`) reads Traefik's JSON access log from its container output through a read-only Docker socket proxy, detects scans, brute force and known CVE probes with the hub's `crowdsecurity/traefik` collection (which includes `crowdsecurity/base-http-scenarios` and `crowdsecurity/http-cve`), and bans the address for 4 hours; it also receives the community blocklist. Its local API is only reachable by Traefik over the internal `protection` network. The bouncer ([crowdsec-bouncer-traefik-plugin](https://github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin), `crowdsec@file` from `services/proxy/protection.yml.j2`) refreshes the banned addresses every 15 s, answers 403 to them, and lets everything through while CrowdSec is down. Behind Cloudflare it checks the visitor's address (the rightmost `X-Forwarded-For` address that is not Cloudflare's).
+
+The LAN and the VPN (the networks of `internal-allowlist` in `services/proxy/policy.yml`) are never banned: they are in CrowdSec's `internal` allowlist, which drops alerts and refuses decisions on them, and the bouncer lets them through whatever CrowdSec says.
+
+Public login pages are also rate limited per client address, on both hosts: `rate_limit` on a route or path in `inventory/host_vars/bruxelles/traefik.yml` (POST requests to the login paths only, so app sync is not limited; Traefik answers 429 past the limit), and labels for Tolgee and Netbird's login on Luxembourg.
+
+Prerequisites, once:
+
+- `vault/protection/vault.yml` holds `protection_bouncer_key`, the key Traefik's bouncer authenticates with (`openssl rand -hex 32`), and optionally `protection_enrollment_key` to enroll the engine in the [CrowdSec console](https://app.crowdsec.net) (then accept it there and run `docker restart crowdsec`). `services/proxy/deploy.yml` loads this vault on every host, so it must exist.
+- Deploy Traefik first, then CrowdSec: `mise deploy services/proxy/deploy.yml --limit luxembourg`, then `mise deploy services/protection/deploy.yml`.
+- Traefik downloads the plugin from plugins.traefik.io when it starts. If that fails, every route of the host answers 404 (its routers miss the `crowdsec` middleware): restart Traefik (`docker restart traefik`) once the plugin site is back, or remove the host from the `protection` group and deploy Traefik again. Dependabot does not update the plugin version in `services/proxy/compose.yml`.
+- The bouncer key is registered when CrowdSec starts and only if it is not registered yet. To change it: update the vault, `docker exec crowdsec cscli bouncers delete traefik`, deploy CrowdSec then Traefik, and `docker restart traefik`.
+
+On the host:
+
+```bash
+docker exec crowdsec cscli decisions list                 # current bans
+docker exec crowdsec cscli decisions delete --ip <address> # unban
+docker exec crowdsec cscli alerts list                     # what was detected
+docker exec crowdsec cscli allowlists inspect internal     # never banned
+```
+
+An unban reaches Traefik within 15 s. To add another host, add it to the `protection` group in `inventory/hosts.yml` and deploy Traefik then CrowdSec there.
 
 ## Vigie
 

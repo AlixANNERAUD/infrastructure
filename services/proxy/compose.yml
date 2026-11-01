@@ -17,6 +17,7 @@ services:
       - no-new-privileges:true
     networks:
       - proxy
+      - protection   # reaches CrowdSec's local API (services/protection)
     environment:
       - TZ=Europe/Paris
       - CLOUDFLARE_EMAIL=${CLOUDFLARE_EMAIL}
@@ -36,8 +37,9 @@ services:
 
       - "--entryPoints.web-secure.address=:443"
       - "--entryPoints.web-secure.http.tls=true"
-      # Applies to label and file routes alike
-      - "--entryPoints.web-secure.http.middlewares=security-headers@file"
+      # Applies to label and file routes alike: security-headers@file, preceded
+      # by CrowdSec's bouncer (crowdsec@file) on hosts of the protection group
+      - "--entryPoints.web-secure.http.middlewares=${TRAEFIK_ENTRYPOINT_MIDDLEWARES}"
       # Clients must not smuggle underscore aliases (X_Forwarded_For) of the headers Traefik sets; nginx dropped them
       - "--entryPoints.web-secure.http.aliasHeadersStrategy=delete"
       # Netbird's gRPC streams last as long as a peer is connected, so requests
@@ -68,6 +70,19 @@ services:
       - "--metrics.prometheus=true"
       - "--metrics.prometheus.manualRouting=true"
       - "--metrics.prometheus.addRoutersLabels=true"
+
+      # Access log in JSON on the container's output, so Docker's log rotation
+      # applies; CrowdSec (services/protection) reads it through the Docker API.
+      # Its Traefik parser reads the user agent from the request_User-Agent field
+      - "--accessLog=true"
+      - "--accessLog.format=json"
+      - "--accessLog.fields.headers.names.User-Agent=keep"
+
+      # CrowdSec bouncer (crowdsec@file middleware, services/proxy/protection.yml.j2),
+      # downloaded from plugins.traefik.io when Traefik starts; Dependabot does not
+      # update it: https://github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin/releases
+      - "--experimental.plugins.crowdsec-bouncer.moduleName=github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin"
+      - "--experimental.plugins.crowdsec-bouncer.version=v1.8.1"
     ports:
       - "80:80"
       - "443:443"
@@ -76,6 +91,7 @@ services:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "./dynamic:/etc/traefik/dynamic:ro"
       - "./letsencrypt:/letsencrypt"
+      - "./protection:/etc/traefik/protection:ro"   # CrowdSec bouncer key
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.dashboard.rule=Host(`${TRAEFIK_DASHBOARD_HOST}`)"
@@ -99,4 +115,9 @@ services:
 networks:
   proxy:
     name: "${PROXY_NETWORK}"
+    external: true
+  # Traefik and CrowdSec only, created by both playbooks; empty on hosts
+  # without CrowdSec
+  protection:
+    name: protection
     external: true

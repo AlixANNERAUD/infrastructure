@@ -1,0 +1,66 @@
+name: protection
+
+# Container logs are unbounded by default and would fill the disk
+x-logging: &logging
+  driver: local
+  options:
+    max-size: "20m"
+    max-file: "3"
+
+services:
+  # Security engine: reads Traefik's access log, detects attacks with the hub's
+  # scenarios and serves the resulting decisions (local API) to Traefik's bouncer
+  crowdsec:
+    image: crowdsecurity/crowdsec:v1.8.1
+    logging: *logging
+    container_name: crowdsec
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      TZ: Europe/Paris
+      # Traefik's parser and the generic HTTP scenarios (crowdsecurity/base-http-scenarios,
+      # which includes the log-based CVE scenarios of crowdsecurity/http-cve)
+      COLLECTIONS: crowdsecurity/traefik
+      # Registers Traefik's bouncer with this key when it is not registered yet
+      BOUNCER_KEY_traefik: ${BOUNCER_KEY}
+    volumes:
+      - ./config:/etc/crowdsec
+      - ./data:/var/lib/crowdsec/data
+    # The local API (8080) and metrics (6060) are never published: Traefik
+    # reaches the API over the protection network
+    networks:
+      - default     # hub and community blocklist
+      - protection
+      - docker
+    depends_on:
+      - socket-proxy
+    healthcheck:
+      test: ["CMD", "cscli", "lapi", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 2m
+
+  # Read-only view of the Docker API for the docker datasource: listing
+  # containers and reading their logs, nothing else (no POST, no exec)
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    logging: *logging
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      INFO: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker
+
+networks:
+  # Traefik and CrowdSec only, created by both playbooks
+  protection:
+    name: protection
+    external: true
+  # CrowdSec to the socket proxy: no route out of the Docker network
+  docker:
+    internal: true

@@ -1,0 +1,58 @@
+---
+# CrowdSec security engine. Deploy services/proxy/deploy.yml first: it turns
+# the bouncer on in this host's Traefik and writes the access log read here.
+- name: Deploy CrowdSec
+  hosts: protection
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+    - ../../vault/protection/vault.yml
+    - ../../vault/cloudflare/vault.yml
+  vars:
+    protection_allowlist: internal
+  roles:
+    - role: compose_service
+      vars:
+        compose_service_name: protection
+        compose_service_directories:
+          - config
+          - data
+        compose_service_files:
+          - source: acquisition.yaml
+            destination: config/acquis.d/traefik.yaml
+        compose_service_environment:
+          BOUNCER_KEY: "{{ protection_bouncer_key }}"
+        compose_service_external_networks:
+          - name: protection
+            internal: true
+
+  tasks:
+    # The engine installs the hub collections before its local API answers
+    - name: Allow the LAN and the VPN
+      community.docker.docker_container_exec:
+        container: crowdsec
+        argv: "{{ ['sh', '-s', '--', protection_allowlist, 'Networks of the internal-allowlist middleware'] + internal_networks }}"
+        stdin: "{{ lookup('ansible.builtin.file', 'allowlist.sh') }}"
+      register: protection_allowlist_result
+      until: protection_allowlist_result.rc == 0
+      retries: 18
+      delay: 10
+      changed_when: "'changed' in protection_allowlist_result.stdout_lines"
+
+    # Optional: only with an enrollment key from https://app.crowdsec.net in the
+    # vault. Enrolling again is harmless: an enrolled engine is left as it is
+    - name: Enroll the engine in the CrowdSec console
+      community.docker.docker_container_exec:
+        container: crowdsec
+        argv: [cscli, console, enroll, --name, "{{ inventory_hostname }}", "{{ protection_enrollment_key }}"]
+      register: protection_enrollment
+      failed_when: protection_enrollment.rc != 0
+      changed_when: "'successfully enrolled' in protection_enrollment.stdout ~ protection_enrollment.stderr"
+      no_log: true
+      when: protection_enrollment_key | default('') | length > 0
+      notify: Explain how to finish the enrollment
+
+  handlers:
+    - name: Explain how to finish the enrollment
+      ansible.builtin.debug:
+        msg: Accept the engine at https://app.crowdsec.net, then restart it (docker restart crowdsec).

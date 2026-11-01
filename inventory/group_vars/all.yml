@@ -26,6 +26,17 @@ automation_public_keys: "{{ [automation_laptop_public_key] + automation_addition
 automation_authorized_keys: >-
   {{ automation_public_keys | map('regex_replace', '^', 'from="' ~ (automation_ssh_sources | join(',')) ~ '" ') | list }}
 
+# Networks of the internal-allowlist middleware (services/proxy/policy.yml),
+# read from there so that CrowdSec's allowlist and its bouncer trust exactly
+# the networks Traefik lets into internal routes: the LANs and the VPNs
+internal_networks: >-
+  {{ (lookup('ansible.builtin.file', inventory_dir ~ '/../services/proxy/policy.yml') | from_yaml)
+     .http.middlewares['internal-allowlist'].ipAllowList.sourceRange }}
+
+# Traefik checks every request against CrowdSec (services/protection) only on
+# the hosts of the protection group: elsewhere there is no engine to ask
+protection_enabled: "{{ inventory_hostname in groups['protection'] }}"
+
 # Ranges Cloudflare proxies from, https://www.cloudflare.com/ips/ (2026-10-30)
 cloudflare_networks:
   - 173.245.48.0/20
