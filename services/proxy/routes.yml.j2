@@ -27,6 +27,43 @@
 {% endif %}
 {% endmacro %}
 {% macro host_rule(hosts) %}{{ hosts | map('regex_replace', '^(.*)$', 'Host(`\\1`)') | join(' || ') }}{% endmacro %}
+{# Login requests (POST to rate_limit.prefixes, case-insensitive since some apps like Jellyfin ignore case) of a
+   route or path go through their own router, which only adds the rate limit: its longer rule takes precedence. #}
+{% macro login_router(name, rule, service, internal, cloudflare_only, rate_limit) %}
+{% set prefixes = rate_limit.prefixes | map('regex_escape') | map('regex_replace', '^(.*)$', 'PathRegexp(`(?i)^\\1`)') | join(' || ') %}
+    {{ (name ~ '-login') | to_json }}:
+      rule: {{ ('(' ~ rule ~ ') && Method(`POST`) && (' ~ prefixes ~ ')') | to_json }}
+      entryPoints:
+        - web-secure
+      service: {{ service | to_json }}
+      middlewares:
+{% if internal %}
+        - internal-allowlist@file
+{% endif %}
+{% if cloudflare_only %}
+        - cloudflare-only@file
+{% endif %}
+        - {{ (name ~ '-login-rate-limit') | to_json }}
+      tls: {}
+{% endmacro %}
+{# Token bucket per client address: average requests per period, after a burst. Behind Cloudflare the client is the
+   rightmost X-Forwarded-For address that is not Cloudflare's; an IPv6 client counts as its whole /64. #}
+{% macro rate_limit_middleware(name, cloudflare_only, rate_limit) %}
+    {{ (name ~ '-login-rate-limit') | to_json }}:
+      rateLimit:
+        average: {{ rate_limit.average }}
+        period: {{ rate_limit.period | to_json }}
+        burst: {{ rate_limit.burst }}
+        sourceCriterion:
+          ipStrategy:
+            ipv6Subnet: 64
+{% if cloudflare_only %}
+            excludedIPs:
+{% for network in cloudflare_networks %}
+              - {{ network | to_json }}
+{% endfor %}
+{% endif %}
+{% endmacro %}
 # Rendered from traefik_routes and traefik_redirects in the host's variables
 http:
   routers:
@@ -50,7 +87,16 @@ http:
     {% endif %}
   {% endif %}
 {{ certificates(route.hosts, certificate_requests) }}
+  {% set route_rule = ('(' ~ host_rule(route.hosts) ~ ') && PathPrefix(`' ~ route.prefix ~ '`)') if route.prefix is defined else host_rule(route.hosts) %}
+  {% if route.rate_limit is defined %}
+{{ login_router(route.name, route_rule, route.name, route.internal, route.cloudflare_only | default(false), route.rate_limit) }}
+  {% endif %}
   {% for path in route.paths | default([]) %}
+    {% if path.rate_limit is defined %}
+{{ login_router(route.name ~ '-' ~ loop.index, '(' ~ host_rule(route.hosts) ~ ') && PathPrefix(`' ~ path.prefix ~ '`)',
+                (route.name ~ '-' ~ loop.index) if path.url is defined else route.name,
+                path.internal | default(route.internal), route.cloudflare_only | default(false), path.rate_limit) }}
+    {% endif %}
     {{ (route.name ~ '-' ~ loop.index) | to_json }}:
       rule: {{ ('(' ~ host_rule(route.hosts) ~ ') && PathPrefix(`' ~ path.prefix ~ '`)') | to_json }}
       entryPoints:
@@ -121,7 +167,13 @@ http:
   {% endfor %}
 {% endif %}
 {% for route in traefik_routes %}
+  {% if route.rate_limit is defined %}
+{{ rate_limit_middleware(route.name, route.cloudflare_only | default(false), route.rate_limit) }}
+  {% endif %}
   {% for path in route.paths | default([]) %}
+    {% if path.rate_limit is defined %}
+{{ rate_limit_middleware(route.name ~ '-' ~ loop.index, route.cloudflare_only | default(false), path.rate_limit) }}
+    {% endif %}
     {% if path.redirect is defined %}
     {{ (route.name ~ '-' ~ loop.index ~ '-redirect') | to_json }}:
       redirectRegex:
