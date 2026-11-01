@@ -7,14 +7,24 @@
   gather_facts: false
   vars:
     bare_domain_target: luxembourg
+    # The friend's home addresses are personal data: kept in the vault, not in this public repo
     friend_records:
       - type: A
-        value: 89.80.240.3
+        value: "{{ dera_page_friend_ipv4 }}"
       - type: AAAA
-        value: 2001:861:3e0d:b6a0:caff:bfff:fe01:8313
+        value: "{{ dera_page_friend_ipv6 }}"
   vars_files:
+    - ../../vault/matrix_dera_page/vault.yml
     - ../../vault/cloudflare/vault.yml
   tasks:
+    - name: Check that the friend's addresses are in the vault
+      ansible.builtin.assert:
+        that:
+          - dera_page_friend_ipv4 is defined
+          - dera_page_friend_ipv6 is defined
+        fail_msg: Add dera_page_friend_ipv4 and dera_page_friend_ipv6 to vault/matrix_dera_page/vault.yml.
+        quiet: true
+
     - name: Remove friend's records
       community.general.cloudflare_dns:
         zone: dera.page
