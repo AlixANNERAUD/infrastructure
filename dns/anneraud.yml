@@ -119,7 +119,7 @@
       - record: guenola-sahut.anneraud.fr
         value: global.bruxelles.anneraud.fr
       - record: pdf.anneraud.fr
-        value: global.bruxelles.anneraud.fr
+        value: local.bruxelles.anneraud.fr
       - record: metube.anneraud.fr
         value: local.bruxelles.anneraud.fr
       - record: databasus.anneraud.fr

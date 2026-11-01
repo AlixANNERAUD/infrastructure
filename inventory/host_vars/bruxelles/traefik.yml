@@ -208,7 +208,7 @@ traefik_routes:
   - name: bentopdf
     hosts: [pdf.anneraud.fr]
     url: http://ix-bentopdf-bentopdf-1:8080
-    internal: false
+    internal: true   # no login of its own
   - name: metube
     hosts: [metube.anneraud.fr]
     url: http://ix-metube-metube-1:8080
