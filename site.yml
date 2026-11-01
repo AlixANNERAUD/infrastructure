@@ -9,10 +9,8 @@
 - name: Cockpit
   ansible.builtin.import_playbook: services/cockpit/deploy.yml
 
-- name: Gatus (anneraud.fr)
-  ansible.builtin.import_playbook: services/etat_anneraud/deploy.yml
-- name: Gatus (dera.page)
-  ansible.builtin.import_playbook: services/status_dera_page/deploy.yml
+- name: Gatus
+  ansible.builtin.import_playbook: services/etat/deploy.yml
 - name: Vigie
   ansible.builtin.import_playbook: services/vigie/deploy.yml
 - name: HA-Linky

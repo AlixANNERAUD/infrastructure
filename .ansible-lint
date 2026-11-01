@@ -15,8 +15,8 @@ exclude_paths:
   - services/website/website/
   - services/*/compose.yml
   - services/proxy/policy.yml
-  - services/etat_anneraud/config.yml
-  - services/status_dera_page/config.yml
+  - services/etat/anneraud.yml
+  - services/etat/dera_page.yml
   - services/vigie/grafana/*.yml
   - roles/*/molecule/*/compose.yml
   - roles/*/molecule/*/config.yml
