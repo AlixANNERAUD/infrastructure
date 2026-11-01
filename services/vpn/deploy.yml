@@ -1,15 +1,16 @@
 ---
 - name: Deploy Netbird
-  hosts: netbird
+  hosts: vpn
   become: true
   vars_files:
     - ../../vault/ansible/vault.yml
-    - ../../vault/netbird/vault.yml
+    - ../../vault/vpn/vault.yml
     - ../../vault/cloudflare/vault.yml
   roles:
     - role: compose_service
       vars:
-        compose_service_name: netbird
+        compose_service_name: vpn
+        compose_service_directory: netbird   # previous name, kept so containers and volumes stay the same
         compose_service_user: 991
         compose_service_directories:
           - data

@@ -14,7 +14,7 @@
       - "Zitadel applications are not provisioned: the automation token or the state passphrase is missing. Once:"
       - "1. Zitadel console (https://authentification.anneraud.fr) → Users → Service Users → New, then give it the ORG_OWNER role"
       - "2. On that user, Personal Access Tokens → New, and copy the token"
-      - "3. ansible-vault edit vault/zitadel/vault.yml: set zitadel_automation_token to the token and zitadel_state_passphrase
+      - "3. ansible-vault edit vault/authentification/vault.yml: set zitadel_automation_token to the token and zitadel_state_passphrase
         to a new random passphrase of at least 16 characters (openssl rand -base64 32)"
   delegate_to: localhost
   run_once: true

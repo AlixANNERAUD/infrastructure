@@ -11,14 +11,14 @@
     # credentials the deploy goes on with the break-glass admin login only
     - name: Look for the Zitadel vault
       ansible.builtin.stat:
-        path: "{{ playbook_dir }}/../../vault/zitadel/vault.yml"
+        path: "{{ playbook_dir }}/../../vault/authentification/vault.yml"
       register: vigie_zitadel_vault
       delegate_to: localhost
       become: false
 
     - name: Load the Zitadel vault
       ansible.builtin.include_vars:
-        file: "{{ playbook_dir }}/../../vault/zitadel/vault.yml"
+        file: "{{ playbook_dir }}/../../vault/authentification/vault.yml"
       when: vigie_zitadel_vault.stat.exists
       no_log: true
 
@@ -56,7 +56,7 @@
         # Only when the apply changed the applications, so the state changed too
         - name: Remind to commit the state
           ansible.builtin.debug:
-            msg: Commit vault/zitadel/opentofu.tfstate in the vault repository.
+            msg: Commit vault/authentification/opentofu.tfstate in the vault repository.
           when: vigie_zitadel_state_changed
           vars:
             vigie_zitadel_state_changed: "{{ zitadel_applications_apply.changed | default(false) }}"

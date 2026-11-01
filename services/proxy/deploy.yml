@@ -1,6 +1,6 @@
 ---
 - name: Deploy Traefik
-  hosts: traefik
+  hosts: proxy
   become: true
   vars_files:
     - ../../vault/ansible/vault.yml
@@ -23,7 +23,7 @@
   roles:
     - role: compose_service
       vars:
-        compose_service_name: traefik
+        compose_service_name: proxy
         compose_service_directory: "{{ traefik_directory }}"
         compose_service_directories:
           - dynamic

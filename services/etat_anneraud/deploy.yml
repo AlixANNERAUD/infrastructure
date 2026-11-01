@@ -1,15 +1,16 @@
 ---
 - name: Deploy Gatus (anneraud.fr)
-  hosts: gatus_anneraud
+  hosts: etat_anneraud
   become: true
   vars_files:
     - ../../vault/ansible/vault.yml
-    - ../../vault/gatus_anneraud/vault.yml
+    - ../../vault/etat_anneraud/vault.yml
     - ../../vault/cloudflare/vault.yml
   roles:
     - role: compose_service
       vars:
-        compose_service_name: gatus_anneraud
+        compose_service_name: etat_anneraud
+        compose_service_directory: gatus_anneraud   # previous name, kept so containers and volumes stay the same
         compose_service_files:
           - source: config.yml
             destination: config/config.yml

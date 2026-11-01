@@ -126,7 +126,7 @@ Prerequisites:
 - `vault/vigie/vault.yml` holds `vigie_grafana_admin_password` and `vigie_home_assistant_webhook_id`.
 - Home Assistant has an automation with a webhook trigger whose id is `vigie_home_assistant_webhook_id`, with `local_only: false` (Grafana calls it through `maison.anneraud.fr` from Luxembourg, not from the home network).
 - `vigie_grafana_admin_password` only applies on Grafana's first start, when it creates its database. To rotate it afterwards, run `docker exec -it vigie-grafana-1 grafana cli admin reset-admin-password <new password>` on Luxembourg, then update the vault.
-- `vault/zitadel/vault.yml` holds `zitadel_automation_token` and `zitadel_state_passphrase`. Without them, the deploy goes on with OAuth off and only the local admin login. If provisioning fails, Grafana keeps the Zitadel login of the previous deploy (OAuth stays off when there was none). When the apply changes the applications, commit `vault/zitadel/opentofu.tfstate` in the vault repository.
+- `vault/authentification/vault.yml` holds `zitadel_automation_token` and `zitadel_state_passphrase`. Without them, the deploy goes on with OAuth off and only the local admin login. If provisioning fails, Grafana keeps the Zitadel login of the previous deploy (OAuth stays off when there was none). When the apply changes the applications, commit `vault/authentification/opentofu.tfstate` in the vault repository.
 - The deploy provisions the Zitadel application with OpenTofu, so run it with `mise deploy services/vigie/deploy.yml` (mise puts `tofu` on `PATH`). A missing `tofu` means the playbook was run without mise.
 - The Bruxelles scrape goes from Luxembourg to Bruxelles over Netbird and relies on Bruxelles' Traefik internal allowlist accepting the VPN range.
 
@@ -135,8 +135,8 @@ Prerequisites:
 OIDC applications of services managed outside Ansible are declared in `opentofu/zitadel/applications.auto.tfvars` and provisioned with OpenTofu. To add one:
 
 1. Add an entry to `applications.auto.tfvars` (set `authentication = "client_secret"` and `configured_in` when the service needs a secret pasted in).
-2. Run `mise deploy services/zitadel/applications.yml`. It prints the issuer, client id and `configured_in`, and writes client secrets to `~/.config/infrastructure/zitadel/<application>.secret` (mode `0600`). Without `zitadel_automation_token` and `zitadel_state_passphrase` in `vault/zitadel/vault.yml`, it prints how to create them.
-3. Commit the updated `vault/zitadel/opentofu.tfstate` in the vault repository.
+2. Run `mise deploy services/authentification/applications.yml`. It prints the issuer, client id and `configured_in`, and writes client secrets to `~/.config/infrastructure/zitadel/<application>.secret` (mode `0600`). Without `zitadel_automation_token` and `zitadel_state_passphrase` in `vault/authentification/vault.yml`, it prints how to create them.
+3. Commit the updated `vault/authentification/opentofu.tfstate` in the vault repository.
 
 ## Vault
 

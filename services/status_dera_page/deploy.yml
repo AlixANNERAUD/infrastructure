@@ -1,15 +1,15 @@
 ---
 - name: Deploy Gatus (dera.page)
-  hosts: gatus_dera_page
+  hosts: status_dera_page
   become: true
   vars_files:
     - ../../vault/ansible/vault.yml
-    - ../../vault/gatus_dera_page/vault.yml
+    - ../../vault/status_dera_page/vault.yml
     - ../../vault/cloudflare/vault.yml
   roles:
     - role: compose_service
       vars:
-        compose_service_name: gatus_dera_page
+        compose_service_name: status_dera_page
         compose_service_directory: gatus_derapage
         compose_service_files:
           - source: config.yml

@@ -5,18 +5,18 @@
 
 # Reverse proxy first: the other Luxembourg services are routed through it
 - name: Traefik
-  ansible.builtin.import_playbook: services/traefik/deploy.yml
+  ansible.builtin.import_playbook: services/proxy/deploy.yml
 - name: Cockpit
   ansible.builtin.import_playbook: services/cockpit/deploy.yml
 
 - name: Gatus (anneraud.fr)
-  ansible.builtin.import_playbook: services/gatus_anneraud/deploy.yml
+  ansible.builtin.import_playbook: services/etat_anneraud/deploy.yml
 - name: Gatus (dera.page)
-  ansible.builtin.import_playbook: services/gatus_dera_page/deploy.yml
+  ansible.builtin.import_playbook: services/status_dera_page/deploy.yml
 - name: Vigie
   ansible.builtin.import_playbook: services/vigie/deploy.yml
 - name: HA-Linky
-  ansible.builtin.import_playbook: services/ha-linky/deploy.yml
+  ansible.builtin.import_playbook: services/linky/deploy.yml
 - name: Matrix (anneraud.fr)
   ansible.builtin.import_playbook: services/matrix_anneraud/deploy.yml
 - name: Matrix (dera.page)
@@ -24,7 +24,7 @@
 - name: MCPHub
   ansible.builtin.import_playbook: services/mcphub/deploy.yml
 - name: Netbird
-  ansible.builtin.import_playbook: services/netbird/deploy.yml
+  ansible.builtin.import_playbook: services/vpn/deploy.yml
 - name: Notes
   ansible.builtin.import_playbook: services/notes/deploy.yml
 - name: Replication
@@ -34,10 +34,10 @@
 - name: Téléchargement
   ansible.builtin.import_playbook: services/telechargement/deploy.yml
 - name: Tolgee
-  ansible.builtin.import_playbook: services/tolgee_anneraud/deploy.yml
+  ansible.builtin.import_playbook: services/translate/deploy.yml
 - name: Vault Xila
-  ansible.builtin.import_playbook: services/vault_xila/deploy.yml
+  ansible.builtin.import_playbook: services/secrets_xila/deploy.yml
 - name: Wakapi
   ansible.builtin.import_playbook: services/wakapi/deploy.yml
 - name: Zitadel
-  ansible.builtin.import_playbook: services/zitadel/deploy.yml
+  ansible.builtin.import_playbook: services/authentification/deploy.yml
