@@ -4,6 +4,24 @@ traefik_directory: Traefik
 traefik_dashboard_host: traefik.bruxelles.anneraud.fr
 traefik_federation_publish: "127.0.0.1:8448:8448"
 
+# Rate limit of the login requests of public routes (rate_limit on a route or
+# one of its paths): POST requests to the given path prefixes, matched without
+# case, get their own router with a token bucket per client address (an IPv6
+# client counts as its /64), answering 429 once it is empty. Only logins are
+# limited, so the many requests of app sync (Nextcloud, Jellyfin, Home
+# Assistant, Bitwarden clients) are not; the apps' own throttling still applies.
+# Limits are YAML anchors merged into each rate_limit.
+# A burst of 10 attempts, then one every 6 s
+traefik_login_rate_limit: &login_rate_limit
+  average: 10
+  period: 1m
+  burst: 10
+# For logins that post several requests: a burst of 20, then one every 2 s
+traefik_busy_login_rate_limit: &busy_login_rate_limit
+  average: 30
+  period: 1m
+  burst: 20
+
 traefik_routes:
   - name: paperless
     hosts: [archive.anneraud.fr]
@@ -35,6 +53,11 @@ traefik_routes:
     hosts: [nuage.anneraud.fr]
     url: http://ix-nextcloud-nextcloud-1:80
     internal: false
+    # Login form and two-factor challenge. Higher: the desktop client polls
+    # /login/v2/poll every 3 s while its user logs in in the browser
+    rate_limit:
+      <<: *busy_login_rate_limit
+      prefixes: [/login, /index.php/login]
     paths:
       - prefix: /.well-known/carddav
         redirect: /remote.php/dav
@@ -48,6 +71,11 @@ traefik_routes:
     hosts: [bitwarden.anneraud.fr]
     url: http://ix-vaultwarden-vaultwarden-1:8080
     internal: false
+    # Password and token requests (clients refresh their token about hourly),
+    # and the admin page's login
+    rate_limit:
+      <<: *login_rate_limit
+      prefixes: [/identity/connect/token, /identity/accounts/prelogin, /api/accounts/prelogin, /admin]
   - name: collabora
     hosts: [collabora.anneraud.fr]
     url: http://ix-collabora-collabora-1:8080
@@ -56,10 +84,18 @@ traefik_routes:
     hosts: [maison.anneraud.fr]
     url: http://ix-home-assistant-home-assistant-1:8080
     internal: false
+    # Login flow steps; the apps renew their tokens on /auth/token
+    rate_limit:
+      <<: *login_rate_limit
+      prefixes: [/auth/login_flow]
   - name: jellyfin
     hosts: [mediatheque.anneraud.fr]
     url: http://ix-jellyfin-jellyfin-1:8096
     internal: false
+    # AuthenticateByName and AuthenticateWithQuickConnect
+    rate_limit:
+      <<: *login_rate_limit
+      prefixes: [/Users/Authenticate]
   - name: radarr
     hosts: [radarr.anneraud.fr]
     url: http://ix-radarr-radarr-1:8080
@@ -128,9 +164,18 @@ traefik_routes:
     # HTTP/2 end to end: Zitadel's gRPC API (used by its OpenTofu provider) needs it
     url: h2c://zitadel-zitadel-1:8080
     internal: false
+    # Former login pages, still served
+    rate_limit:
+      <<: *login_rate_limit
+      prefixes: [/ui/login]
     paths:
       - prefix: /ui/v2/login
         url: http://zitadel-login-1:3000
+        # Every step of the login (name, password, second factor…) posts a
+        # form here, a few per login
+        rate_limit:
+          <<: *busy_login_rate_limit
+          prefixes: [/ui/v2/login]
   - name: synapse
     hosts: [matrix.anneraud.fr]
     url: http://matrix_anneraud-synapse-1:8008
@@ -187,7 +232,8 @@ traefik_routes:
   - name: meshcentral
     hosts: [parc.anneraud.fr]
     url: http://ix-meshcentral-meshcentral-1:443
-    internal: false
+    # Its agents and console are only reached from the LAN and the VPN
+    internal: true
   - name: mcphub
     hosts: [mcphub.anneraud.fr]
     url: http://mcphub-mcphub-1:3000

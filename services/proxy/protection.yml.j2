@@ -1,0 +1,31 @@
+# CrowdSec bouncer, applied to every web-secure route by the entrypoint on hosts
+# of the protection group (rendered only there, see deploy.yml). Options:
+# https://github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin/blob/v1.8.1/README.md
+http:
+  middlewares:
+    crowdsec:
+      plugin:
+        crowdsec-bouncer:
+          enabled: true
+          # Banned addresses are fetched from the local API every 15 s and kept
+          # in memory, so requests never wait for CrowdSec
+          crowdsecMode: stream
+          updateIntervalSeconds: 15
+          # When CrowdSec is down, let requests through rather than refuse them all:
+          # the VPN and every site would otherwise go down with it
+          updateMaxFailure: -1
+          crowdsecLapiScheme: http
+          crowdsecLapiHost: crowdsec:8080
+          crowdsecLapiKeyFile: /etc/traefik/protection/bouncer_key
+          # Behind Cloudflare the client is the rightmost X-Forwarded-For address
+          # that is not Cloudflare's. Traefik drops that header from any other
+          # source (forwardedHeaders.trustedIPs), so it cannot be forged directly
+          forwardedHeadersTrustedIPs:
+{% for network in cloudflare_networks %}
+            - {{ network | to_json }}
+{% endfor %}
+          # The LAN and the VPN are never refused (same networks as internal-allowlist)
+          clientTrustedIPs:
+{% for network in internal_networks %}
+            - {{ network | to_json }}
+{% endfor %}

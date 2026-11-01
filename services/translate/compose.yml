@@ -46,6 +46,20 @@ services:
       - traefik.http.middlewares.weblate-redirection.redirectregex.regex=^https?://translate.xila.dev/(.*)
       - traefik.http.middlewares.weblate-redirection.redirectregex.replacement=https://translate.anneraud.fr/$$1
 
+      # Logins (POST /api/public/generatetoken) get their own router, rate
+      # limited per client address: a burst of 10, then one every 6 s (as the
+      # Bruxelles logins, inventory/host_vars/bruxelles/traefik.yml)
+      # yamllint disable-line rule:line-length
+      - traefik.http.routers.tolgee-login.rule=Host(`translate.anneraud.fr`) && Method(`POST`) && PathPrefix(`/api/public/generatetoken`)
+      - traefik.http.routers.tolgee-login.entrypoints=web-secure
+      - traefik.http.routers.tolgee-login.tls=true
+      - traefik.http.routers.tolgee-login.service=weblate
+      - traefik.http.routers.tolgee-login.middlewares=tolgee-login-rate-limit
+      - traefik.http.middlewares.tolgee-login-rate-limit.ratelimit.average=10
+      - traefik.http.middlewares.tolgee-login-rate-limit.ratelimit.period=1m
+      - traefik.http.middlewares.tolgee-login-rate-limit.ratelimit.burst=10
+      - traefik.http.middlewares.tolgee-login-rate-limit.ratelimit.sourcecriterion.ipstrategy.ipv6subnet=64
+
   database:
     image: postgres:18.6
     logging: *logging

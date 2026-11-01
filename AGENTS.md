@@ -24,6 +24,8 @@ Ansible playbooks and Docker Compose files that deploy Alix's self-hosted servic
 
 Luxembourg is reachable from the internet: anything published with `ports:` there is public, because Docker bypasses the host firewall. Keep internal services behind Traefik with the `internal-allowlist@file` middleware instead. Traefik metrics are served on an internal `:8082` entrypoint (not published); Vigie scrapes it, so never expose it with `ports:`.
 
+On hosts of the `protection` group (`protection_enabled`, Luxembourg for now), every `web-secure` request goes through CrowdSec's bouncer (`crowdsec@file`, `services/proxy/protection.yml.j2`), and CrowdSec (`services/protection`) reads Traefik's JSON access log from its container output. Its local API stays on the internal `protection` network, never published. The LAN and VPN ranges come from `internal-allowlist` in `services/proxy/policy.yml` (`internal_networks`): change them there only. Public login endpoints get a `rate_limit` (Bruxelles route data, labels on Luxembourg); never on internal routes. See the readme's "Protection" section.
+
 ## Tooling
 
 Tools are pinned with uv (`pyproject.toml`, `uv.lock`), OpenTofu with mise (`mise.toml`) and Ansible collections in `requirements.yml`. `mise.toml` also holds the owner's shortcuts (`mise deploy <playbook>` = `mise exec -- uv run ansible-playbook`, `mise preview`, `mise lint`, `mise test`, `mise vault`); keep them in sync when a command below changes.
@@ -34,6 +36,7 @@ uv run ansible-galaxy collection install -r requirements.yml   # into .ansible/c
 uv run yamllint .
 uv run ansible-lint
 .github/scripts/check-compose.sh                               # docker compose config on every service
+# CI only (they pull images): .github/scripts/check-traefik-routes.sh, check-vigie.sh, check-protection.sh
 (cd roles/compose_service && uv run molecule test)             # runs the role against a local busybox stack (needs Docker)
 ```
 

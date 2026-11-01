@@ -4,10 +4,28 @@
   become: true
   vars_files:
     - ../../vault/ansible/vault.yml
+    - ../../vault/protection/vault.yml
     - ../../vault/cloudflare/vault.yml
   pre_tasks:
     - name: Check that no other container holds ports 80 and 443
       ansible.builtin.include_tasks: check_published_ports.yml
+
+    # The bouncer reads its key when Traefik loads the crowdsec middleware, so
+    # the key must be there before Traefik starts with it
+    - name: Create the folder of the CrowdSec bouncer key
+      ansible.builtin.file:
+        path: "{{ services_root }}/{{ traefik_directory }}/protection"
+        state: directory
+        mode: "0750"
+      when: protection_enabled | bool
+
+    - name: Write the CrowdSec bouncer key
+      ansible.builtin.copy:
+        content: "{{ protection_bouncer_key }}"
+        dest: "{{ services_root }}/{{ traefik_directory }}/protection/bouncer_key"
+        mode: "0600"
+      no_log: true
+      when: protection_enabled | bool
 
     - name: Look up the proxy network
       community.docker.docker_network_info:
@@ -27,10 +45,18 @@
         compose_service_directory: "{{ traefik_directory }}"
         compose_service_directories:
           - dynamic
+          - protection
         compose_service_files:
           - source: policy.yml
             destination: dynamic/policy.yml
             restart: false   # Traefik reloads the dynamic folder itself
+        # The crowdsec middleware, only where the entrypoint uses it
+        compose_service_templates: >-
+          {{ [{'source': 'protection.yml.j2', 'destination': 'dynamic/protection.yml', 'restart': false}]
+             if protection_enabled | bool else [] }}
+        compose_service_external_networks:
+          - name: protection
+            internal: true
         compose_service_environment:
           CLOUDFLARE_EMAIL: "{{ cloudflare_email }}"
           CLOUDFLARE_API_KEY: "{{ cloudflare_api_key }}"
@@ -38,11 +64,23 @@
           TRAEFIK_DASHBOARD_HOST: "{{ traefik_dashboard_host }}"
           TRAEFIK_FEDERATION_PUBLISH: "{{ traefik_federation_publish }}"
           TRAEFIK_TRUSTED_PROXIES: "{{ cloudflare_networks | join(',') }}"
+          # Banned clients are refused before any other middleware runs
+          TRAEFIK_ENTRYPOINT_MIDDLEWARES: "{{ 'crowdsec@file,security-headers@file' if protection_enabled | bool else 'security-headers@file' }}"
         compose_service_dns_records:
           - record: "{{ traefik_dashboard_host }}"
             visibility: private
 
   tasks:
+    # On a host that left the protection group, once Traefik no longer uses them
+    - name: Remove the CrowdSec middleware and bouncer key
+      ansible.builtin.file:
+        path: "{{ services_root }}/{{ traefik_directory }}/{{ item }}"
+        state: absent
+      loop:
+        - dynamic/protection.yml
+        - protection/bouncer_key
+      when: not protection_enabled | bool
+
     # Traefik watches the dynamic folder, so the routes apply without a restart
     - name: Render the routes
       ansible.builtin.template:

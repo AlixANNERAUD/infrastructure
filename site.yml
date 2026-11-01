@@ -6,6 +6,9 @@
 # Reverse proxy first: the other Luxembourg services are routed through it
 - name: Traefik
   ansible.builtin.import_playbook: services/proxy/deploy.yml
+# Right after Traefik, whose bouncer lets everything through until CrowdSec answers
+- name: CrowdSec
+  ansible.builtin.import_playbook: services/protection/deploy.yml
 - name: Cockpit
   ansible.builtin.import_playbook: services/cockpit/deploy.yml
 

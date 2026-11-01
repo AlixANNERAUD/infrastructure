@@ -45,6 +45,7 @@ curl -fs "$api/http/middlewares?per_page=1000" > "$directory/middlewares.json"
 
 uv run python - "$directory" <<'EOF'
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -75,7 +76,26 @@ def check(condition, message):
 for name, router in sorted(routers.items()):
     check(router["status"] == "enabled", f"router {name} is {router['status']}: {router.get('error')}")
 
-expected = len(routes) + sum(len(route.get("paths", [])) for route in routes) + len(redirects)
+
+def seconds(duration):
+    """Seconds of a Go duration ("1m", "1m0s") or of nanoseconds, as the API may return either."""
+    if isinstance(duration, (int, float)):
+        return duration / 1e9
+    units = {"h": 3600, "m": 60, "s": 1, "ms": 1e-3}
+    return sum(float(value) * units[unit] for value, unit in re.findall(r"([0-9.]+)(ms|h|m|s)", str(duration)))
+
+
+def rate_limited(route):
+    """Owner router name, internal flag and rate limit of each login router of a route."""
+    if "rate_limit" in route:
+        yield route["name"], route["internal"], route["rate_limit"]
+    for index, path in enumerate(route.get("paths", []), start=1):
+        if "rate_limit" in path:
+            yield f"{route['name']}-{index}", path.get("internal", route["internal"]), path["rate_limit"]
+
+
+logins = [login for route in routes for login in rate_limited(route)]
+expected = len(routes) + sum(len(route.get("paths", [])) for route in routes) + len(redirects) + len(logins)
 check(len(routers) == expected, f"{len(routers)} routers instead of {expected}")
 
 check(
@@ -165,6 +185,41 @@ check(
     middlewares.get("cloudflare-only", {}).get("ipAllowList", {}).get("sourceRange") == cloudflare_networks,
     "middleware cloudflare-only does not allow exactly cloudflare_networks",
 )
+
+# Public logins are rate limited, through a router that only adds the limit to its owner's: same service and
+# restrictions, POST to the login prefixes only, and a longer rule so that it takes precedence
+check(
+    {owner for owner, _, _ in logins} >= {"zitadel", "zitadel-1", "vaultwarden", "nextcloud", "jellyfin", "home-assistant"},
+    f"rate limited routers are {sorted(owner for owner, _, _ in logins)}",
+)
+for owner, internal, rate_limit in logins:
+    name = f"{owner}-login"
+    router, owner_router = routers.get(name, {}), routers.get(owner, {})
+    check(not internal, f"router {name} rate limits an internal route")
+    check(router.get("service") == owner_router.get("service"), f"router {name} has another service than {owner}")
+    check(
+        router.get("middlewares", []) == owner_router.get("middlewares", []) + [f"{name}-rate-limit@file"],
+        f"router {name} middlewares are {router.get('middlewares')}",
+    )
+    rule = router.get("rule", "")
+    check(rule.startswith(f"({owner_router.get('rule')}) && Method(`POST`) && ("), f"router {name} has the wrong rule {rule}")
+    for prefix in rate_limit["prefixes"]:
+        check(f"PathRegexp(`(?i)^{re.escape(prefix)}`)" in rule, f"router {name} does not limit {prefix}")
+    limit = middlewares.get(f"{name}-rate-limit", {}).get("rateLimit", {})
+    check(
+        (limit.get("average"), seconds(limit.get("period")), limit.get("burst"))
+        == (rate_limit["average"], seconds(rate_limit["period"]), rate_limit["burst"]),
+        f"middleware {name}-rate-limit is {limit}",
+    )
+    check(limit.get("sourceCriterion", {}).get("ipStrategy", {}).get("ipv6Subnet") == 64, f"middleware {name}-rate-limit has no /64")
+# A route's login router must not catch requests meant for one of its paths, which may be internal
+for route in routes:
+    for prefix in route.get("rate_limit", {}).get("prefixes", []):
+        for path in route.get("paths", []):
+            check(
+                not (path["prefix"].lower().startswith(prefix.lower()) or prefix.lower().startswith(path["prefix"].lower())),
+                f"route {route['name']} limits {prefix}, which overlaps its path {path['prefix']}",
+            )
 
 if failures:
     print("\n".join(failures))

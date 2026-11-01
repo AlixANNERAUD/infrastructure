@@ -65,6 +65,19 @@ services:
       - traefik.http.routers.netbird-backend.tls=true
       - traefik.http.routers.netbird-backend.tls.certresolver=letsencrypt
       - traefik.http.routers.netbird-backend.service=netbird-server
+      # Logins to the embedded identity provider (POST /oauth2/auth/…) get their
+      # own router, rate limited per client address: a burst of 10, then one
+      # every 6 s. Its priority beats netbird-backend's longer rule
+      - traefik.http.routers.netbird-login.rule=Host(`netbird.anneraud.fr`) && Method(`POST`) && PathPrefix(`/oauth2/auth`)
+      - traefik.http.routers.netbird-login.priority=1000
+      - traefik.http.routers.netbird-login.entrypoints=web-secure
+      - traefik.http.routers.netbird-login.tls=true
+      - traefik.http.routers.netbird-login.service=netbird-server
+      - traefik.http.routers.netbird-login.middlewares=netbird-login-rate-limit
+      - traefik.http.middlewares.netbird-login-rate-limit.ratelimit.average=10
+      - traefik.http.middlewares.netbird-login-rate-limit.ratelimit.period=1m
+      - traefik.http.middlewares.netbird-login-rate-limit.ratelimit.burst=10
+      - traefik.http.middlewares.netbird-login-rate-limit.ratelimit.sourcecriterion.ipstrategy.ipv6subnet=64
       # Healthcheck router
       - traefik.http.routers.netbird-health.rule=Host(`netbird.anneraud.fr`) && Path(`/health`)
       - traefik.http.routers.netbird-health.entrypoints=web-secure

@@ -1,0 +1,9 @@
+# Traefik's access log, in JSON on its container's output (services/proxy),
+# read through the socket proxy:
+# https://docs.crowdsec.net/docs/next/log_processor/data_sources/docker
+source: docker
+container_name:
+  - traefik
+docker_host: tcp://socket-proxy:2375
+labels:
+  type: traefik
