@@ -75,7 +75,7 @@ Rules:
 - Pin image tags (no `latest`, no untagged images); Dependabot (`.github/dependabot.yml`) opens one grouped PR per ecosystem every Monday. It does not cover `requirements.yml` or `.python-version`: update those by hand.
 - Ansible style: FQCN modules (`ansible.builtin.copy`), `true`/`false`, `changed_when` on `command`/`shell`, handlers for restarts.
 - Lines that can't be split (DNS TXT records, Traefik rules, long commands) get `# yamllint disable-line rule:line-length`. Never put that comment inside a `|` block scalar: it would become part of the file content; wrap the task in `# yamllint disable/enable rule:line-length` instead.
-- New public endpoints should also get a Gatus check in `services/etat_anneraud/config.yml` or `services/status_dera_page/config.yml`, and a row in `readme.md`.
+- New public endpoints should also get a Gatus check in `services/etat/anneraud.yml` or `services/etat/dera_page.yml`, and a row in `readme.md`.
 
 ## Hosts access
 

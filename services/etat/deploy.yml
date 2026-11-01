@@ -1,0 +1,50 @@
+---
+# One Gatus instance per domain, sharing compose.yml; each keeps its own
+# inventory group, vault and host folder
+- name: Deploy Gatus (anneraud.fr)
+  hosts: etat_anneraud
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+    - ../../vault/etat_anneraud/vault.yml
+    - ../../vault/cloudflare/vault.yml
+  roles:
+    - role: compose_service
+      vars:
+        compose_service_name: etat_anneraud
+        compose_service_directory: gatus_anneraud   # previous name, kept so containers and volumes stay the same
+        compose_service_files:
+          - source: anneraud.yml
+            destination: config/config.yml
+        compose_service_environment:
+          HOME_ASSISTANT_URL: https://maison.anneraud.fr
+          PROXY_RULE: Host(`etat.anneraud.fr`)
+          STACK_NAME: gatus-anneraud
+          DATABASE_USER: "{{ database_user }}"
+          DATABASE_PASSWORD: "{{ database_password }}"
+          HOME_ASSISTANT_TOKEN: "{{ home_assistant_token }}"
+        compose_service_dns_records:
+          - record: etat.anneraud.fr
+
+- name: Deploy Gatus (dera.page)
+  hosts: status_dera_page
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+    - ../../vault/status_dera_page/vault.yml
+    - ../../vault/cloudflare/vault.yml
+  roles:
+    - role: compose_service
+      vars:
+        compose_service_name: status_dera_page
+        compose_service_directory: gatus_derapage
+        compose_service_files:
+          - source: dera_page.yml
+            destination: config/config.yml
+        compose_service_environment:
+          PROXY_RULE: Host(`status.dera.page`)
+          STACK_NAME: gatus-derapage
+          DATABASE_USER: "{{ database_user }}"
+          DATABASE_PASSWORD: "{{ database_password }}"
+        compose_service_dns_records:
+          - record: status.dera.page
