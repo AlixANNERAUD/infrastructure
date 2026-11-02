@@ -7,7 +7,7 @@ x-logging: &logging
 
 services:
   mcphub:
-    image: samanhappy/mcphub:1.1.10
+    image: samanhappy/mcphub:1.1.14
     logging: *logging
     restart: unless-stopped
     volumes:

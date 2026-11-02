@@ -7,7 +7,7 @@ x-logging: &logging
 
 services:
   app:
-    image: busybox:1.37
+    image: busybox:1.38
     logging: *logging
     command: sleep 3600
     user: "${USER_ID}:${GROUP_ID}"
