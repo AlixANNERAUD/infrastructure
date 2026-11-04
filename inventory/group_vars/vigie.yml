@@ -13,8 +13,8 @@ vigie_latency_excluded_services:
   - nextcloud
   - collabora
   - home-assistant
-  - synapse          # synapse@file on Bruxelles
-  - matrix           # matrix-dera-page@docker on Luxembourg, matrix-delegation@file
+  - synapse          # synapse@docker on Bruxelles
+  - matrix           # matrix-dera-page@docker on Luxembourg, matrix-delegation@docker on Bruxelles
   - jellyfin
   - camera           # camera-nicosie, camera-skopje, camera-amsterdam
   - metube

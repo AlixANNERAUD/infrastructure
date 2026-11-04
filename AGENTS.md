@@ -18,13 +18,13 @@ Ansible playbooks and Docker Compose files that deploy Alix's self-hosted servic
 | Host | Role | Service root | Reverse proxy |
 |---|---|---|---|
 | `luxembourg` | Cloud VM with a public IP | `/opt/<service>` | Traefik (`services/proxy`), labels on the external `traefik` network |
-| `bruxelles` | Home TrueNAS server | `/mnt/Donnees/Applications_chiffrees/<Service>` | Traefik (`services/proxy`) on the external `proxy` network, routes in `inventory/host_vars/bruxelles/traefik.yml` |
+| `bruxelles` | Home TrueNAS server | `/mnt/Donnees/Applications_chiffrees/<Service>` | Traefik (`services/proxy`), labels on the external `proxy` network; TrueNAS Apps and LAN devices, which can't carry labels, in `inventory/host_vars/bruxelles/traefik.yml` |
 | `pristina` | Home machine | — | — |
 | `paris` | Desktop client | — | — |
 
 Luxembourg is reachable from the internet: anything published with `ports:` there is public, because Docker bypasses the host firewall. Keep internal services behind Traefik with the `internal-allowlist@file` middleware instead. Traefik metrics are served on an internal `:8082` entrypoint (not published); Vigie scrapes it, so never expose it with `ports:`.
 
-On hosts of the `protection` group (`protection_enabled`, Luxembourg for now), every `web-secure` request goes through CrowdSec's bouncer (`crowdsec@file`, `services/proxy/protection.yml.j2`), and CrowdSec (`services/protection`) reads Traefik's JSON access log from its container output. Its local API stays on the internal `protection` network, never published. The LAN and VPN ranges come from `internal-allowlist` in `services/proxy/policy.yml` (`internal_networks`): change them there only. Public login endpoints get a `rate_limit` (Bruxelles route data, labels on Luxembourg); never on internal routes. See the readme's "Protection" section.
+On hosts of the `protection` group (`protection_enabled`, Luxembourg for now), every `web-secure` request goes through CrowdSec's bouncer (`crowdsec@file`, `services/proxy/protection.yml.j2`), and CrowdSec (`services/protection`) reads Traefik's JSON access log from its container output. Its local API stays on the internal `protection` network, never published. The LAN and VPN ranges come from `internal-allowlist` in `services/proxy/policy.yml` (`internal_networks`): change them there only. Public login endpoints get a rate limit (labels on the stacks, `rate_limit` in the Bruxelles route data for TrueNAS Apps); never on internal routes. See the readme's "Protection" section.
 
 ## Tooling
 

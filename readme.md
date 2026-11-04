@@ -151,7 +151,7 @@ Every request to the `web-secure` entrypoint of a Traefik whose host is in the `
 
 The LAN and the VPN (the networks of `internal-allowlist` in `services/proxy/policy.yml`) are never banned: they are in CrowdSec's `internal` allowlist, which drops alerts and refuses decisions on them, and the bouncer lets them through whatever CrowdSec says.
 
-Public login pages are also rate limited per client address, on both hosts: `rate_limit` on a route or path in `inventory/host_vars/bruxelles/traefik.yml` (POST requests to the login paths only, so app sync is not limited; Traefik answers 429 past the limit), and labels for Tolgee and Netbird's login on Luxembourg.
+Public login pages are also rate limited per client address, on both hosts (POST requests to the login paths only, so app sync is not limited; Traefik answers 429 past the limit): `rate_limit` on a route in `inventory/host_vars/bruxelles/traefik.yml` for the TrueNAS Apps, and labels for the stacks of this repository: Zitadel on Bruxelles (with the limits of that same file, written to its `.env`), Tolgee and Netbird's login on Luxembourg.
 
 Prerequisites, once:
 
