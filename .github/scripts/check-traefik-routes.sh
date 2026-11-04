@@ -275,7 +275,9 @@ for name, expectation in expected.items():
     check(entry.get("middlewares", []) == middleware_names, f"router {name}@docker middlewares are {entry.get('middlewares')}")
     zone = expectation.get("zone")
     tls = {"certResolver": "letsencrypt", "domains": [{"main": zone, "sans": [f"*.{zone}"]}]} if zone else {}
-    check(entry.get("tls") == tls, f"router {name}@docker TLS is {entry.get('tls')}")
+    # The Docker provider names the default TLS options, which the file routes use implicitly
+    check({key: value for key, value in entry.get("tls", {}).items() if (key, value) != ("options", "default")} == tls,
+          f"router {name}@docker TLS is {entry.get('tls')}")
     if "url" in expectation:
         service = services.get(f"{service_name}@docker", {})
         servers = service.get("loadBalancer", {}).get("servers", [])
@@ -444,8 +446,9 @@ def spend(host, paths, burst):
 host = "authentification.anneraud.fr"
 spend(host, ["/ui/login/password", "/UI/Login/password"], tiers["login"]["burst"])
 check(request(host, "/ui/login/password")[0] != 429, "the former login page refuses GET once logins are limited")
-# Its own bucket: the former login pages' spent burst does not count
-spend(host, ["/ui/v2/login/password", "/UI/V2/LOGIN/password"], tiers["busy login"]["burst"])
+# Its own bucket: the former login pages' spent burst does not count. Its path prefix is case-sensitive,
+# as Zitadel's login serves it
+spend(host, ["/ui/v2/login/password", "/ui/v2/login/PASSWORD"], tiers["busy login"]["burst"])
 check(request(host, "/ui/v2/login/password")[0] == 200, "the login refuses GET once logins are limited")
 check(request(host, "/check", "POST")[0] != 429, "POST outside the login pages is limited")
 
