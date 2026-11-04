@@ -20,6 +20,14 @@ services:
       - 6881:6881/udp
     networks:
       - proxy
+    # qBittorrent's web UI, which shares this container's network
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.qbittorrent.rule=Host(`telechargement.anneraud.fr`)
+      - traefik.http.routers.qbittorrent.entrypoints=web-secure
+      - traefik.http.routers.qbittorrent.tls=true
+      - traefik.http.routers.qbittorrent.middlewares=internal-allowlist@file
+      - traefik.http.services.qbittorrent.loadbalancer.server.port=30096
 #    volumes:
 #      - ${VPN_PROFILE_PATH}:/gluetun/custom.ovpn:ro
     environment:

@@ -1,5 +1,8 @@
 ---
-# Bruxelles routes, rendered by services/proxy/routes.yml.j2 into dynamic/routes.yml
+# Bruxelles routes to what can't carry Docker labels (TrueNAS Apps, ix-*
+# containers, and LAN devices), rendered by services/proxy/routes.yml.j2 into
+# dynamic/routes.yml. The stacks this repository deploys route themselves with
+# labels in their compose.yml, like on Luxembourg.
 traefik_directory: Traefik
 traefik_dashboard_host: traefik.bruxelles.anneraud.fr
 traefik_federation_publish: "127.0.0.1:8448:8448"
@@ -10,7 +13,8 @@ traefik_federation_publish: "127.0.0.1:8448:8448"
 # client counts as its /64), answering 429 once it is empty. Only logins are
 # limited, so the many requests of app sync (Nextcloud, Jellyfin, Home
 # Assistant, Bitwarden clients) are not; the apps' own throttling still applies.
-# Limits are YAML anchors merged into each rate_limit.
+# Limits are YAML anchors merged into each rate_limit; stacks routed with
+# labels read them too, through their .env (services/authentification).
 # A burst of 10 attempts, then one every 6 s
 traefik_login_rate_limit: &login_rate_limit
   average: 10
@@ -22,6 +26,8 @@ traefik_busy_login_rate_limit: &busy_login_rate_limit
   period: 1m
   burst: 20
 
+# The first route serving a zone requests its wildcard certificate; dera.page's
+# and xila.dev's are requested by labels (services/wakapi, services/secrets_xila)
 traefik_routes:
   - name: paperless
     hosts: [archive.anneraud.fr]
@@ -45,10 +51,6 @@ traefik_routes:
     url: https://ix-portainer-portainer-1:8080
     internal: true
     insecure_backend: true
-  - name: docmost
-    hosts: [notes.anneraud.fr]
-    url: http://docmost-docmost-1:3000
-    internal: false
   - name: nextcloud
     hosts: [nuage.anneraud.fr]
     url: http://ix-nextcloud-nextcloud-1:80
@@ -143,10 +145,6 @@ traefik_routes:
     hosts: [jellyseerr.anneraud.fr]
     url: http://ix-seerr-seerr-1:8080
     internal: true
-  - name: qbittorrent
-    hosts: [telechargement.anneraud.fr]
-    url: http://gluetun:30096
-    internal: true
   - name: bazarr
     hosts: [bazarr.anneraud.fr]
     url: http://ix-bazarr-bazarr-1:8080
@@ -155,46 +153,6 @@ traefik_routes:
     hosts: [automatisation.anneraud.fr]
     url: http://ix-n8n-n8n-1:8080
     internal: true
-  - name: wakapi
-    hosts: [wakapi.anneraud.fr, wakapi.dera.page]
-    url: http://wakapi-wakapi-1:3000
-    internal: false
-  - name: zitadel
-    hosts: [authentification.anneraud.fr]
-    # HTTP/2 end to end: Zitadel's gRPC API (used by its OpenTofu provider) needs it
-    url: h2c://zitadel-zitadel-1:8080
-    internal: false
-    # Former login pages, still served
-    rate_limit:
-      <<: *login_rate_limit
-      prefixes: [/ui/login]
-    paths:
-      - prefix: /ui/v2/login
-        url: http://zitadel-login-1:3000
-        # Every step of the login (name, password, second factor…) posts a
-        # form here, a few per login
-        rate_limit:
-          <<: *busy_login_rate_limit
-          prefixes: [/ui/v2/login]
-  - name: synapse
-    hosts: [matrix.anneraud.fr]
-    url: http://matrix_anneraud-synapse-1:8008
-    internal: false
-    paths:
-      - prefix: /_synapse/admin
-        url: http://matrix_anneraud-synapse-1:8008
-        internal: true
-  # Matrix delegation for @…:anneraud.fr; the rest of anneraud.fr redirects to www.
-  # Synapse's served well-known advertises anneraud.fr:443 (its server_name), so
-  # other servers send federation requests to anneraud.fr/_matrix as well
-  - name: matrix-delegation
-    hosts: [anneraud.fr]
-    prefix: /.well-known/matrix
-    url: http://matrix_anneraud-synapse-1:8008
-    internal: false
-    paths:
-      - prefix: /_matrix
-        url: http://matrix_anneraud-synapse-1:8008
   - name: odoo-minitrainstore
     hosts: [www.minitrainstore.fr]
     url: http://ix-odoo-odoo-1:8069
@@ -234,21 +192,10 @@ traefik_routes:
     url: http://ix-meshcentral-meshcentral-1:443
     # Its agents and console are only reached from the LAN and the VPN
     internal: true
-  - name: mcphub
-    hosts: [mcphub.anneraud.fr]
-    url: http://mcphub-mcphub-1:3000
-    internal: true
-  - name: semaphore
-    hosts: [deploiement.anneraud.fr]
-    url: http://deploiement-semaphore-1:3000
-    internal: true
-  - name: openbao
-    hosts: [vault.xila.dev]
-    url: https://vault_xila-openbao-1:8200
-    internal: true
-    insecure_backend: true
 
 traefik_redirects:
+  # Except /.well-known/matrix and /_matrix, the Matrix delegation (labels of
+  # services/matrix_anneraud), whose longer rules take precedence
   - name: anneraud
     hosts: [anneraud.fr]
     to: https://www.anneraud.fr

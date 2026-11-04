@@ -18,6 +18,14 @@
           POSTGRES_DB: zitadel
           POSTGRES_USER: "{{ database_user }}"
           POSTGRES_PASSWORD: "{{ database_password }}"
+          # Rate limits of the login routers (Traefik labels in compose.yml),
+          # shared with the file routes of inventory/host_vars/bruxelles/traefik.yml
+          TRAEFIK_LOGIN_RATE_LIMIT_AVERAGE: "{{ traefik_login_rate_limit.average }}"
+          TRAEFIK_LOGIN_RATE_LIMIT_PERIOD: "{{ traefik_login_rate_limit.period }}"
+          TRAEFIK_LOGIN_RATE_LIMIT_BURST: "{{ traefik_login_rate_limit.burst }}"
+          TRAEFIK_BUSY_LOGIN_RATE_LIMIT_AVERAGE: "{{ traefik_busy_login_rate_limit.average }}"
+          TRAEFIK_BUSY_LOGIN_RATE_LIMIT_PERIOD: "{{ traefik_busy_login_rate_limit.period }}"
+          TRAEFIK_BUSY_LOGIN_RATE_LIMIT_BURST: "{{ traefik_busy_login_rate_limit.burst }}"
         compose_service_external_networks:
           - name: databases   # shared with Databasus
             internal: true

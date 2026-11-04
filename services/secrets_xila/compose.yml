@@ -24,6 +24,20 @@ services:
       - "8200"
     networks:
       - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.openbao.rule=Host(`vault.xila.dev`)
+      - traefik.http.routers.openbao.entrypoints=web-secure
+      # The only xila.dev name on Bruxelles: this router requests the zone's wildcard
+      - traefik.http.routers.openbao.tls=true
+      - traefik.http.routers.openbao.tls.certresolver=letsencrypt
+      - traefik.http.routers.openbao.tls.domains[0].main=xila.dev
+      - traefik.http.routers.openbao.tls.domains[0].sans=*.xila.dev
+      - traefik.http.routers.openbao.middlewares=internal-allowlist@file
+      # OpenBao serves HTTPS itself, with a self-signed certificate
+      - traefik.http.services.openbao.loadbalancer.server.scheme=https
+      - traefik.http.services.openbao.loadbalancer.server.port=8200
+      - traefik.http.services.openbao.loadbalancer.serverstransport=insecure-backend@file
     cap_drop:
       - ALL
     security_opt:

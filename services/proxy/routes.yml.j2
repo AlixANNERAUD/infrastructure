@@ -28,7 +28,7 @@
 {% endmacro %}
 {% macro host_rule(hosts) %}{{ hosts | map('regex_replace', '^(.*)$', 'Host(`\\1`)') | join(' || ') }}{% endmacro %}
 {# Login requests (POST to rate_limit.prefixes, case-insensitive since some apps like Jellyfin ignore case) of a
-   route or path go through their own router, which only adds the rate limit: its longer rule takes precedence. #}
+   route go through their own router, which only adds the rate limit: its longer rule takes precedence. #}
 {% macro login_router(name, rule, service, internal, cloudflare_only, rate_limit) %}
 {% set prefixes = rate_limit.prefixes | map('regex_escape') | map('regex_replace', '^(.*)$', 'PathRegexp(`(?i)^\\1`)') | join(' || ') %}
     {{ (name ~ '-login') | to_json }}:
@@ -65,15 +65,12 @@
 {% endif %}
 {% endmacro %}
 # Rendered from traefik_routes and traefik_redirects in the host's variables
+{# A route serves all of its hosts; each of its paths redirects a path prefix to another path #}
 http:
   routers:
 {% for route in traefik_routes %}
     {{ route.name | to_json }}:
-    {% if route.prefix is defined %}
-      rule: {{ ('(' ~ host_rule(route.hosts) ~ ') && PathPrefix(`' ~ route.prefix ~ '`)') | to_json }}
-    {% else %}
       rule: {{ host_rule(route.hosts) | to_json }}
-    {% endif %}
       entryPoints:
         - web-secure
       service: {{ route.name | to_json }}
@@ -87,37 +84,24 @@ http:
     {% endif %}
   {% endif %}
 {{ certificates(route.hosts, certificate_requests) }}
-  {% set route_rule = ('(' ~ host_rule(route.hosts) ~ ') && PathPrefix(`' ~ route.prefix ~ '`)') if route.prefix is defined else host_rule(route.hosts) %}
   {% if route.rate_limit is defined %}
-{{ login_router(route.name, route_rule, route.name, route.internal, route.cloudflare_only | default(false), route.rate_limit) }}
+{{ login_router(route.name, host_rule(route.hosts), route.name, route.internal, route.cloudflare_only | default(false), route.rate_limit) }}
   {% endif %}
   {% for path in route.paths | default([]) %}
-    {% if path.rate_limit is defined %}
-{{ login_router(route.name ~ '-' ~ loop.index, '(' ~ host_rule(route.hosts) ~ ') && PathPrefix(`' ~ path.prefix ~ '`)',
-                (route.name ~ '-' ~ loop.index) if path.url is defined else route.name,
-                path.internal | default(route.internal), route.cloudflare_only | default(false), path.rate_limit) }}
-    {% endif %}
     {{ (route.name ~ '-' ~ loop.index) | to_json }}:
       rule: {{ ('(' ~ host_rule(route.hosts) ~ ') && PathPrefix(`' ~ path.prefix ~ '`)') | to_json }}
       entryPoints:
         - web-secure
-    {% if path.redirect is defined %}
       service: noop@internal
-    {% else %}
-      service: {{ (route.name ~ '-' ~ loop.index) | to_json }}
-    {% endif %}
-    {% if path.internal | default(route.internal) or route.cloudflare_only | default(false) or path.redirect is defined %}
       middlewares:
-      {% if path.internal | default(route.internal) %}
+    {# Before the redirect, which replies on its own #}
+    {% if route.internal %}
         - internal-allowlist@file
-      {% endif %}
-      {% if route.cloudflare_only | default(false) %}
-        - cloudflare-only@file
-      {% endif %}
-      {% if path.redirect is defined %}
-        - {{ (route.name ~ '-' ~ loop.index ~ '-redirect') | to_json }}
-      {% endif %}
     {% endif %}
+    {% if route.cloudflare_only | default(false) %}
+        - cloudflare-only@file
+    {% endif %}
+        - {{ (route.name ~ '-' ~ loop.index ~ '-redirect') | to_json }}
       tls: {}
   {% endfor %}
 {% endfor %}
@@ -145,14 +129,6 @@ http:
   {% if route.insecure_backend | default(false) %}
         serversTransport: insecure-backend@file
   {% endif %}
-  {% for path in route.paths | default([]) %}
-    {% if path.url is defined %}
-    {{ (route.name ~ '-' ~ loop.index) | to_json }}:
-      loadBalancer:
-        servers:
-          - url: {{ path.url | to_json }}
-    {% endif %}
-  {% endfor %}
 {% endfor %}
 
   middlewares:
@@ -171,16 +147,11 @@ http:
 {{ rate_limit_middleware(route.name, route.cloudflare_only | default(false), route.rate_limit) }}
   {% endif %}
   {% for path in route.paths | default([]) %}
-    {% if path.rate_limit is defined %}
-{{ rate_limit_middleware(route.name ~ '-' ~ loop.index, route.cloudflare_only | default(false), path.rate_limit) }}
-    {% endif %}
-    {% if path.redirect is defined %}
     {{ (route.name ~ '-' ~ loop.index ~ '-redirect') | to_json }}:
       redirectRegex:
         regex: {{ ('^https?://([^/]+)' ~ (path.prefix | regex_escape) ~ '.*') | to_json }}
         replacement: {{ ('https://${1}' ~ path.redirect) | to_json }}
         permanent: true
-    {% endif %}
   {% endfor %}
 {% endfor %}
 {% for redirect in traefik_redirects %}
