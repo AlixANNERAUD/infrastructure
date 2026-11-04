@@ -43,6 +43,29 @@ services:
     networks:
       - internal
       - proxy
+    # Logins (POST to the login pages, case-insensitive) get their own router,
+    # which only adds a rate limit per client address (an IPv6 client counts as
+    # its /64); the limits come from inventory/host_vars/bruxelles/traefik.yml
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.zitadel.rule=Host(`authentification.anneraud.fr`)
+      - traefik.http.routers.zitadel.entrypoints=web-secure
+      - traefik.http.routers.zitadel.tls=true
+      - traefik.http.routers.zitadel.service=zitadel
+      # HTTP/2 end to end: Zitadel's gRPC API (used by its OpenTofu provider) needs it
+      - traefik.http.services.zitadel.loadbalancer.server.scheme=h2c
+      - traefik.http.services.zitadel.loadbalancer.server.port=8080
+      # Former login pages, still served
+      - traefik.http.routers.zitadel-login.rule=(Host(`authentification.anneraud.fr`)) && Method(`POST`) && (PathRegexp(`(?i)^/ui/login`))
+      - traefik.http.routers.zitadel-login.entrypoints=web-secure
+      - traefik.http.routers.zitadel-login.tls=true
+      - traefik.http.routers.zitadel-login.service=zitadel
+      - traefik.http.routers.zitadel-login.middlewares=zitadel-login-rate-limit
+      - traefik.http.middlewares.zitadel-login-rate-limit.ratelimit.average=${TRAEFIK_LOGIN_RATE_LIMIT_AVERAGE:?}
+      - traefik.http.middlewares.zitadel-login-rate-limit.ratelimit.period=${TRAEFIK_LOGIN_RATE_LIMIT_PERIOD:?}
+      - traefik.http.middlewares.zitadel-login-rate-limit.ratelimit.burst=${TRAEFIK_LOGIN_RATE_LIMIT_BURST:?}
+      - traefik.http.middlewares.zitadel-login-rate-limit.ratelimit.sourcecriterion.ipstrategy.ipv6subnet=64
     depends_on:
       postgres:
         condition: service_healthy
@@ -62,6 +85,26 @@ services:
     networks:
       - internal
       - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.zitadel-1.rule=(Host(`authentification.anneraud.fr`)) && PathPrefix(`/ui/v2/login`)
+      - traefik.http.routers.zitadel-1.entrypoints=web-secure
+      - traefik.http.routers.zitadel-1.tls=true
+      - traefik.http.routers.zitadel-1.service=zitadel-1
+      - traefik.http.services.zitadel-1.loadbalancer.server.port=3000
+      # Every step of the login (name, password, second factor…) posts a form
+      # here, a few per login: the busy login limit
+      # yamllint disable-line rule:line-length
+      - traefik.http.routers.zitadel-1-login.rule=((Host(`authentification.anneraud.fr`)) && PathPrefix(`/ui/v2/login`)) && Method(`POST`) && (PathRegexp(`(?i)^/ui/v2/login`))
+      - traefik.http.routers.zitadel-1-login.entrypoints=web-secure
+      - traefik.http.routers.zitadel-1-login.tls=true
+      - traefik.http.routers.zitadel-1-login.service=zitadel-1
+      - traefik.http.routers.zitadel-1-login.middlewares=zitadel-1-login-rate-limit
+      - traefik.http.middlewares.zitadel-1-login-rate-limit.ratelimit.average=${TRAEFIK_BUSY_LOGIN_RATE_LIMIT_AVERAGE:?}
+      - traefik.http.middlewares.zitadel-1-login-rate-limit.ratelimit.period=${TRAEFIK_BUSY_LOGIN_RATE_LIMIT_PERIOD:?}
+      - traefik.http.middlewares.zitadel-1-login-rate-limit.ratelimit.burst=${TRAEFIK_BUSY_LOGIN_RATE_LIMIT_BURST:?}
+      - traefik.http.middlewares.zitadel-1-login-rate-limit.ratelimit.sourcecriterion.ipstrategy.ipv6subnet=64
     depends_on:
       zitadel:
         condition: service_healthy

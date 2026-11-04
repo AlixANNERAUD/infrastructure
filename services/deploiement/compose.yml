@@ -26,6 +26,13 @@ services:
       - ./git-credentials:/etc/git-credentials:ro
     networks:
       - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.semaphore.rule=Host(`deploiement.anneraud.fr`)
+      - traefik.http.routers.semaphore.entrypoints=web-secure
+      - traefik.http.routers.semaphore.tls=true
+      - traefik.http.routers.semaphore.middlewares=internal-allowlist@file
+      - traefik.http.services.semaphore.loadbalancer.server.port=3000
 
 networks:
   proxy:

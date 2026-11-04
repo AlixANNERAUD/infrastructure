@@ -18,11 +18,43 @@ services:
       - ./Synapse_data:/data
     depends_on:
       - database
-    # In order to expose Synapse, remove one of the following, you might for
-    # instance expose the TLS port directly:
     networks:
       - internal
       - proxy
+    # One Traefik service per router, so that each keeps its own metrics.
+    # Federation goes through port 443 (the web-secure entrypoint): Bruxelles
+    # does not publish the federation port, and Synapse's well-known advertises
+    # anneraud.fr:443
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.synapse.rule=Host(`matrix.anneraud.fr`)
+      - traefik.http.routers.synapse.entrypoints=web-secure
+      - traefik.http.routers.synapse.tls=true
+      - traefik.http.routers.synapse.service=synapse
+      - traefik.http.services.synapse.loadbalancer.server.port=8008
+      # The admin API stays internal while the rest of matrix.anneraud.fr is public
+      - traefik.http.routers.synapse-1.rule=(Host(`matrix.anneraud.fr`)) && PathPrefix(`/_synapse/admin`)
+      - traefik.http.routers.synapse-1.entrypoints=web-secure
+      - traefik.http.routers.synapse-1.tls=true
+      - traefik.http.routers.synapse-1.service=synapse-1
+      - traefik.http.routers.synapse-1.middlewares=internal-allowlist@file
+      - traefik.http.services.synapse-1.loadbalancer.server.port=8008
+      # Matrix delegation for @…:anneraud.fr; the rest of anneraud.fr redirects
+      # to www (redirect-anneraud, inventory/host_vars/bruxelles/traefik.yml).
+      # Synapse's served well-known advertises anneraud.fr:443 (its
+      # server_name), so other servers send federation requests to
+      # anneraud.fr/_matrix as well
+      - traefik.http.routers.matrix-delegation.rule=(Host(`anneraud.fr`)) && PathPrefix(`/.well-known/matrix`)
+      - traefik.http.routers.matrix-delegation.entrypoints=web-secure
+      - traefik.http.routers.matrix-delegation.tls=true
+      - traefik.http.routers.matrix-delegation.service=matrix-delegation
+      - traefik.http.services.matrix-delegation.loadbalancer.server.port=8008
+      - traefik.http.routers.matrix-delegation-1.rule=(Host(`anneraud.fr`)) && PathPrefix(`/_matrix`)
+      - traefik.http.routers.matrix-delegation-1.entrypoints=web-secure
+      - traefik.http.routers.matrix-delegation-1.tls=true
+      - traefik.http.routers.matrix-delegation-1.service=matrix-delegation-1
+      - traefik.http.services.matrix-delegation-1.loadbalancer.server.port=8008
 
   database:
     image: docker.io/postgres:18.6
