@@ -1,6 +1,7 @@
 ---
-# Request every route and redirect of the host's routes file through its
-# Traefik, from this machine (on the LAN or VPN, so internal routes answer):
+# Request every route and redirect of the host's routes file, and every route
+# of the stacks' Docker labels (listed by Traefik's API), through its Traefik,
+# from this machine (on the LAN or VPN, so internal routes answer):
 #   uv run ansible-playbook services/proxy/verify.yml --limit bruxelles
 #
 # A route fails when it can't be reached, answers 5xx (backend down), serves
@@ -32,9 +33,26 @@
       {% set result.checks = result.checks + [{'url': 'https://' ~ host ~ '/', 'statuses': [301]}] %}
       {% endfor %}
       {% endfor %}
-      {{ result.checks | to_json }}
+      {# Login routers only take POST requests, which their main router also serves #}
+      {% for router in traefik_label_routers.json | default([]) if router.provider == 'docker' and 'Method(' not in router.rule %}
+      {% set prefix = router.rule | regex_search('PathPrefix\\(`([^`]+)`\\)', '\\1') %}
+      {% for host in router.rule | regex_findall('Host\\(`([^`]+)`\\)') %}
+      {% set result.checks = result.checks + [{'url': 'https://' ~ host ~ (prefix | first if prefix else '/'), 'statuses': routed}] %}
+      {% endfor %}
+      {% endfor %}
+      {{ result.checks | unique | list | to_json }}
     traefik_failed_checks: "{{ traefik_answers.results | selectattr('failed') | list }}"
   tasks:
+    - name: List the routers of the Docker labels
+      ansible.builtin.uri:
+        url: "https://{{ traefik_dashboard_host }}/api/http/routers?per_page=1000"
+        validate_certs: true
+        return_content: true
+        timeout: 15
+      delegate_to: localhost
+      register: traefik_label_routers
+      when: traefik_dashboard_host is defined
+
     - name: Request each route
       ansible.builtin.uri:
         url: "{{ item.url }}"
