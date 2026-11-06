@@ -1,0 +1,101 @@
+---
+# Points the MCP clients of a workstation (Claude Code, Codex, OpenCode,
+# Antigravity) at MCPHub, keeping every other setting of their configuration.
+# In: mcp_clients_url, mcp_clients_home. No key: the clients log in through
+# MCPHub's OAuth.
+
+# Claude Code owns ~/.claude.json: it is changed through its own CLI only
+- name: Look for Claude Code
+  ansible.builtin.command:
+    argv: [which, claude]
+  register: mcp_clients_claude
+  changed_when: false
+  failed_when: false
+
+- name: Read Claude Code's configuration
+  ansible.builtin.slurp:
+    src: "{{ mcp_clients_home }}/.claude.json"
+  register: mcp_clients_claude_configuration
+  failed_when: false
+  when: mcp_clients_claude.rc == 0
+
+- name: Point Claude Code at MCPHub
+  when:
+    - mcp_clients_claude.rc == 0
+    - mcp_clients_claude_server.type | default('') != 'http' or mcp_clients_claude_server.url | default('') != mcp_clients_url
+  vars:
+    mcp_clients_claude_server: >-
+      {{ ((mcp_clients_claude_configuration.content | default('e30=') | b64decode | from_json).mcpServers
+          | default({})).mcphub | default({}) }}
+  # The CLI writes the configuration of the home folder it is given
+  environment:
+    HOME: "{{ mcp_clients_home }}"
+  block:
+    - name: Remove Claude Code's previous MCPHub entry
+      ansible.builtin.command:
+        argv: [claude, mcp, remove, --scope, user, mcphub]
+      changed_when: false
+      failed_when: false
+
+    - name: Add MCPHub to Claude Code
+      ansible.builtin.command:
+        argv: [claude, mcp, add-json, --scope, user, mcphub, "{{ {'type': 'http', 'url': mcp_clients_url} | to_json }}"]
+      changed_when: true
+
+# Codex: a table of its TOML configuration, between markers
+- name: Create Codex's folder
+  ansible.builtin.file:
+    path: "{{ mcp_clients_home }}/.codex"
+    state: directory
+    mode: "0700"
+
+- name: Point Codex at MCPHub
+  ansible.builtin.blockinfile:
+    path: "{{ mcp_clients_home }}/.codex/config.toml"
+    create: true
+    mode: "0600"
+    marker: "# {mark} MCPHub, managed by Infrastructure's hosts/workstations/mcp.yml"
+    block: |
+      [mcp_servers.mcphub]
+      url = "{{ mcp_clients_url }}"
+
+# OpenCode and Antigravity: a key merged into their JSON configuration (a file
+# with comments, which OpenCode allows, cannot be read: remove them first)
+- name: List the JSON configurations
+  ansible.builtin.set_fact:
+    mcp_clients_json:
+      - path: .config/opencode/opencode.json
+        entry: {mcp: {mcphub: {type: remote, url: "{{ mcp_clients_url }}", enabled: true}}}
+      # Antigravity names the remote address serverUrl, not url
+      - path: .gemini/config/mcp_config.json
+        entry: {mcpServers: {mcphub: {serverUrl: "{{ mcp_clients_url }}"}}}
+
+- name: Create the folders of the JSON configurations
+  ansible.builtin.file:
+    path: "{{ mcp_clients_home }}/{{ item.path | dirname }}"
+    state: directory
+    mode: "0700"
+  loop: "{{ mcp_clients_json }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Read the JSON configurations
+  ansible.builtin.slurp:
+    src: "{{ mcp_clients_home }}/{{ item.path }}"
+  loop: "{{ mcp_clients_json }}"
+  loop_control:
+    label: "{{ item.path }}"
+  register: mcp_clients_json_current
+  failed_when: false
+
+- name: Point OpenCode and Antigravity at MCPHub
+  ansible.builtin.copy:
+    dest: "{{ mcp_clients_home }}/{{ item.item.path }}"
+    content: >-
+      {{ (item.content | default('e30=') | b64decode | from_json)
+         | combine(item.item.entry, recursive=true)
+         | to_nice_json(indent=2, sort_keys=false) }}
+    mode: "0600"
+  loop: "{{ mcp_clients_json_current.results }}"
+  loop_control:
+    label: "{{ item.item.path }}"

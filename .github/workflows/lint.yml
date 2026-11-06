@@ -45,7 +45,7 @@ jobs:
       # Playbook tests that need no host: they run on the runner itself
       - name: Test playbook logic
         run: |
-          for test in services/*/tests/*.yml; do
+          for test in services/*/tests/*.yml hosts/*/tests/*.yml; do
             [ -e "$test" ] || continue
             uv run ansible-playbook "$test"
           done

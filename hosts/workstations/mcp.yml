@@ -1,0 +1,18 @@
+---
+# Points this workstation's MCP clients (Claude Code, Codex, OpenCode,
+# Antigravity) at MCPHub, whatever model or provider they run:
+#   mise deploy hosts/workstations/mcp.yml
+# The clients then log in through MCPHub's OAuth (its OAuth server must be
+# enabled in MCPHub's settings); restart them afterwards.
+- name: Point the MCP clients at MCPHub
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    # $smart: a few meta-tools that find the right tool, instead of every
+    # server's tools (Paperless alone has hundreds) in the model's context
+    mcp_clients_url: https://mcphub.anneraud.fr/mcp/$smart
+    mcp_clients_home: "{{ lookup('ansible.builtin.env', 'HOME') }}"
+  tasks:
+    - name: Configure the MCP clients
+      ansible.builtin.include_tasks: tasks/mcp_clients.yml

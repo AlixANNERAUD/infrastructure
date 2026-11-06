@@ -194,6 +194,10 @@ Prerequisites:
 - Deploy with `mise deploy services/mcphub/deploy.yml` (OpenTofu must be on `PATH`). Without the Zitadel credentials, only the local admin login is available.
 - A first Zitadel login creates a regular MCPHub user named after the email (`alix@anneraud.fr`). Make it an administrator once from the local `admin` account (Users). Each user can then connect their own account to servers that use OAuth ("Connect" on the server), and servers are shared through their visibility (`private`, `group` or `public`).
 
+### MCP clients
+
+`mise deploy hosts/workstations/mcp.yml` points the workstation's MCP clients at MCPHub (`https://mcphub.anneraud.fr/mcp/$smart`), so every model reaches the same servers whatever its provider: Claude Code (through its CLI, user scope), Codex (`~/.codex/config.toml`), OpenCode (`~/.config/opencode/opencode.json`) and Antigravity (`~/.gemini/config/mcp_config.json`). Other settings of those files are kept; an OpenCode file with comments must lose them first. No key is written: the clients log in through MCPHub's OAuth, so its OAuth server must be enabled in MCPHub's settings. Restart the clients afterwards. The workstation must be on the LAN or Netbird (internal allowlist).
+
 ## TrueNAS apps
 
 Apps installed in TrueNAS's interface on Bruxelles keep their configuration there, login through Zitadel included: TrueNAS can only replace an app's settings section as a whole (passwords and keys included), so this repository does not write it. A service's playbook provisions its Zitadel application and writes the environment variables to paste instead.

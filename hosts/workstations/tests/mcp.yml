@@ -1,0 +1,103 @@
+---
+# Runs the MCP clients' configuration in a throwaway home folder, holding
+# configuration files that already have other settings: no workstation needed
+- name: Test the MCP clients' configuration
+  hosts: localhost
+  gather_facts: false
+  vars:
+    mcp_clients_url: https://mcphub.example/mcp/$smart
+  tasks:
+    - name: Create the throwaway home folder
+      ansible.builtin.tempfile:
+        state: directory
+      register: mcp_test_home
+
+    - name: Use it as the home folder
+      ansible.builtin.set_fact:
+        mcp_clients_home: "{{ mcp_test_home.path }}"
+
+    - name: Create the folders of existing configurations
+      ansible.builtin.file:
+        path: "{{ mcp_clients_home }}/{{ item }}"
+        state: directory
+        mode: "0700"
+      loop: [.codex, .config/opencode, .gemini/config]
+
+    - name: Write existing configurations with other settings
+      ansible.builtin.copy:
+        dest: "{{ mcp_clients_home }}/{{ item.path }}"
+        content: "{{ item.content }}"
+        mode: "0600"
+      loop:
+        - path: .codex/config.toml
+          content: |
+            model = "gpt-test"
+
+            [mcp_servers.other]
+            command = "other-server"
+        - path: .config/opencode/opencode.json
+          content: '{"$schema": "https://opencode.ai/config.json", "theme": "dark", "mcp": {"other": {"type": "local", "command": ["other-server"]}}}'
+        - path: .gemini/config/mcp_config.json
+          content: '{"mcpServers": {"other": {"command": "other-server"}}}'
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: Configure the MCP clients
+      ansible.builtin.include_tasks: ../tasks/mcp_clients.yml
+
+    - name: Read the configurations
+      ansible.builtin.slurp:
+        src: "{{ mcp_clients_home }}/{{ item }}"
+      loop: [.codex/config.toml, .config/opencode/opencode.json, .gemini/config/mcp_config.json]
+      register: mcp_test_first
+
+    - name: Check that MCPHub was added and nothing else changed
+      ansible.builtin.assert:
+        that:
+          # Codex: its other settings, then the MCPHub table
+          - "'model = \"gpt-test\"' in codex"
+          - "'[mcp_servers.other]' in codex"
+          - "'[mcp_servers.mcphub]' in codex"
+          - "'url = \"https://mcphub.example/mcp/$smart\"' in codex"
+          # OpenCode: a remote server, next to the existing settings
+          - opencode['$schema'] == 'https://opencode.ai/config.json'
+          - opencode.theme == 'dark'
+          - opencode.mcp.other.command == ['other-server']
+          - "opencode.mcp.mcphub == {'type': 'remote', 'url': 'https://mcphub.example/mcp/$smart', 'enabled': true}"
+          # Antigravity: serverUrl, not url
+          - agy.mcpServers.other.command == 'other-server'
+          - "agy.mcpServers.mcphub == {'serverUrl': 'https://mcphub.example/mcp/$smart'}"
+      vars:
+        codex: "{{ mcp_test_first.results[0].content | b64decode }}"
+        opencode: "{{ mcp_test_first.results[1].content | b64decode | from_json }}"
+        agy: "{{ mcp_test_first.results[2].content | b64decode | from_json }}"
+
+    # Only where Claude Code is installed (not on CI runners)
+    - name: Read Claude Code's configuration in the throwaway home folder
+      ansible.builtin.slurp:
+        src: "{{ mcp_clients_home }}/.claude.json"
+      register: mcp_test_claude
+      when: mcp_clients_claude.rc == 0
+
+    - name: Check that Claude Code got MCPHub
+      ansible.builtin.assert:
+        that: "(mcp_test_claude.content | b64decode | from_json).mcpServers.mcphub == {'type': 'http', 'url': 'https://mcphub.example/mcp/$smart'}"
+      when: mcp_clients_claude.rc == 0
+
+    - name: Configure the MCP clients again
+      ansible.builtin.include_tasks: ../tasks/mcp_clients.yml
+
+    - name: Read the configurations again
+      ansible.builtin.slurp:
+        src: "{{ mcp_clients_home }}/{{ item }}"
+      loop: [.codex/config.toml, .config/opencode/opencode.json, .gemini/config/mcp_config.json]
+      register: mcp_test_second
+
+    - name: Check that the second run changed nothing
+      ansible.builtin.assert:
+        that: mcp_test_second.results | map(attribute='content') | list == mcp_test_first.results | map(attribute='content') | list
+
+    - name: Remove the throwaway home folder
+      ansible.builtin.file:
+        path: "{{ mcp_test_home.path }}"
+        state: absent

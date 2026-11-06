@@ -5,6 +5,7 @@ Ansible playbooks and Docker Compose files that deploy Alix's self-hosted servic
 ## Layout
 
 - `services/<service>/` — one folder per service: `deploy.yml` (playbook), `compose.yml`, and any `*.j2` templates or config it copies.
+- `hosts/workstations/mcp.yml` — points the owner's MCP clients (Claude Code, Codex, OpenCode, Antigravity) at MCPHub, run on the workstation itself.
 - `hosts/<host>/` — host-level playbooks (packages, networking, `hosts/bruxelles/nextcloud_after_update.yml`); `hosts/bootstrap.yml` and `hosts/replication.yml` apply to several hosts.
 - `dns/<zone>.yml` — one playbook per Cloudflare DNS zone (`anneraud.yml`, `xila.yml`, `minitrainstore.yml`, `guenola_sahut.yml`), applied on their own, not by `site.yml`.
 - `services/authentification/applications.yml` + `opentofu/zitadel/` — the whole Anneraud Zitadel organization (policies, users from the vault, OIDC applications); see the readme's "Zitadel" section. A service that needs Zitadel login gets an entry in `opentofu/zitadel/applications.auto.tfvars` and uses `roles/zitadel` from its `deploy.yml` (see `services/vigie/deploy.yml`).
