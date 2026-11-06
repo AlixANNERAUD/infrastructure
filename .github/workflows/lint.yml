@@ -86,11 +86,19 @@ jobs:
           env: false
 
       - name: Check formatting
-        run: tofu fmt -check -recursive opentofu
+        run: tofu fmt -check -recursive opentofu services
 
-      - name: Validate the Zitadel configuration
-        working-directory: opentofu/zitadel
-        run: tofu init -backend=false && tofu validate
+      # Every configuration: the shared ones in opentofu/, and those of
+      # services that hold one (TrueNAS apps), tested with mocked providers
+      - name: Validate and test the configurations
+        run: |
+          for directory in $(dirname $(ls opentofu/*/versions.tf services/*/versions.tf)); do
+            echo "::group::$directory"
+            tofu -chdir="$directory" init -backend=false -input=false
+            tofu -chdir="$directory" validate
+            if [ -d "$directory/tests" ]; then tofu -chdir="$directory" test; fi
+            echo "::endgroup::"
+          done
 
   molecule-zitadel:
     name: molecule (zitadel)
