@@ -196,7 +196,7 @@ Prerequisites:
 
 ### MCP clients
 
-`mise deploy hosts/workstations/mcp.yml` points the workstation's MCP clients at MCPHub (`https://mcphub.anneraud.fr/mcp/$smart`), so every model reaches the same servers whatever its provider: Claude Code (through its CLI, user scope), Codex (`~/.codex/config.toml`), OpenCode (`~/.config/opencode/opencode.json`) and Antigravity (`~/.gemini/config/mcp_config.json`). Other settings of those files are kept; an OpenCode file with comments must lose them first. No key is written: the clients log in through MCPHub's OAuth, so its OAuth server must be enabled in MCPHub's settings. Restart the clients afterwards. The workstation must be on the LAN or Netbird (internal allowlist).
+`mise deploy hosts/workstations/mcp.yml` points the workstation's MCP clients at MCPHub (`https://mcphub.anneraud.fr/mcp`, not `/mcp/$smart`, whose tool search needs pgvector and an embedding service MCPHub does not have), so every model reaches the same servers whatever its provider: Claude Code (through its CLI, user scope), Codex (`~/.codex/config.toml`), OpenCode (`~/.config/opencode/opencode.json`) and Antigravity (`~/.gemini/config/mcp_config.json`). Other settings of those files are kept; an OpenCode file with comments must lose them first. No key is written: the clients log in through MCPHub's OAuth, so its OAuth server must be enabled in MCPHub's settings. Restart the clients afterwards. Every enabled tool reaches the model's context: keep only the tools needed enabled on each MCPHub server (Paperless's `archive` server: its read tools only). The workstation must be on the LAN or Netbird (internal allowlist).
 
 ## TrueNAS apps
 

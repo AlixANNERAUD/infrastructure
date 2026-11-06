@@ -5,7 +5,7 @@
   hosts: localhost
   gather_facts: false
   vars:
-    mcp_clients_url: https://mcphub.example/mcp/$smart
+    mcp_clients_url: https://mcphub.example/mcp
   tasks:
     - name: Create the throwaway home folder
       ansible.builtin.tempfile:
@@ -59,14 +59,14 @@
           - "'model = \"gpt-test\"' in codex"
           - "'[mcp_servers.other]' in codex"
           - "'[mcp_servers.mcphub]' in codex"
-          - "'url = \"https://mcphub.example/mcp/$smart\"' in codex"
+          - "'url = \"https://mcphub.example/mcp\"' in codex"
           # OpenCode: a remote server, next to the existing settings
           - opencode['$schema'] == 'https://opencode.ai/config.json'
           - opencode.theme == 'dark'
           - opencode.mcp.other.command == ['other-server']
-          - "opencode.mcp.mcphub == {'type': 'remote', 'url': 'https://mcphub.example/mcp/$smart', 'enabled': true}"
+          - "opencode.mcp.mcphub == {'type': 'remote', 'url': 'https://mcphub.example/mcp', 'enabled': true}"
           # Antigravity: serverUrl, not url
-          - "agy.mcpServers.mcphub == {'serverUrl': 'https://mcphub.example/mcp/$smart'}"
+          - "agy.mcpServers.mcphub == {'serverUrl': 'https://mcphub.example/mcp'}"
       vars:
         codex: "{{ mcp_test_first.results[0].content | b64decode }}"
         opencode: "{{ mcp_test_first.results[1].content | b64decode | from_json }}"
@@ -81,7 +81,7 @@
 
     - name: Check that Claude Code got MCPHub
       ansible.builtin.assert:
-        that: "(mcp_test_claude.content | b64decode | from_json).mcpServers.mcphub == {'type': 'http', 'url': 'https://mcphub.example/mcp/$smart'}"
+        that: "(mcp_test_claude.content | b64decode | from_json).mcpServers.mcphub == {'type': 'http', 'url': 'https://mcphub.example/mcp'}"
       when: mcp_clients_claude.rc == 0
 
     - name: Configure the MCP clients again
