@@ -2,6 +2,7 @@
 - name: Reset the provisioning facts
   ansible.builtin.set_fact:
     zitadel_provisioned: false
+    zitadel_organization_id: ""
     zitadel_client_ids: {}
     zitadel_client_secrets: {}
     zitadel_configured_in: {}
@@ -98,6 +99,7 @@
     - name: Set the provisioning facts
       ansible.builtin.set_fact:
         zitadel_provisioned: true
+        zitadel_organization_id: "{{ zitadel_apply.outputs.organization_id.value }}"
         zitadel_client_ids: "{{ zitadel_apply.outputs.client_ids.value }}"
         zitadel_client_secrets: "{{ zitadel_apply.outputs.client_secrets.value }}"
         zitadel_configured_in: "{{ zitadel_apply.outputs.configured_in.value }}"

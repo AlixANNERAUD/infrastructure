@@ -1,21 +1,5 @@
-# Projects, roles and applications all belong to this organization, the one
-# the service account is ORG_OWNER of. Named rather than taken as the default
-# one, so changing the instance's default never moves the applications
-data "zitadel_organizations" "organization" {
-  name        = var.organization
-  name_method = "TEXT_QUERY_METHOD_EQUALS"
-
-  lifecycle {
-    postcondition {
-      condition     = length(self.ids) == 1
-      error_message = "The service account sees no organization named ${var.organization}: it must be ORG_OWNER of it."
-    }
-  }
-}
-
+# Projects, roles and applications belong to the organization (organization.tf)
 locals {
-  organization_id = data.zitadel_organizations.organization.ids[0]
-
   projects = toset([for application in values(var.applications) : application.project])
 
   # Roles are declared per application but belong to the project
@@ -34,13 +18,13 @@ resource "zitadel_project" "project" {
   for_each = local.projects
 
   name   = each.value
-  org_id = local.organization_id
+  org_id = zitadel_org.organization.id
 }
 
 resource "zitadel_project_role" "role" {
   for_each = local.roles
 
-  org_id       = local.organization_id
+  org_id       = zitadel_org.organization.id
   project_id   = zitadel_project.project[each.value.project].id
   role_key     = each.value.key
   display_name = each.value.display_name
@@ -49,7 +33,7 @@ resource "zitadel_project_role" "role" {
 resource "zitadel_application_oidc" "application" {
   for_each = var.applications
 
-  org_id     = local.organization_id
+  org_id     = zitadel_org.organization.id
   project_id = zitadel_project.project[each.value.project].id
   name       = each.key
 

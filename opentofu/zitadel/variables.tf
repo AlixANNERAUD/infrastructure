@@ -16,14 +16,20 @@ variable "zitadel_insecure" {
   default     = false
 }
 
-variable "organization" {
-  description = "Name of the organization that holds the projects; the service account must be its ORG_OWNER."
+variable "organization_name" {
+  description = "Name of the organization OpenTofu creates and owns."
   type        = string
   default     = "Anneraud"
 }
 
+variable "organization_domain" {
+  description = "Primary domain of the organization: logins read <user>@<domain>."
+  type        = string
+  default     = "anneraud.fr"
+}
+
 variable "zitadel_token" {
-  description = "Personal access token of a Zitadel service account with the ORG_OWNER role."
+  description = "Personal access token of the IAM_OWNER service account in the ZITADEL organization."
   type        = string
   sensitive   = true
 }

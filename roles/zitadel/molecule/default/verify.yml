@@ -25,6 +25,76 @@
           - "zitadel_configured_in == {'nextcloud': 'Nextcloud → Administration → OpenID Connect'}"
         quiet: true
 
+    - name: Read the default organization
+      ansible.builtin.uri:
+        url: "{{ zitadel_test_url }}/admin/v1/orgs/default"
+        headers:
+          Authorization: "Bearer {{ zitadel_test_token }}"
+      register: zitadel_test_default_organization
+      no_log: true
+
+    - name: Check that the created organization is the default one
+      ansible.builtin.assert:
+        that:
+          - zitadel_organization_id | length > 0
+          - zitadel_test_default_organization.json.org.id == zitadel_organization_id
+          - zitadel_test_default_organization.json.org.name == 'Molecule'
+
+    - name: List the organization's domains
+      ansible.builtin.uri:
+        url: "{{ zitadel_test_url }}/management/v1/orgs/me/domains/_search"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ zitadel_test_token }}"
+          x-zitadel-orgid: "{{ zitadel_organization_id }}"
+        body_format: json
+        body: {}
+      register: zitadel_test_domains
+      no_log: true
+
+    - name: Check that molecule.example is the primary, verified domain
+      ansible.builtin.assert:
+        that:
+          - domain.isPrimary | default(false)
+          - domain.isVerified | default(false)
+      vars:
+        domain: "{{ zitadel_test_domains.json.result | selectattr('domainName', 'equalto', 'molecule.example') | first | default({}) }}"
+
+    - name: Read the organization's policies
+      ansible.builtin.uri:
+        url: "{{ zitadel_test_url }}/management/v1/policies/{{ item }}"
+        headers:
+          Authorization: "Bearer {{ zitadel_test_token }}"
+          x-zitadel-orgid: "{{ zitadel_organization_id }}"
+      loop: [login, password/complexity, lockout, domain, label]
+      register: zitadel_test_policies
+      no_log: true
+
+    - name: Check the organization's own policies
+      ansible.builtin.assert:
+        that:
+          - login.isDefault | default(false) == false
+          - login.allowRegister | default(false) == false
+          - login.allowExternalIdp | default(false) == false
+          - login.forceMfa | default(false) == false
+          - login.passwordlessType == 'PASSWORDLESS_TYPE_ALLOWED'
+          - login.ignoreUnknownUsernames | default(false)
+          - complexity.isDefault | default(false) == false
+          - complexity.minLength | int == 12
+          - not (complexity.hasUppercase | default(false))
+          - lockout.maxPasswordAttempts | int == 10
+          - domain.userLoginMustBeDomain | default(false)
+          - not (domain.validateOrgDomains | default(false))
+          - label.disableWatermark | default(false)
+          - label.hideLoginNameSuffix | default(false)
+      vars:
+        policies: "{{ zitadel_test_policies.results | map(attribute='json') | map(attribute='policy') | list }}"
+        login: "{{ policies[0] }}"
+        complexity: "{{ policies[1] }}"
+        lockout: "{{ policies[2] }}"
+        domain: "{{ policies[3] }}"
+        label: "{{ policies[4] }}"
+
     - name: Remember the client ids
       ansible.builtin.set_fact:
         zitadel_test_client_ids: "{{ zitadel_client_ids }}"
@@ -35,6 +105,7 @@
         method: POST
         headers:
           Authorization: "Bearer {{ zitadel_test_token }}"
+          x-zitadel-orgid: "{{ zitadel_organization_id }}"
         body_format: json
         body:
           queries:
@@ -54,6 +125,7 @@
         method: POST
         headers:
           Authorization: "Bearer {{ zitadel_test_token }}"
+          x-zitadel-orgid: "{{ zitadel_organization_id }}"
         body_format: json
         body: {}
       vars:
@@ -71,6 +143,7 @@
         method: POST
         headers:
           Authorization: "Bearer {{ zitadel_test_token }}"
+          x-zitadel-orgid: "{{ zitadel_organization_id }}"
         body_format: json
         body: {}
       register: zitadel_test_applications_found
@@ -126,6 +199,7 @@
         method: POST
         headers:
           Authorization: "Bearer {{ zitadel_test_token }}"
+          x-zitadel-orgid: "{{ zitadel_organization_id }}"
         body_format: json
         body: {}
       register: zitadel_test_changed

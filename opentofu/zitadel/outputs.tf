@@ -1,3 +1,8 @@
+output "organization_id" {
+  description = "Id of the organization."
+  value       = zitadel_org.organization.id
+}
+
 output "client_ids" {
   description = "Client id of each application."
   # Client ids are public; the provider marks them sensitive
