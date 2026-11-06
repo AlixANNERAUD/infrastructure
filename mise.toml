@@ -8,6 +8,7 @@ ANSIBLE_VAULT_PASSWORD_FILE = "{{ config_root }}/vault-password-client.py"
 
 # Shortcuts: `mise run <task> [arguments]`, or `mise <task>` when no mise command has that name.
 # Tasks run with the tools above on PATH, so OpenTofu is there for the Zitadel role.
+EDITOR = "zed --wait"
 
 [tasks.setup]
 description = "Install the pinned tools and Ansible collections"
