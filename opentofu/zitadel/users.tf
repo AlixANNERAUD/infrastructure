@@ -53,6 +53,14 @@ resource "zitadel_human_user" "user" {
   lifecycle {
     ignore_changes = [initial_password, is_email_verified]
   }
+
+  # The temporary password is checked against the organization's policy, not
+  # the instance default (which requires a symbol): create it first
+  depends_on = [
+    zitadel_password_complexity_policy.organization,
+    zitadel_login_policy.organization,
+    zitadel_domain_policy.organization,
+  ]
 }
 
 resource "zitadel_user_grant" "grant" {
