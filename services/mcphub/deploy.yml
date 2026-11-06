@@ -24,9 +24,16 @@
       vars:
         compose_service_name: mcphub
         compose_service_directory: MCPHub
+        # TrueNAS datasets: their permissions are enforced on every deploy
         compose_service_directories:
-          - Data   # TrueNAS dataset, like Postgres
-          - Postgres
+          - path: Data   # MCPHub runs as root
+            owner: root
+            group: root
+            mode: "0750"
+          - path: Postgres   # Postgres (Alpine) runs as 70 and refuses a folder others can read
+            owner: "70"
+            group: "70"
+            mode: "0700"
         compose_service_external_networks:
           - name: databases   # shared with Databasus
             internal: true

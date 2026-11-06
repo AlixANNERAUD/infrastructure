@@ -10,7 +10,9 @@ compose_service_group: "{{ compose_service_user }}"
 # Variables written to .env, in order
 compose_service_environment: {}
 
-# Folders created inside the service folder, with permissions set only on creation
+# Folders created inside the service folder: a name gets permissions only on
+# creation; {path: Postgres, owner: 70, group: 70, mode: "0700"} gets them on
+# every deploy, existing folders and TrueNAS datasets included
 compose_service_directories: []
 
 # Extra files copied from the playbook folder: [{source: config.yml, destination: config/config.yml}]

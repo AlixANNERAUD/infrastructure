@@ -16,10 +16,13 @@
 
 - name: Check whether the inner folders exist
   ansible.builtin.stat:
-    path: "{{ compose_service_path }}/{{ item }}"
+    path: "{{ compose_service_path }}/{{ item.path | default(item) }}"
   loop: "{{ compose_service_directories }}"
+  loop_control:
+    label: "{{ item.path | default(item) }}"
   register: compose_service_inner_folders
 
+# A plain name only gets permissions on creation, like the service folder
 - name: Create the inner folders
   ansible.builtin.file:
     path: "{{ compose_service_path }}/{{ item.item }}"
@@ -30,7 +33,20 @@
   loop: "{{ compose_service_inner_folders.results }}"
   loop_control:
     label: "{{ item.item }}"
-  when: not item.stat.exists
+  when: item.item is string and not item.stat.exists
+
+# An entry with permissions gets them on every deploy, existing folders and
+# TrueNAS datasets included (a database refusing loose permissions)
+- name: Enforce the permissions of the inner folders that set them
+  ansible.builtin.file:
+    path: "{{ compose_service_path }}/{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(omit) }}"
+    group: "{{ item.group | default(omit) }}"
+    mode: "{{ item.mode | default(omit) }}"
+  loop: "{{ compose_service_directories | select('mapping') | list }}"
+  loop_control:
+    label: "{{ item.path }}"
 
 - name: Copy the Compose file
   ansible.builtin.copy:

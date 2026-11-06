@@ -5,6 +5,14 @@
   vars:
     compose_service_test_greeting: hello from molecule
   pre_tasks:
+    # Existing folders (TrueNAS datasets) with permissions the role must correct
+    # only when the entry asks for them; mkdir leaves them alone on later runs
+    - name: Create existing folders with loose permissions
+      ansible.builtin.command:
+        argv: [mkdir, -p, -m, "0777", "{{ compose_service_test_path }}/{{ item }}"]
+        creates: "{{ compose_service_test_path }}/{{ item }}"
+      loop: [Database, Kept]
+
     # An existing network that differs from its declaration below: the role must warn and leave it alone
     - name: Create a network that the role will find different
       community.docker.docker_network:
@@ -20,6 +28,12 @@
           - data.sqlite
         compose_service_directories:
           - data
+          - Kept
+          # Enforced on every deploy, even on an existing folder
+          - path: Database
+            owner: "{{ lookup('ansible.builtin.pipe', 'id -u') }}"
+            group: "{{ lookup('ansible.builtin.pipe', 'id -g') }}"
+            mode: "0700"
         compose_service_templates:
           - source: settings.json.j2
             destination: settings/settings.json

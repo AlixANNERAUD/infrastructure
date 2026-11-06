@@ -52,6 +52,18 @@
           - compose_service_test_data.stat.isdir
           - compose_service_test_data.stat.mode == '0750'
 
+    - name: Read the existing folders
+      ansible.builtin.stat:
+        path: "{{ compose_service_test_path }}/{{ item }}"
+      loop: [Database, Kept]
+      register: compose_service_test_existing
+
+    - name: Check that only the entry with permissions was corrected
+      ansible.builtin.assert:
+        that:
+          - compose_service_test_existing.results[0].stat.mode == '0700'
+          - compose_service_test_existing.results[1].stat.mode == '0777'
+
     - name: Read the rendered template
       ansible.builtin.slurp:
         src: "{{ compose_service_test_path }}/settings/settings.json"

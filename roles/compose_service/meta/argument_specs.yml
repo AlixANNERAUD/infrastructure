@@ -24,8 +24,12 @@ argument_specs:
         description: Variables written to .env.
       compose_service_directories:
         type: list
-        elements: str
-        description: Folders to create inside the service folder.
+        elements: raw
+        description: >-
+          Folders inside the service folder. A name is created with the service's
+          owner and 0750 when missing, and left alone otherwise (TrueNAS ACLs). An
+          entry {path, owner, group, mode} gets those permissions on every deploy,
+          even when the folder or dataset already exists.
       compose_service_templates:
         type: list
         elements: dict
