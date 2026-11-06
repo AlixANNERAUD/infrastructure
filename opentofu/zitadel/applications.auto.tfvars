@@ -25,4 +25,11 @@ applications = {
     authentication = "client_secret_post"
     redirect_uris  = ["https://archive.anneraud.fr/accounts/oidc/zitadel/login/callback/"]
   }
+
+  # Semaphore (deploiement.anneraud.fr): a confidential client
+  deploiement = {
+    project        = "Deploiement"
+    authentication = "client_secret"
+    redirect_uris  = ["https://deploiement.anneraud.fr/api/auth/oidc/zitadel/redirect"]
+  }
 }

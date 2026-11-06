@@ -6,6 +6,25 @@
     - ../../vault/ansible/vault.yml
     - ../../vault/deploiement/vault.yml
     - ../../vault/cloudflare/vault.yml
+  pre_tasks:
+    # Without the Zitadel credentials (or tofu, in Semaphore's own runs) the
+    # client of the previous deploy is kept, or Semaphore has its local login only
+    - name: Get Semaphore's Zitadel login
+      ansible.builtin.include_role:
+        name: zitadel
+        tasks_from: login
+      vars:
+        zitadel_login_application: deploiement
+        zitadel_login_environment_file: "{{ services_root }}/Deploiement/.env"
+        zitadel_login_client_id_variable: OIDC_CLIENT_ID
+        zitadel_login_client_secret_variable: OIDC_CLIENT_SECRET
+
+    - name: Build Semaphore's OIDC providers
+      ansible.builtin.include_tasks: tasks/oidc_providers.yml
+      vars:
+        deploiement_oidc_client_id: "{{ zitadel_login_client_id }}"
+        deploiement_oidc_client_secret: "{{ zitadel_login_client_secret }}"
+
   roles:
     - role: compose_service
       vars:
@@ -28,6 +47,10 @@
           SEMAPHORE_ADMIN_PASSWORD: "{{ deploiement_admin_password }}"
           SEMAPHORE_ACCESS_KEY_ENCRYPTION: "{{ deploiement_access_key_encryption }}"
           SEMAPHORE_WEB_ROOT: https://deploiement.anneraud.fr
+          # Kept separately so a failed provisioning can reuse them (zitadel role, login)
+          OIDC_CLIENT_ID: "{{ zitadel_login_client_id }}"
+          OIDC_CLIENT_SECRET: "{{ zitadel_login_client_secret }}"
+          SEMAPHORE_OIDC_PROVIDERS: "{{ deploiement_oidc_providers }}"
         compose_service_dns_records:
           - record: deploiement.anneraud.fr
             visibility: private

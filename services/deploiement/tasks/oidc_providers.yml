@@ -1,0 +1,25 @@
+---
+# Semaphore's SEMAPHORE_OIDC_PROVIDERS: Zitadel when there is a client, nothing
+# otherwise (no button that cannot work; the local login stays either way).
+# In: deploiement_oidc_client_id, deploiement_oidc_client_secret.
+# Out: deploiement_oidc_providers, single-quoted so Compose's .env keeps the JSON.
+- name: Build Semaphore's OIDC providers
+  ansible.builtin.set_fact:
+    deploiement_oidc_providers: >-
+      '{{ (deploiement_oidc_provider_list if deploiement_oidc_client_id | length > 0 else {}) | to_json }}'
+  vars:
+    deploiement_oidc_provider_list:
+      zitadel:
+        display_name: Zitadel
+        provider_url: https://authentification.anneraud.fr
+        client_id: "{{ deploiement_oidc_client_id }}"
+        client_secret: "{{ deploiement_oidc_client_secret }}"
+        # Fixed, as registered in Zitadel (Semaphore would otherwise derive it)
+        redirect_url: https://deploiement.anneraud.fr/api/auth/oidc/zitadel/redirect
+        scopes: [openid, profile, email]
+        # Semaphore finds accounts by email: a local account with the same
+        # email cannot log in through Zitadel
+        username_claim: preferred_username
+        email_claim: email
+        name_claim: name
+  no_log: true   # holds the client secret

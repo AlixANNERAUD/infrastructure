@@ -1,0 +1,39 @@
+---
+# Builds Semaphore's OIDC providers setting on the controller: no host needed
+- name: Test Semaphore's OIDC providers setting
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Build the setting with a Zitadel client
+      ansible.builtin.include_tasks: ../tasks/oidc_providers.yml
+      vars:
+        deploiement_oidc_client_id: client-id
+        deploiement_oidc_client_secret: client-secret
+
+    - name: Check the Zitadel provider
+      ansible.builtin.assert:
+        that:
+          # Single quotes: Compose's .env keeps the JSON as it is
+          - deploiement_oidc_providers is match("^'.*'$")
+          - providers.keys() | list == ['zitadel']
+          - providers.zitadel.display_name == 'Zitadel'
+          - providers.zitadel.provider_url == 'https://authentification.anneraud.fr'
+          - providers.zitadel.client_id == 'client-id'
+          - providers.zitadel.client_secret == 'client-secret'
+          - providers.zitadel.redirect_url == 'https://deploiement.anneraud.fr/api/auth/oidc/zitadel/redirect'
+          - providers.zitadel.scopes == ['openid', 'profile', 'email']
+          - providers.zitadel.username_claim == 'preferred_username'
+          - providers.zitadel.email_claim == 'email'
+          - providers.zitadel.name_claim == 'name'
+      vars:
+        providers: "{{ deploiement_oidc_providers[1:-1] | from_json }}"
+
+    - name: Build the setting without a client
+      ansible.builtin.include_tasks: ../tasks/oidc_providers.yml
+      vars:
+        deploiement_oidc_client_id: ""
+        deploiement_oidc_client_secret: ""
+
+    - name: Check that there is no provider, so no broken button
+      ansible.builtin.assert:
+        that: deploiement_oidc_providers == "'{}'"
