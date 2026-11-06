@@ -20,4 +20,4 @@ argument_specs:
         description: Folder of the OpenTofu configuration.
       zitadel_applications_variables:
         type: dict
-        description: Extra OpenTofu variables (zitadel_domain, zitadel_port, zitadel_insecure, state_path, applications).
+        description: Extra OpenTofu variables (zitadel_domain, zitadel_port, zitadel_insecure, organization, state_path, applications).

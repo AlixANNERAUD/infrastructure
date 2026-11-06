@@ -16,6 +16,12 @@ variable "zitadel_insecure" {
   default     = false
 }
 
+variable "organization" {
+  description = "Name of the organization that holds the projects; the service account must be its ORG_OWNER."
+  type        = string
+  default     = "Anneraud"
+}
+
 variable "zitadel_token" {
   description = "Personal access token of a Zitadel service account with the ORG_OWNER role."
   type        = string

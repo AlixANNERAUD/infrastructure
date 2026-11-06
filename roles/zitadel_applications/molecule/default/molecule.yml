@@ -34,6 +34,7 @@ provisioner:
           zitadel_domain: localhost
           zitadel_port: "18080"
           zitadel_insecure: true
+          organization: ZITADEL   # the throwaway instance's only organization
           state_path: "{{ zitadel_applications_test_state_path }}"
           applications: "{{ zitadel_applications_test_applications }}"
 scenario:
