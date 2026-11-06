@@ -5,7 +5,12 @@ resource "zitadel_org" "organization" {
   is_default = true
 }
 
-# Logins read <user>@<domain>; the domain policy below skips the DNS proof
+# Logins read <user>@<domain>; the domain policy below skips the DNS proof.
+# zitadel_domain is deprecated, but its replacement zitadel_organization_domain
+# cannot set is_primary (read-only as of provider 3.8.7). Without it, the
+# primary domain stays the generated one and every preferred login name (the
+# preferred_username claim services receive) ends in it. Switch, with a moved
+# block, once the new resource can set the primary domain.
 resource "zitadel_domain" "organization" {
   org_id     = zitadel_org.organization.id
   name       = var.organization_domain
