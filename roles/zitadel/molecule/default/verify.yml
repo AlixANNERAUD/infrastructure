@@ -25,6 +25,7 @@
           - zitadel_client_secrets.nextcloud | length > 0
           - "zitadel_configured_in == {'nextcloud': 'Nextcloud → Administration → OpenID Connect'}"
           - not zitadel_apply.changed
+          - not zitadel_state_changed
           - zitadel_temporary_passwords.keys() | list == ['owner']
           - zitadel_temporary_passwords.owner | length >= 16
         quiet: true
@@ -289,6 +290,7 @@
           - zitadel_client_ids == zitadel_test_client_ids
           - grafana.clientId == zitadel_test_client_ids.grafana
           - grafana.redirectUris == [zitadel_test_changed_uri]
+          - zitadel_state_changed
       vars:
         grafana: "{{ (zitadel_test_changed.json.result | selectattr('name', 'equalto', 'grafana') | first).oidcConfig }}"
 
@@ -307,6 +309,27 @@
     - name: Check that the users were not recreated
       ansible.builtin.assert:
         that: (zitadel_test_users_after.json.result | items2dict(key_name='userName', value_name='id')) == zitadel_test_user_ids
+
+    - name: Run the role without an SMTP server
+      block:
+        - name: Run the role with SMTP expected but no host
+          ansible.builtin.include_role:
+            name: zitadel
+          vars:
+            zitadel_opentofu_token: "{{ zitadel_test_token }}"
+            zitadel_opentofu_state_passphrase: "{{ zitadel_test_state_passphrase }}"
+            zitadel_opentofu_users: "{{ zitadel_test_users }}"
+            zitadel_opentofu_smtp_enabled: true
+            zitadel_opentofu_smtp_host: ""
+            zitadel_opentofu_variables: "{{ zitadel_test_variables }}"
+
+        - name: Fail when the role went on without SMTP
+          ansible.builtin.fail:
+            msg: The role applied without an SMTP host, which would delete the SMTP provider
+      rescue:
+        - name: Check that the role refused before applying
+          ansible.builtin.assert:
+            that: "'zitadel_smtp_host' in ansible_failed_result.msg"
 
     - name: Run the role without users
       block:

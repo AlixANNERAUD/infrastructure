@@ -4,6 +4,7 @@
     zitadel_provisioned: false
     zitadel_organization_id: ""
     zitadel_temporary_passwords: {}
+    zitadel_state_changed: false
     zitadel_client_ids: {}
     zitadel_client_secrets: {}
     zitadel_configured_in: {}
@@ -52,6 +53,21 @@
           No users to provision. Set zitadel_users in vault/authentification/vault.yml
           (an empty list would delete every user).
         quiet: true
+
+    - name: Check that the SMTP server is set
+      ansible.builtin.assert:
+        that: not zitadel_opentofu_smtp_enabled or zitadel_opentofu_smtp_host | length > 0
+        fail_msg: >-
+          No SMTP server. Set zitadel_smtp_host in vault/authentification/vault.yml
+          (an empty host would delete Zitadel's SMTP provider), or zitadel_opentofu_smtp_enabled to false.
+        quiet: true
+
+    # Even a failed apply can change the state (resources created before the error)
+    - name: Read the state before the apply
+      ansible.builtin.stat:
+        path: "{{ zitadel_opentofu_state_path }}"
+        checksum_algorithm: sha256
+      register: zitadel_state_before
 
     - name: Apply the OpenTofu configuration
       block:
@@ -105,6 +121,22 @@
             msg: "{{ zitadel_apply.msg | default('tofu apply failed') }}"
 
       always:
+        - name: Read the state after the apply
+          ansible.builtin.stat:
+            path: "{{ zitadel_opentofu_state_path }}"
+            checksum_algorithm: sha256
+          register: zitadel_state_after
+
+        - name: Tell whether the state changed
+          ansible.builtin.set_fact:
+            zitadel_state_changed: >-
+              {{ zitadel_state_before.stat.checksum | default('') != zitadel_state_after.stat.checksum | default('') }}
+
+        - name: Remind to commit the state
+          ansible.builtin.debug:
+            msg: Commit vault/authentification/opentofu.tfstate in the vault repository.
+          when: zitadel_state_changed
+
         - name: Remove the variables file
           ansible.builtin.file:
             path: "{{ zitadel_opentofu_variables_file.path }}"

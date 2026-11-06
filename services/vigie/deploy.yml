@@ -42,7 +42,7 @@
 
     - name: Provision the Grafana application in Zitadel
       block:
-        - name: Run the Zitadel applications role
+        - name: Run the Zitadel role
           ansible.builtin.include_role:
             name: zitadel
             apply:
@@ -52,14 +52,6 @@
           ansible.builtin.set_fact:
             vigie_oauth_enabled: "{{ zitadel_provisioned | string | lower }}"
             vigie_oauth_client_id: "{{ zitadel_client_ids.grafana | default('') }}"
-
-        # Only when the apply changed the applications, so the state changed too
-        - name: Remind to commit the state
-          ansible.builtin.debug:
-            msg: Commit vault/authentification/opentofu.tfstate in the vault repository.
-          when: vigie_zitadel_state_changed
-          vars:
-            vigie_zitadel_state_changed: "{{ zitadel_apply.changed | default(false) }}"
 
       rescue:
         - name: Keep the Zitadel login of the previous deploy

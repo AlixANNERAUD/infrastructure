@@ -3,8 +3,9 @@ argument_specs:
   main:
     short_description: Provision the Anneraud Zitadel organization with OpenTofu
     description:
-      - Runs tofu apply on opentofu/zitadel from the controller, then sets the facts zitadel_provisioned, zitadel_organization_id, zitadel_temporary_passwords,
-        zitadel_client_ids, zitadel_client_secrets and zitadel_configured_in.
+      - Runs tofu apply on opentofu/zitadel from the controller, then sets the facts zitadel_provisioned,
+        zitadel_organization_id, zitadel_temporary_passwords, zitadel_state_changed, zitadel_client_ids,
+        zitadel_client_secrets and zitadel_configured_in.
       - Without a token or a state passphrase, prints the one-time manual step and sets zitadel_provisioned to false.
     options:
       zitadel_opentofu_token:
@@ -32,6 +33,12 @@ argument_specs:
         type: str
         no_log: true
         description: SMTP password (vault zitadel_smtp_password), passed through the environment.
+      zitadel_opentofu_smtp_enabled:
+        type: bool
+        description: Whether Zitadel sends emails; when true (default), an empty zitadel_opentofu_smtp_host fails the role.
+      zitadel_opentofu_state_path:
+        type: path
+        description: Encrypted state file, compared before and after the apply to set zitadel_state_changed.
       zitadel_opentofu_variables:
         type: dict
         description: >-

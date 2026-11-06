@@ -30,6 +30,8 @@ provisioner:
         zitadel_test_applications: >-
           {{ (lookup('ansible.builtin.file', lookup('ansible.builtin.env', 'MOLECULE_SCENARIO_DIRECTORY') ~ '/applications.tfvars.json')
               | from_json).applications }}
+        # No SMTP server in the throwaway instance, on purpose
+        zitadel_opentofu_smtp_enabled: false
         # One owner with a temporary password, one invited user
         zitadel_test_users:
           owner:

@@ -212,7 +212,7 @@ zitadel_users:
     service_accounts: {nextcloud: Camille EXAMPLE}
 ```
 
-Users without `temporary_password` get Zitadel's invitation email. Logins read `<username>@anneraud.fr`.
+Users without `temporary_password` get Zitadel's invitation email. Both only happen when the user is created: setting `temporary_password` on an existing user changes nothing in Zitadel (reset the password from the console instead). Logins read `<username>@anneraud.fr`.
 
 To add an OIDC application, add an entry to `applications.auto.tfvars` (`authentication = "client_secret"` and `configured_in` when the service needs a secret pasted in) and run `mise deploy services/authentification/applications.yml`: it prints the issuer, client id and `configured_in`, and writes client secrets to `~/.config/infrastructure/zitadel/<application>.secret`.
 

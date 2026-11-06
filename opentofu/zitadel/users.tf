@@ -55,11 +55,15 @@ resource "zitadel_human_user" "user" {
   }
 
   # The temporary password is checked against the organization's policy, not
-  # the instance default (which requires a symbol): create it first
+  # the instance default (which requires a symbol); invitations go out at
+  # creation, with the login name and branding of that moment, through SMTP
   depends_on = [
     zitadel_password_complexity_policy.organization,
     zitadel_login_policy.organization,
     zitadel_domain_policy.organization,
+    zitadel_domain.organization,
+    zitadel_label_policy.organization,
+    zitadel_email_provider_smtp.smtp,
   ]
 }
 

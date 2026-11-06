@@ -13,10 +13,17 @@ zitadel_opentofu_project_path: "{{ playbook_dir }}/../../opentofu/zitadel"
 # without them, since OpenTofu would delete every user
 zitadel_opentofu_users: "{{ zitadel_users | default({}) }}"
 
-# SMTP2GO for Zitadel's emails; without a host, Zitadel sends none
+# SMTP2GO for Zitadel's emails. An empty host would delete the instance's
+# SMTP provider, so the role refuses it unless SMTP is disabled on purpose
+zitadel_opentofu_smtp_enabled: true
 zitadel_opentofu_smtp_host: "{{ zitadel_smtp_host | default('') }}"
 zitadel_opentofu_smtp_user: "{{ zitadel_smtp_user | default('') }}"
 zitadel_opentofu_smtp_password: "{{ zitadel_smtp_password | default('') }}"
+
+# Encrypted state, compared before and after the apply (zitadel_state_changed)
+zitadel_opentofu_state_path: >-
+  {{ zitadel_opentofu_variables.state_path
+     | default(zitadel_opentofu_project_path ~ '/../../vault/authentification/opentofu.tfstate') }}
 
 # Extra OpenTofu variables, overriding the configuration's defaults and
 # applications.auto.tfvars: {zitadel_domain: localhost, applications: {...}}
