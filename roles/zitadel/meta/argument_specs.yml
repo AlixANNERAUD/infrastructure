@@ -1,0 +1,23 @@
+---
+argument_specs:
+  main:
+    short_description: Provision the Anneraud Zitadel organization with OpenTofu
+    description:
+      - Runs tofu apply on opentofu/zitadel from the controller, then sets the facts zitadel_provisioned,
+        zitadel_client_ids, zitadel_client_secrets and zitadel_configured_in.
+      - Without a token or a state passphrase, prints the one-time manual step and sets zitadel_provisioned to false.
+    options:
+      zitadel_opentofu_token:
+        type: str
+        no_log: true
+        description: Personal access token of the IAM_OWNER service account in the ZITADEL organization.
+      zitadel_opentofu_state_passphrase:
+        type: str
+        no_log: true
+        description: Passphrase of the encrypted OpenTofu state, at least 16 characters.
+      zitadel_opentofu_project_path:
+        type: path
+        description: Folder of the OpenTofu configuration.
+      zitadel_opentofu_variables:
+        type: dict
+        description: Extra OpenTofu variables (zitadel_domain, zitadel_port, zitadel_insecure, organization, state_path, applications).

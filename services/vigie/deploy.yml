@@ -44,14 +44,14 @@
       block:
         - name: Run the Zitadel applications role
           ansible.builtin.include_role:
-            name: zitadel_applications
+            name: zitadel
             apply:
               become: false
 
         - name: Use the provisioned Zitadel login
           ansible.builtin.set_fact:
-            vigie_oauth_enabled: "{{ zitadel_applications_provisioned | string | lower }}"
-            vigie_oauth_client_id: "{{ zitadel_applications_client_ids.grafana | default('') }}"
+            vigie_oauth_enabled: "{{ zitadel_provisioned | string | lower }}"
+            vigie_oauth_client_id: "{{ zitadel_client_ids.grafana | default('') }}"
 
         # Only when the apply changed the applications, so the state changed too
         - name: Remind to commit the state
@@ -59,7 +59,7 @@
             msg: Commit vault/authentification/opentofu.tfstate in the vault repository.
           when: vigie_zitadel_state_changed
           vars:
-            vigie_zitadel_state_changed: "{{ zitadel_applications_apply.changed | default(false) }}"
+            vigie_zitadel_state_changed: "{{ zitadel_apply.changed | default(false) }}"
 
       rescue:
         - name: Keep the Zitadel login of the previous deploy

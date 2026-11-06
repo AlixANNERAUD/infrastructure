@@ -1,0 +1,14 @@
+---
+# Personal access token of the OpenTofu service account: in the ZITADEL
+# organization, with the IAM_OWNER role (it creates the Anneraud organization)
+zitadel_opentofu_token: "{{ zitadel_automation_token | default('') }}"
+
+# Passphrase of the encrypted OpenTofu state (at least 16 characters)
+zitadel_opentofu_state_passphrase: "{{ zitadel_state_passphrase | default('') }}"
+
+# OpenTofu configuration describing the organization, its users and applications
+zitadel_opentofu_project_path: "{{ playbook_dir }}/../../opentofu/zitadel"
+
+# Extra OpenTofu variables, overriding the configuration's defaults and
+# applications.auto.tfvars: {zitadel_domain: localhost, applications: {...}}
+zitadel_opentofu_variables: {}

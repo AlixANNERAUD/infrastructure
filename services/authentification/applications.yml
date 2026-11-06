@@ -8,10 +8,10 @@
   vars_files:
     - ../../vault/authentification/vault.yml
   roles:
-    - role: zitadel_applications
+    - role: zitadel
   tasks:
     - name: Hand over the credentials of each application
-      when: zitadel_applications_provisioned
+      when: zitadel_provisioned
       block:
         - name: Create the folder for the client secrets
           ansible.builtin.file:
@@ -25,7 +25,7 @@
             dest: "{{ zitadel_secret_directory }}/{{ item.key }}.secret"
             content: "{{ item.value }}"
             mode: "0600"
-          loop: "{{ zitadel_applications_client_secrets | dict2items }}"
+          loop: "{{ zitadel_client_secrets | dict2items }}"
           loop_control:
             label: "{{ item.key }}"
           no_log: true
@@ -36,11 +36,11 @@
               {{ [
                    item.key ~ ' (configured in ' ~ item.value ~ ')',
                    'Issuer: ' ~ zitadel_issuer,
-                   'Client id: ' ~ zitadel_applications_client_ids[item.key]
+                   'Client id: ' ~ zitadel_client_ids[item.key]
                  ] + ([
                    'Client secret file: ' ~ zitadel_secret_directory ~ '/' ~ item.key ~ '.secret'
-                 ] if item.key in zitadel_applications_client_secrets else []) }}
-          loop: "{{ zitadel_applications_configured_in | dict2items }}"
+                 ] if item.key in zitadel_client_secrets else []) }}
+          loop: "{{ zitadel_configured_in | dict2items }}"
           loop_control:
             label: "{{ item.key }}"
 

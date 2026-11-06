@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  gather_facts: false
+  roles:
+    - role: zitadel
+      vars:
+        zitadel_opentofu_token: "{{ lookup('ansible.builtin.file', zitadel_test_token_path) }}"
+        zitadel_opentofu_state_passphrase: "{{ zitadel_test_state_passphrase }}"
+        zitadel_opentofu_variables: "{{ zitadel_test_variables }}"

@@ -37,7 +37,7 @@ run = [
 description = "Run the Molecule scenarios of the roles (needs Docker)"
 run = [
     "cd roles/compose_service && uv run molecule test",
-    "cd roles/zitadel_applications && uv run molecule test",
+    "cd roles/zitadel && uv run molecule test",
 ]
 
 [tasks.vault]

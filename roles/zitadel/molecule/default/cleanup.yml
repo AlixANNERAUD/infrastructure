@@ -9,9 +9,9 @@
         state: absent
         remove_volumes: true
       environment:
-        ZITADEL_BOOTSTRAP_DIRECTORY: "{{ zitadel_applications_test_bootstrap_directory }}"
+        ZITADEL_BOOTSTRAP_DIRECTORY: "{{ zitadel_test_bootstrap_directory }}"
 
     - name: Remove the test folder
       ansible.builtin.file:
-        path: "{{ zitadel_applications_test_directory }}"
+        path: "{{ zitadel_test_directory }}"
         state: absent
