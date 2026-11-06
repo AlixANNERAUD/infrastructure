@@ -9,6 +9,10 @@ zitadel_opentofu_state_passphrase: "{{ zitadel_state_passphrase | default('') }}
 # OpenTofu configuration describing the organization, its users and applications
 zitadel_opentofu_project_path: "{{ playbook_dir }}/../../opentofu/zitadel"
 
+# People of the organization, keyed by username; the role refuses to run
+# without them, since OpenTofu would delete every user
+zitadel_opentofu_users: "{{ zitadel_users | default({}) }}"
+
 # Extra OpenTofu variables, overriding the configuration's defaults and
 # applications.auto.tfvars: {zitadel_domain: localhost, applications: {...}}
 zitadel_opentofu_variables: {}

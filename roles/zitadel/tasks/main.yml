@@ -3,6 +3,7 @@
   ansible.builtin.set_fact:
     zitadel_provisioned: false
     zitadel_organization_id: ""
+    zitadel_temporary_passwords: {}
     zitadel_client_ids: {}
     zitadel_client_secrets: {}
     zitadel_configured_in: {}
@@ -43,6 +44,15 @@
         fail_msg: OpenTofu is not installed; run mise install at the root of the repository.
         quiet: true
 
+    # An apply without users would delete every one of them
+    - name: Check that the users are listed
+      ansible.builtin.assert:
+        that: zitadel_opentofu_users | length > 0
+        fail_msg: >-
+          No users to provision. Set zitadel_users in vault/authentification/vault.yml
+          (an empty list would delete every user).
+        quiet: true
+
     - name: Apply the OpenTofu configuration
       block:
         # Variables on the command line override applications.auto.tfvars;
@@ -56,7 +66,7 @@
         - name: Write the variables file
           ansible.builtin.copy:
             dest: "{{ zitadel_opentofu_variables_file.path }}"
-            content: "{{ zitadel_opentofu_variables | to_json }}"
+            content: "{{ zitadel_opentofu_variables | combine({'users': zitadel_opentofu_users}) | to_json }}"
             mode: "0600"
           changed_when: false
 
@@ -100,6 +110,7 @@
       ansible.builtin.set_fact:
         zitadel_provisioned: true
         zitadel_organization_id: "{{ zitadel_apply.outputs.organization_id.value }}"
+        zitadel_temporary_passwords: "{{ zitadel_apply.outputs.temporary_passwords.value }}"
         zitadel_client_ids: "{{ zitadel_apply.outputs.client_ids.value }}"
         zitadel_client_secrets: "{{ zitadel_apply.outputs.client_secrets.value }}"
         zitadel_configured_in: "{{ zitadel_apply.outputs.configured_in.value }}"

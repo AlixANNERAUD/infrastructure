@@ -60,7 +60,7 @@ Hosts and the service-to-host mapping are in [inventory/hosts.yml](inventory/hos
 
 ## Deployment
 
-Install [uv](https://docs.astral.sh/uv/) and [mise](https://mise.jdx.dev/), then the pinned tools (Ansible, ansible-lint, yamllint, OpenTofu for Zitadel's applications) and Ansible collections:
+Install [uv](https://docs.astral.sh/uv/) and [mise](https://mise.jdx.dev/), then the pinned tools (Ansible, ansible-lint, yamllint, OpenTofu for Zitadel) and Ansible collections:
 
 ```bash
 mise install
@@ -184,13 +184,36 @@ Prerequisites:
 - The deploy provisions the Zitadel application with OpenTofu, so run it with `mise deploy services/vigie/deploy.yml` (mise puts `tofu` on `PATH`). A missing `tofu` means the playbook was run without mise.
 - The Bruxelles scrape goes from Luxembourg to Bruxelles over Netbird and relies on Bruxelles' Traefik internal allowlist accepting the VPN range.
 
-## Zitadel applications
+## Zitadel
 
-OIDC applications of services managed outside Ansible are declared in `opentofu/zitadel/applications.auto.tfvars` and provisioned with OpenTofu. To add one:
+OpenTofu (`opentofu/zitadel/`) owns the whole Anneraud organization: the organization itself (the instance's default), its domain `anneraud.fr`, its login, password, lockout, domain and label policies, its users and their roles, and the projects and OIDC applications of `applications.auto.tfvars`. The instance defaults are not managed, so the ZITADEL organization's admin stays a working fallback whatever the code does. Apply it with `mise deploy services/authentification/applications.yml`; deploys that need an application (Vigie) apply it too. The state is encrypted in `vault/authentification/opentofu.tfstate`: commit it in the vault repository after each change.
 
-1. Add an entry to `applications.auto.tfvars` (set `authentication = "client_secret"` and `configured_in` when the service needs a secret pasted in).
-2. Run `mise deploy services/authentification/applications.yml`. It prints the issuer, client id and `configured_in`, and writes client secrets to `~/.config/infrastructure/zitadel/<application>.secret` (mode `0600`). Without `zitadel_automation_token` and `zitadel_state_passphrase` in `vault/authentification/vault.yml`, it prints how to create them.
-3. Commit the updated `vault/authentification/opentofu.tfstate` in the vault repository.
+`vault/authentification/vault.yml` holds:
+
+- `zitadel_automation_token`: personal access token of the `opentofu` service user of the ZITADEL organization, a manager of the instance with IAM_OWNER (Default settings → Managers).
+- `zitadel_state_passphrase`: passphrase of the state (`openssl rand -base64 32`).
+- `zitadel_users`: the people, keyed by username, kept out of the public repository. The role refuses to run without them: an empty list would delete every user.
+
+```yaml
+zitadel_users:
+  alix:
+    email: alix@anneraud.fr
+    first_name: Alix
+    last_name: Anneraud
+    owner: true                 # ORG_OWNER of Anneraud
+    temporary_password: true    # written to ~/.config/infrastructure/zitadel/alix.password, changed at first login
+    roles: {Vigie: [vigie-admin]}
+    service_accounts: {nextcloud: Alix ANNERAUD}   # user metadata nextcloud_account, for linking existing accounts
+  camille:                      # example
+    email: camille@anneraud.fr  # an Infomaniak redirect to their own inbox
+    first_name: Camille
+    last_name: Example
+    service_accounts: {nextcloud: Camille EXAMPLE}
+```
+
+Users without `temporary_password` get Zitadel's invitation email. Logins read `<username>@anneraud.fr`.
+
+To add an OIDC application, add an entry to `applications.auto.tfvars` (`authentication = "client_secret"` and `configured_in` when the service needs a secret pasted in) and run `mise deploy services/authentification/applications.yml`: it prints the issuer, client id and `configured_in`, and writes client secrets to `~/.config/infrastructure/zitadel/<application>.secret`.
 
 ## Vault
 

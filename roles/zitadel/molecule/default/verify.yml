@@ -12,6 +12,7 @@
       vars:
         zitadel_opentofu_token: "{{ zitadel_test_token }}"
         zitadel_opentofu_state_passphrase: "{{ zitadel_test_state_passphrase }}"
+        zitadel_opentofu_users: "{{ zitadel_test_users }}"
         zitadel_opentofu_variables: "{{ zitadel_test_variables }}"
 
     - name: Check the facts
@@ -23,6 +24,9 @@
           - zitadel_client_secrets.keys() | list == ['nextcloud']
           - zitadel_client_secrets.nextcloud | length > 0
           - "zitadel_configured_in == {'nextcloud': 'Nextcloud → Administration → OpenID Connect'}"
+          - not zitadel_apply.changed
+          - zitadel_temporary_passwords.keys() | list == ['owner']
+          - zitadel_temporary_passwords.owner | length >= 16
         quiet: true
 
     - name: Read the default organization
@@ -94,6 +98,79 @@
         lockout: "{{ policies[2] }}"
         domain: "{{ policies[3] }}"
         label: "{{ policies[4] }}"
+
+    - name: List the organization's users
+      ansible.builtin.uri:
+        url: "{{ zitadel_test_url }}/management/v1/users/_search"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ zitadel_test_token }}"
+          x-zitadel-orgid: "{{ zitadel_organization_id }}"
+        body_format: json
+        body: {}
+      register: zitadel_test_users_found
+      no_log: true
+
+    - name: Remember the users' ids
+      ansible.builtin.set_fact:
+        zitadel_test_user_ids: "{{ zitadel_test_users_found.json.result | items2dict(key_name='userName', value_name='id') }}"
+
+    - name: Check that both users exist
+      ansible.builtin.assert:
+        that: zitadel_test_user_ids.keys() | sort == ['invited', 'owner']
+
+    - name: Read the owner's Nextcloud account
+      ansible.builtin.uri:
+        url: "{{ zitadel_test_url }}/management/v1/users/{{ zitadel_test_user_ids.owner }}/metadata/nextcloud_account"
+        headers:
+          Authorization: "Bearer {{ zitadel_test_token }}"
+          x-zitadel-orgid: "{{ zitadel_organization_id }}"
+      register: zitadel_test_metadata
+      no_log: true
+
+    - name: Check that the account id keeps its spaces and case
+      ansible.builtin.assert:
+        that: zitadel_test_metadata.json.metadata.value | b64decode == 'Owner TEST'
+
+    - name: List the owner's grants
+      ansible.builtin.uri:
+        url: "{{ zitadel_test_url }}/management/v1/users/grants/_search"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ zitadel_test_token }}"
+          x-zitadel-orgid: "{{ zitadel_organization_id }}"
+        body_format: json
+        body:
+          queries:
+            - userIdQuery:
+                userId: "{{ zitadel_test_user_ids.owner }}"
+      register: zitadel_test_grants
+      no_log: true
+
+    - name: Check the owner's roles on the project
+      ansible.builtin.assert:
+        that:
+          - zitadel_test_grants.json.result | length == 1
+          - zitadel_test_grants.json.result[0].projectName == 'Molecule'
+          - zitadel_test_grants.json.result[0].roleKeys == ['vigie-admin']
+
+    - name: List the organization's members
+      ansible.builtin.uri:
+        url: "{{ zitadel_test_url }}/management/v1/orgs/me/members/_search"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ zitadel_test_token }}"
+          x-zitadel-orgid: "{{ zitadel_organization_id }}"
+        body_format: json
+        body: {}
+      register: zitadel_test_members
+      no_log: true
+
+    - name: Check that only the owner owns the organization
+      ansible.builtin.assert:
+        that: >-
+          zitadel_test_members.json.result | selectattr('roles', 'contains', 'ORG_OWNER')
+          | map(attribute='userId') | list == [zitadel_test_user_ids.owner]
 
     - name: Remember the client ids
       ansible.builtin.set_fact:
@@ -189,6 +266,7 @@
       vars:
         zitadel_opentofu_token: "{{ zitadel_test_token }}"
         zitadel_opentofu_state_passphrase: "{{ zitadel_test_state_passphrase }}"
+        zitadel_opentofu_users: "{{ zitadel_test_users }}"
         zitadel_opentofu_variables: >-
           {{ zitadel_test_variables | combine({'applications': {'grafana': {'redirect_uris': [zitadel_test_changed_uri]}}},
              recursive=true) }}
@@ -214,12 +292,49 @@
       vars:
         grafana: "{{ (zitadel_test_changed.json.result | selectattr('name', 'equalto', 'grafana') | first).oidcConfig }}"
 
+    - name: List the users after the change
+      ansible.builtin.uri:
+        url: "{{ zitadel_test_url }}/management/v1/users/_search"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ zitadel_test_token }}"
+          x-zitadel-orgid: "{{ zitadel_organization_id }}"
+        body_format: json
+        body: {}
+      register: zitadel_test_users_after
+      no_log: true
+
+    - name: Check that the users were not recreated
+      ansible.builtin.assert:
+        that: (zitadel_test_users_after.json.result | items2dict(key_name='userName', value_name='id')) == zitadel_test_user_ids
+
+    - name: Run the role without users
+      block:
+        - name: Run the role with an empty user list
+          ansible.builtin.include_role:
+            name: zitadel
+          vars:
+            zitadel_opentofu_token: "{{ zitadel_test_token }}"
+            zitadel_opentofu_state_passphrase: "{{ zitadel_test_state_passphrase }}"
+            zitadel_opentofu_users: {}
+            zitadel_opentofu_variables: "{{ zitadel_test_variables }}"
+
+        - name: Fail when the role went on without users
+          ansible.builtin.fail:
+            msg: The role applied with an empty user list
+      rescue:
+        - name: Check that the role refused before applying
+          ansible.builtin.assert:
+            that: "'zitadel_users' in ansible_failed_result.msg"
+
+
     - name: Run the role without a token
       ansible.builtin.include_role:
         name: zitadel
       vars:
         zitadel_opentofu_token: ""
         zitadel_opentofu_state_passphrase: "{{ zitadel_test_state_passphrase }}"
+        zitadel_opentofu_users: "{{ zitadel_test_users }}"
         zitadel_opentofu_variables: "{{ zitadel_test_variables }}"
 
     - name: Check that the role skipped provisioning

@@ -1,5 +1,5 @@
 ---
-- name: Provision Zitadel applications for services managed outside Ansible
+- name: Provision the Anneraud Zitadel organization
   hosts: localhost
   gather_facts: false
   vars:
@@ -29,6 +29,24 @@
           loop_control:
             label: "{{ item.key }}"
           no_log: true
+
+        # Handed over by the owner, changed at first login; never overwritten,
+        # since Zitadel only uses it when it creates the user
+        - name: Write the temporary passwords
+          ansible.builtin.copy:
+            dest: "{{ zitadel_secret_directory }}/{{ item.key }}.password"
+            content: "{{ item.value }}"
+            mode: "0600"
+            force: false
+          loop: "{{ zitadel_temporary_passwords | dict2items }}"
+          loop_control:
+            label: "{{ item.key }}"
+          no_log: true
+
+        - name: Show where the temporary passwords are
+          ansible.builtin.debug:
+            msg: "Temporary password of {{ item }}: {{ zitadel_secret_directory }}/{{ item }}.password (changed at first login)"
+          loop: "{{ zitadel_temporary_passwords.keys() | list }}"
 
         - name: Show where to paste the credentials
           ansible.builtin.debug:

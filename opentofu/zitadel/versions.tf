@@ -7,6 +7,10 @@ terraform {
       source  = "zitadel/zitadel"
       version = "= 3.8.7"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "= 3.6.3"
+    }
   }
 
   # The state holds client secrets: it lives in the private vault repository

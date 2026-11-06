@@ -30,6 +30,20 @@ provisioner:
         zitadel_test_applications: >-
           {{ (lookup('ansible.builtin.file', lookup('ansible.builtin.env', 'MOLECULE_SCENARIO_DIRECTORY') ~ '/applications.tfvars.json')
               | from_json).applications }}
+        # One owner with a temporary password, one invited user
+        zitadel_test_users:
+          owner:
+            email: owner@molecule.example
+            first_name: Owner
+            last_name: Test
+            owner: true
+            temporary_password: true
+            roles: {Molecule: [vigie-admin]}
+            service_accounts: {nextcloud: Owner TEST}
+          invited:
+            email: invited@molecule.example
+            first_name: Invited
+            last_name: Test
         zitadel_test_variables:
           zitadel_domain: localhost
           zitadel_port: "18080"

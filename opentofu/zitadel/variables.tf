@@ -46,6 +46,28 @@ variable "state_path" {
   default     = "../../vault/authentification/opentofu.tfstate"
 }
 
+variable "users" {
+  description = "People of the organization, keyed by username (from the vault)."
+  type = map(object({
+    email      = string
+    first_name = string
+    last_name  = string
+    # ORG_OWNER of the organization
+    owner = optional(bool, false)
+    # Random password changed at first login, instead of an invitation email
+    temporary_password = optional(bool, false)
+    # Roles per project name: {Vigie = ["vigie-admin"]}
+    roles = optional(map(list(string)), {})
+    # Account id per service that predates Zitadel: {nextcloud = "Camille EXAMPLE"}
+    service_accounts = optional(map(string), {})
+  }))
+
+  validation {
+    condition     = length(var.users) > 0
+    error_message = "users is empty: OpenTofu would delete every user. Set zitadel_users in vault/authentification/vault.yml."
+  }
+}
+
 variable "applications" {
   description = "OIDC applications, keyed by application name."
   type = map(object({

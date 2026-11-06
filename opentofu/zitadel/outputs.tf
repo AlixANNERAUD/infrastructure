@@ -25,3 +25,9 @@ output "configured_in" {
     if application.configured_in != null
   }
 }
+
+output "temporary_passwords" {
+  description = "Temporary password of each user created with one, to hand over (changed at first login)."
+  value       = { for name, password in random_password.temporary : name => password.result }
+  sensitive   = true
+}

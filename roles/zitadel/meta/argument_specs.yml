@@ -3,7 +3,7 @@ argument_specs:
   main:
     short_description: Provision the Anneraud Zitadel organization with OpenTofu
     description:
-      - Runs tofu apply on opentofu/zitadel from the controller, then sets the facts zitadel_provisioned, zitadel_organization_id,
+      - Runs tofu apply on opentofu/zitadel from the controller, then sets the facts zitadel_provisioned, zitadel_organization_id, zitadel_temporary_passwords,
         zitadel_client_ids, zitadel_client_secrets and zitadel_configured_in.
       - Without a token or a state passphrase, prints the one-time manual step and sets zitadel_provisioned to false.
     options:
@@ -18,6 +18,10 @@ argument_specs:
       zitadel_opentofu_project_path:
         type: path
         description: Folder of the OpenTofu configuration.
+      zitadel_opentofu_users:
+        type: dict
+        no_log: true
+        description: People of the organization keyed by username (vault zitadel_users); the role fails when it is empty.
       zitadel_opentofu_variables:
         type: dict
         description: >-
