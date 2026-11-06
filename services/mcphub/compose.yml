@@ -29,7 +29,7 @@ services:
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
     volumes:
-      - ./data:/app/data
+      - ./Data:/app/data
     networks:
       - internal
       - proxy

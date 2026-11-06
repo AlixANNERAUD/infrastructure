@@ -76,7 +76,7 @@
         compose_service_name: mcphub
         compose_service_directory: MCPHub
         compose_service_directories:
-          - data
+          - Data   # TrueNAS dataset, like Postgres
           - Postgres
         compose_service_external_networks:
           - name: databases   # shared with Databasus
