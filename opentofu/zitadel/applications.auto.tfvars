@@ -17,4 +17,12 @@ applications = {
     redirect_uris    = ["https://mcphub.anneraud.fr/api/auth/better/oauth2/callback/oidc"]
     post_logout_uris = ["https://mcphub.anneraud.fr/"]
   }
+
+  # Paperless (archive.anneraud.fr), a TrueNAS app: services/archive passes
+  # the client to it. django-allauth sends the secret in the request body
+  paperless = {
+    project        = "Archive"
+    authentication = "client_secret_post"
+    redirect_uris  = ["https://archive.anneraud.fr/accounts/oidc/zitadel/login/callback/"]
+  }
 }

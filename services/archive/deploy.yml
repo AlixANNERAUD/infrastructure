@@ -1,0 +1,37 @@
+---
+# Paperless (archive.anneraud.fr) is a TrueNAS app: this playbook only gives it
+# its login through Zitadel, applying the OpenTofu configuration next to it
+# from the controller. Run it with mise, which puts tofu on PATH.
+- name: Give Paperless its Zitadel login
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../../vault/authentification/vault.yml
+    - ../../vault/truenas/vault.yml
+    - ../../vault/archive/vault.yml
+  roles:
+    - role: zitadel
+  tasks:
+    # Without Zitadel's credentials there is no client to give: TrueNAS is left alone
+    - name: Check that Paperless's Zitadel application is provisioned
+      ansible.builtin.assert:
+        that:
+          - zitadel_provisioned
+          - zitadel_client_ids.paperless is defined
+        fail_msg: >-
+          Zitadel is not provisioned (see the messages above) or has no paperless
+          application: the TrueNAS app was left unchanged.
+        quiet: true
+
+    - name: Apply Paperless's login to TrueNAS
+      ansible.builtin.include_role:
+        name: opentofu
+      vars:
+        opentofu_project_path: "{{ playbook_dir }}"
+        opentofu_state_path: "{{ playbook_dir }}/../../vault/archive/opentofu.tfstate"
+        opentofu_variables:
+          archive_client_id: "{{ zitadel_client_ids.paperless }}"
+        opentofu_secret_variables:
+          archive_client_secret: "{{ zitadel_client_secrets.paperless }}"
+          truenas_api_key: "{{ truenas_api_key }}"
+          state_passphrase: "{{ archive_state_passphrase }}"

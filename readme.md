@@ -194,6 +194,18 @@ Prerequisites:
 - Deploy with `mise deploy services/mcphub/deploy.yml` (OpenTofu must be on `PATH`). Without the Zitadel credentials, only the local admin login is available.
 - A first Zitadel login creates a regular MCPHub user named after the email (`alix@anneraud.fr`). Make it an administrator once from the local `admin` account (Users). Each user can then connect their own account to servers that use OAuth ("Connect" on the server), and servers are shared through their visibility (`private`, `group` or `public`).
 
+## TrueNAS apps
+
+Apps installed in TrueNAS's interface on Bruxelles keep their configuration there. Only their login through Zitadel comes from this repository: an OpenTofu configuration in the service's folder imports the app and manages its extra environment variables, with the official `truenas/truenas` provider, and the service's playbook applies it from the controller with the client id and secret Zitadel gives. Paperless (`services/archive`) is the first.
+
+Prerequisites, once:
+
+- In TrueNAS, a user `opentofu` (no password login, no shell) with a privilege limited to apps (Credentials → Groups → Privileges), and an API key for it. `vault/truenas/vault.yml` (`mise vault:create`) holds it as `truenas_api_key`; every TrueNAS app's configuration shares it.
+- `vault/archive/vault.yml` holds `archive_state_passphrase` (`openssl rand -base64 32`), which encrypts `vault/archive/opentofu.tfstate`.
+- The OpenTofu configuration replaces the app's whole list of extra variables: copy the variables the app already has (`midclt call app.config paperless-ngx`, `.paperless.additional_envs`, without secrets) into `services/archive/archive.auto.tfvars` before the first run.
+
+Then `mise deploy services/archive/deploy.yml` (Zitadel first, then TrueNAS; Paperless restarts when its variables change) and commit both states in the vault repository. Existing Paperless users link their account once: log in with their Paperless password, then Profile → Connect a social account → Zitadel.
+
 ## Zitadel
 
 OpenTofu (`opentofu/zitadel/`) owns the whole Anneraud organization: the organization itself (the instance's default), its domain `anneraud.fr`, its login, password, lockout, domain and label policies, its users and their roles, and the projects and OIDC applications of `applications.auto.tfvars`. The instance defaults are not managed, so the ZITADEL organization's admin stays a working fallback whatever the code does. Apply it with `mise deploy services/authentification/applications.yml`; deploys that need an application (Vigie) apply it too. The state is encrypted in `vault/authentification/opentofu.tfstate`: commit it in the vault repository after each change.
