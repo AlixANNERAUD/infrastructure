@@ -42,6 +42,14 @@ jobs:
       - name: ansible-lint
         run: uv run ansible-lint
 
+      # Playbook tests that need no host: they run on the runner itself
+      - name: Test playbook logic
+        run: |
+          for test in services/*/tests/*.yml; do
+            [ -e "$test" ] || continue
+            uv run ansible-playbook "$test"
+          done
+
   compose:
     name: docker compose config
     runs-on: ubuntu-latest
@@ -88,11 +96,13 @@ jobs:
       - name: Check formatting
         run: tofu fmt -check -recursive opentofu services
 
-      # Every configuration: the shared ones in opentofu/, and those of
-      # services that hold one (TrueNAS apps), tested with mocked providers
+      # Every configuration: the shared ones in opentofu/, and any a service
+      # folder holds, with its tests (tofu test, mocked providers)
       - name: Validate and test the configurations
         run: |
-          for directory in $(dirname $(ls opentofu/*/versions.tf services/*/versions.tf)); do
+          for file in opentofu/*/versions.tf services/*/versions.tf; do
+            [ -e "$file" ] || continue
+            directory=$(dirname "$file")
             echo "::group::$directory"
             tofu -chdir="$directory" init -backend=false -input=false
             tofu -chdir="$directory" validate

@@ -1,0 +1,26 @@
+---
+# Builds Paperless's login variables on the controller: no TrueNAS needed
+- name: Test Paperless's login variables
+  hosts: localhost
+  gather_facts: false
+  vars:
+    archive_client_id: client-id
+    archive_client_secret: client-secret
+  tasks:
+    - name: Build the variables
+      ansible.builtin.include_tasks: ../tasks/login_variables.yml
+
+    - name: Check the variables
+      ansible.builtin.assert:
+        that:
+          - archive_login_variables | map(attribute='name') | list == ['PAPERLESS_APPS', 'PAPERLESS_SOCIALACCOUNT_PROVIDERS']
+          - archive_login_variables[0].value == 'allauth.socialaccount.providers.openid_connect'
+          - providers.openid_connect.OAUTH_PKCE_ENABLED
+          - providers.openid_connect.APPS | length == 1
+          - providers.openid_connect.APPS[0].provider_id == 'zitadel'
+          - providers.openid_connect.APPS[0].client_id == 'client-id'
+          - providers.openid_connect.APPS[0].secret == 'client-secret'
+          - providers.openid_connect.APPS[0].settings.server_url == 'https://authentification.anneraud.fr'
+          - providers.openid_connect.APPS[0].settings.token_auth_method == 'client_secret_post'
+      vars:
+        providers: "{{ archive_login_variables[1].value | from_json }}"

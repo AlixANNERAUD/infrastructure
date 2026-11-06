@@ -1,37 +1,58 @@
 ---
-# Paperless (archive.anneraud.fr) is a TrueNAS app: this playbook only gives it
-# its login through Zitadel, applying the OpenTofu configuration next to it
-# from the controller. Run it with mise, which puts tofu on PATH.
-- name: Give Paperless its Zitadel login
+# Paperless (archive.anneraud.fr) is a TrueNAS app, configured in TrueNAS. This
+# playbook provisions its Zitadel application and gives the two environment
+# variables to enter in the app (TrueNAS can only replace an app's settings
+# section as a whole, so it is not written from here). Run it with mise.
+- name: Prepare Paperless's Zitadel login
   hosts: localhost
   gather_facts: false
   vars_files:
     - ../../vault/authentification/vault.yml
-    - ../../vault/truenas/vault.yml
-    - ../../vault/archive/vault.yml
+  vars:
+    # Only the value of PAPERLESS_SOCIALACCOUNT_PROVIDERS, which holds the client
+    # secret: written to a file, never printed (Semaphore keeps its logs)
+    archive_providers_file: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/infrastructure/zitadel/archive-providers.json"
   roles:
     - role: zitadel
   tasks:
-    # Without Zitadel's credentials there is no client to give: TrueNAS is left alone
     - name: Check that Paperless's Zitadel application is provisioned
       ansible.builtin.assert:
         that:
           - zitadel_provisioned
-          - zitadel_client_ids.paperless is defined
-        fail_msg: >-
-          Zitadel is not provisioned (see the messages above) or has no paperless
-          application: the TrueNAS app was left unchanged.
+          - zitadel_client_ids.paperless | default('') | length > 0
+          - zitadel_client_secrets.paperless | default('') | length > 0
+        fail_msg: Zitadel is not provisioned (see the messages above) or has no paperless application with a secret.
         quiet: true
 
-    - name: Apply Paperless's login to TrueNAS
-      ansible.builtin.include_role:
-        name: opentofu
+    - name: Build the login variables
+      ansible.builtin.include_tasks: tasks/login_variables.yml
       vars:
-        opentofu_project_path: "{{ playbook_dir }}"
-        opentofu_state_path: "{{ playbook_dir }}/../../vault/archive/opentofu.tfstate"
-        opentofu_variables:
-          archive_client_id: "{{ zitadel_client_ids.paperless }}"
-        opentofu_secret_variables:
-          archive_client_secret: "{{ zitadel_client_secrets.paperless }}"
-          truenas_api_key: "{{ truenas_api_key }}"
-          state_passphrase: "{{ archive_state_passphrase }}"
+        archive_client_id: "{{ zitadel_client_ids.paperless }}"
+        archive_client_secret: "{{ zitadel_client_secrets.paperless }}"
+
+    - name: Create the folder of the secret value
+      ansible.builtin.file:
+        path: "{{ archive_providers_file | dirname }}"
+        state: directory
+        mode: "0700"
+
+    - name: Write the value that holds the client secret
+      ansible.builtin.copy:
+        dest: "{{ archive_providers_file }}"
+        content: "{{ archive_login_variables[1].value }}"
+        mode: "0600"
+      no_log: true
+
+    # TrueNAS's form: one entry per variable (Container, Name, Value)
+    - name: Say what to enter in TrueNAS
+      ansible.builtin.debug:
+        msg:
+          - "TrueNAS → Apps → paperless-ngx → Edit → Additional Environment Variables: keep the existing entries, add or update these two"
+          - "1. Container: paperless"
+          - "   Name: {{ archive_login_variables[0].name }}"
+          - "   Value: {{ archive_login_variables[0].value }}"
+          - "2. Container: paperless"
+          - "   Name: {{ archive_login_variables[1].name }}"
+          - "   Value: the content of {{ archive_providers_file }} (holds the client secret)"
+          - "   Copy it with: wl-copy < {{ archive_providers_file }} (Wayland), xclip -selection clipboard < … (X11) or pbcopy < … (macOS)"
+          - Save; Paperless restarts.

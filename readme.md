@@ -196,15 +196,9 @@ Prerequisites:
 
 ## TrueNAS apps
 
-Apps installed in TrueNAS's interface on Bruxelles keep their configuration there. Only their login through Zitadel comes from this repository: an OpenTofu configuration in the service's folder imports the app and manages its extra environment variables, with the official `truenas/truenas` provider, and the service's playbook applies it from the controller with the client id and secret Zitadel gives. Paperless (`services/archive`) is the first.
+Apps installed in TrueNAS's interface on Bruxelles keep their configuration there, login through Zitadel included: TrueNAS can only replace an app's settings section as a whole (passwords and keys included), so this repository does not write it. A service's playbook provisions its Zitadel application and writes the environment variables to paste instead.
 
-Prerequisites, once:
-
-- In TrueNAS, a user `opentofu` (no password login, no shell) with a privilege limited to apps (Credentials → Groups → Privileges), and an API key for it. `vault/truenas/vault.yml` (`mise vault:create`) holds it as `truenas_api_key`; every TrueNAS app's configuration shares it.
-- `vault/archive/vault.yml` holds `archive_state_passphrase` (`openssl rand -base64 32`), which encrypts `vault/archive/opentofu.tfstate`.
-- The OpenTofu configuration replaces the app's whole list of extra variables: copy the variables the app already has (`midclt call app.config paperless-ngx`, `.paperless.additional_envs`, without secrets) into `services/archive/archive.auto.tfvars` before the first run.
-
-Then `mise deploy services/archive/deploy.yml` (Zitadel first, then TrueNAS; Paperless restarts when its variables change) and commit both states in the vault repository. Existing Paperless users link their account once: log in with their Paperless password, then Profile → Connect a social account → Zitadel.
+Paperless (`services/archive`): `mise deploy services/archive/deploy.yml` prints the two entries to add in TrueNAS → Apps → paperless-ngx → Edit → Additional Environment Variables, both with container `paperless`: `PAPERLESS_APPS`, with its value, and `PAPERLESS_SOCIALACCOUNT_PROVIDERS`, whose value holds the client secret and is written alone to `~/.config/infrastructure/zitadel/archive-providers.json` (0600) rather than printed, to copy into the Value field. Keep the other entries; Paperless restarts when saved. Run it again only when the Zitadel application changes. The client secret is then visible to whoever can edit the app in TrueNAS. Existing Paperless users link their account once: log in with their Paperless password, then Profile → Connect a social account → Zitadel.
 
 ## Zitadel
 

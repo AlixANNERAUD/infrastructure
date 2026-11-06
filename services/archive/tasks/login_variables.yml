@@ -1,0 +1,26 @@
+---
+# Paperless's login through Zitadel, as two environment variables of its
+# TrueNAS app. In: archive_client_id, archive_client_secret.
+# Out: archive_login_variables, [{name, value}].
+- name: Build Paperless's login variables
+  ansible.builtin.set_fact:
+    archive_login_variables:
+      - name: PAPERLESS_APPS
+        value: allauth.socialaccount.providers.openid_connect
+      - name: PAPERLESS_SOCIALACCOUNT_PROVIDERS
+        value: "{{ archive_login_providers | to_json }}"
+  vars:
+    # django-allauth's OpenID Connect provider; the secret goes in the token
+    # request's body, as the Zitadel application expects (client_secret_post)
+    archive_login_providers:
+      openid_connect:
+        OAUTH_PKCE_ENABLED: true
+        APPS:
+          - provider_id: zitadel
+            name: Zitadel
+            client_id: "{{ archive_client_id }}"
+            secret: "{{ archive_client_secret }}"
+            settings:
+              server_url: https://authentification.anneraud.fr
+              token_auth_method: client_secret_post
+  no_log: true   # holds the client secret
