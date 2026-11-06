@@ -51,6 +51,7 @@ Hosts and the service-to-host mapping are in [inventory/hosts.yml](inventory/hos
 | [Databasus](https://databasus.anneraud.fr/)                            | Database management (Adminer)                | Private | Bruxelles  | TrueNAS Apps | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/administration_databasus/uptimes/30d/badge.svg>)                    |
 | [Cockpit (Luxembourg)](https://cockpit.luxembourg.anneraud.fr/)        | Server management (Cockpit)                  | Private | Luxembourg | Ansible      | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/administration_cockpit-(luxembourg)/uptimes/30d/badge.svg>)                      |
 | [Vigie](https://vigie.anneraud.fr/)                                    | Monitoring (VictoriaMetrics, Grafana)        | Private | Luxembourg | Ansible      | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/administration_vigie-(grafana)/uptimes/30d/badge.svg>)                           |
+| Métriques                                                              | Host and container metrics (node_exporter, cAdvisor) | Private | Luxembourg, Bruxelles | Ansible      | -                                                                                                                                     |
 | Protection (Luxembourg)                                                | Intrusion prevention (CrowdSec)              | Private | Luxembourg | Ansible      | -                                                                                                                                  |
 | [État](https://etat.anneraud.fr/)                                      | Service status page                          | Public  | Luxembourg | Ansible      | -                                                                                                                                  |
 | [VPN](https://netbird.anneraud.fr/)                                    | Virtual private network (Netbird)            | Public  | Luxembourg | Ansible      | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/administration_vpn-(netbird)/uptimes/30d/badge.svg>)                          |
@@ -177,7 +178,7 @@ Vigie monitors both protections (see [Vigie](#vigie)): the CrowdSec dashboard (a
 
 ## Vigie
 
-Vigie (`services/vigie`) runs on Luxembourg: VictoriaMetrics (3 months of retention, 30 s scrape interval) and Grafana at `https://vigie.anneraud.fr/`, reachable only through Traefik's internal allowlist. It scrapes the metrics of both Traefik instances (Luxembourg and Bruxelles) and of CrowdSec on Luxembourg (see [Protection](#protection)), and Grafana alerts a Home Assistant webhook on 5xx errors, high latency and unreachable targets. Its dashboards are Traefik, CrowdSec and Rate limits (`services/vigie/grafana/dashboards/`).
+Vigie (`services/vigie`) runs on Luxembourg: VictoriaMetrics (3 months of retention, 30 s scrape interval) and Grafana at `https://vigie.anneraud.fr/`, reachable only through Traefik's internal allowlist. It scrapes the metrics of both Traefik instances (Luxembourg and Bruxelles), the host and container metrics of both hosts (`services/metriques`, below) and CrowdSec on Luxembourg (see [Protection](#protection)). Grafana alerts a Home Assistant webhook on 5xx errors, high latency and unreachable targets (group Traefik), on filesystems over 90 % full, ZFS pools not `ONLINE`, memory over 90 % for 15 minutes, CPU over 90 % for 30 minutes and missing host metrics (group Hosts), and on the protections (group Protection, below). Its dashboards are Traefik, Hosts, CrowdSec and Rate limits (`services/vigie/grafana/dashboards/`); Hosts shows CPU, memory, filesystems, the free space of ZFS pools and the CPU and memory of every app (Compose project, TrueNAS Apps without their `ix-` prefix) and container.
 
 The Protection alert group (`services/vigie/grafana/protection_alerting.yml.j2`) sits above the background of scanners on a public address, so only what is out of the ordinary reaches the phone:
 
@@ -200,6 +201,17 @@ Prerequisites:
 - The deploy provisions the Zitadel application with OpenTofu, so run it with `mise deploy services/vigie/deploy.yml` (mise puts `tofu` on `PATH`). A missing `tofu` means the playbook was run without mise.
 - The Bruxelles scrape goes from Luxembourg to Bruxelles over Netbird and relies on Bruxelles' Traefik internal allowlist accepting the VPN range.
 - The CrowdSec scrape needs CrowdSec's stack deployed on the `protection-metrics` network (`mise deploy services/protection/deploy.yml`); until then, CrowdSec metrics missing fires.
+
+### Host metrics
+
+`services/metriques` runs on every host of the `metriques` group (Luxembourg and Bruxelles), deployed with `mise deploy services/metriques/deploy.yml`:
+
+- node_exporter: CPU, memory, load, filesystems, ZFS' ARC and the state of each ZFS pool (from the kernel) of the host, read from its `/proc` and its root filesystem mounted read-only (`pid: host`, root without privileges except reading through closed folders).
+- cAdvisor: CPU and memory of every container, labelled with its Compose project (`app`) and name (`container`); Vigie keeps only these series.
+
+The free space of a ZFS pool comes from its datasets' mounts; its capacity does not (node_exporter cannot read it), so TrueNAS' own alerts cover pools filling up, along with failing disks and scrubs: keep an alert service set in TrueNAS → System → Alert Settings.
+
+Nothing is published. On Luxembourg the exporters share the internal `metriques` Docker network with VictoriaMetrics. Bruxelles (`metriques_host` in its host variables) serves them through its Traefik at `https://metriques.bruxelles.anneraud.fr/node/metrics` and `/containers/metrics`, behind the internal allowlist and covered by the `*.bruxelles.anneraud.fr` certificate; the deploy points that private name to Bruxelles. Deploy `services/metriques` before Vigie on a new host, then Vigie, which renders a node and a containers scrape job per host of the group.
 
 ## MCPHub
 

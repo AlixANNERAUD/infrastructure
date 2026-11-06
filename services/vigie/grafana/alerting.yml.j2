@@ -21,6 +21,163 @@ policies:
     repeat_interval: 4h
 
 groups:
+  # Host and container metrics of services/metriques: thresholds held for a
+  # while, so that a backup, a scrub or an update does not alert
+  - orgId: 1
+    name: Hosts
+    folder: Vigie
+    interval: {{ vigie_alert_evaluation_interval }}
+    rules:
+      # Filesystems other than ZFS, whose datasets share their pool's space:
+      # TrueNAS alerts on pool capacity itself
+      - uid: hosts-disk-space-low
+        title: Host disk space low
+        condition: threshold
+        for: 15m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: query
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model:
+              refId: query
+              instant: true
+              range: false
+              expr: >-
+                1 - node_filesystem_avail_bytes{fstype!~"zfs|tmpfs|ramfs|squashfs|erofs|iso9660|nfs.*|cifs|fuse.*"}
+                / node_filesystem_size_bytes{fstype!~"zfs|tmpfs|ramfs|squashfs|erofs|iso9660|nfs.*|cifs|fuse.*"}
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: query
+              conditions:
+                - evaluator: {type: gt, params: [0.9]}
+        annotations:
+          summary: "{% raw %}{{ .Labels.mountpoint }} on {{ .Labels.host }} is {{ humanizePercentage .Values.query.Value }} full{% endraw %}"
+
+      # Pool health from the kernel (DEGRADED, FAULTED, SUSPENDED...): one
+      # series per state, 1 for the pool's current one. Pool capacity is left
+      # to TrueNAS' own alerts, since node_exporter cannot read it
+      - uid: hosts-zfs-pool-unhealthy
+        title: ZFS pool unhealthy
+        condition: threshold
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: query
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model:
+              refId: query
+              instant: true
+              range: false
+              expr: node_zfs_zpool_state{state!="online"}
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: query
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+        annotations:
+          summary: "{% raw %}ZFS pool {{ .Labels.zpool }} on {{ .Labels.host }} is {{ toUpper .Labels.state }}{% endraw %}"
+
+      # Memory the kernel could give to applications, ZFS' ARC included above
+      # its minimum: Linux counts the ARC as used, and it fills most of the
+      # memory of a TrueNAS server on purpose
+      - uid: hosts-memory-high
+        title: Host memory high
+        condition: threshold
+        for: 15m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: query
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model:
+              refId: query
+              instant: true
+              range: false
+              expr: >-
+                1 - (
+                  (node_memory_MemAvailable_bytes + clamp_min(node_zfs_arc_size - node_zfs_arc_c_min, 0))
+                  or node_memory_MemAvailable_bytes
+                ) / node_memory_MemTotal_bytes
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: query
+              conditions:
+                - evaluator: {type: gt, params: [0.9]}
+        annotations:
+          summary: "{% raw %}{{ .Labels.host }} uses {{ humanizePercentage .Values.query.Value }} of its memory{% endraw %}"
+
+      # Busy share of all CPUs over 5 minutes; waiting for disks (a scrub) and
+      # time taken by the hypervisor do not count
+      - uid: hosts-cpu-high
+        title: Host CPU high
+        condition: threshold
+        for: 30m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: query
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model:
+              refId: query
+              instant: true
+              range: false
+              expr: >-
+                sum by (host) (rate(node_cpu_seconds_total{mode!~"idle|iowait|steal"}[5m]))
+                / count by (host) (node_cpu_seconds_total{mode="idle"})
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: query
+              conditions:
+                - evaluator: {type: gt, params: [0.9]}
+        annotations:
+          summary: "{% raw %}{{ .Labels.host }} has used {{ humanizePercentage .Values.query.Value }} of its CPU for 30 minutes{% endraw %}"
+
+      # An exporter VictoriaMetrics cannot scrape (up = 0), or no host metrics
+      # at all
+      - uid: hosts-metrics-missing
+        title: Host metrics missing
+        condition: threshold
+        for: 10m
+        noDataState: Alerting
+        execErrState: Error
+        data:
+          - refId: query
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model:
+              refId: query
+              instant: true
+              range: false
+              expr: up{job=~"(node|containers)-.*"}
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: query
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+        annotations:
+          summary: "{% raw %}{{ if .Labels.host }}{{ .Labels.job }} cannot be scraped{{ else }}No host metrics at all: VictoriaMetrics scrapes no exporter{{ end }}{% endraw %}"
+
   - orgId: 1
     name: Traefik
     folder: Vigie

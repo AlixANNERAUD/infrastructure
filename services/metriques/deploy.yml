@@ -1,0 +1,25 @@
+---
+# Host and container metrics exporters, scraped by Vigie (services/vigie).
+# A host with metriques_host (Bruxelles) serves them through its Traefik,
+# behind the internal allowlist; the host running Vigie (Luxembourg) keeps
+# them in the internal metriques network, shared with VictoriaMetrics.
+- name: Deploy the metrics exporters
+  hosts: metriques
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+    - ../../vault/cloudflare/vault.yml
+  roles:
+    - role: compose_service
+      vars:
+        compose_service_name: metriques
+        compose_service_directory: "{{ metriques_directory }}"
+        # Only Vigie's host needs the internal network; created by Vigie's deploy too
+        compose_service_external_networks: >-
+          {{ [] if metriques_host is defined else [{'name': 'metriques', 'internal': true}] }}
+        compose_service_environment:
+          METRICS_ROUTED: "{{ (metriques_host is defined) | string | lower }}"
+          METRICS_HOST: "{{ metriques_host | default('') }}"
+          METRICS_NETWORK: "{{ proxy_network if metriques_host is defined else 'metriques' }}"
+        compose_service_dns_records: >-
+          {{ [{'record': metriques_host, 'visibility': 'private'}] if metriques_host is defined else [] }}

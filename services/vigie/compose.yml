@@ -13,7 +13,7 @@ services:
     logging: *logging
     restart: unless-stopped
     user: "${USER_ID}:${GROUP_ID}"
-    mem_limit: 256m
+    mem_limit: 512m
     command:
       - "-retentionPeriod=3M"
       - "-promscrape.config=/etc/vigie/scrape.yml"
@@ -24,11 +24,13 @@ services:
       - ./victoriametrics:/victoria-metrics-data
     # The proxy network reaches Luxembourg's Traefik and, through the host,
     # Bruxelles' over Netbird; protection-metrics only reaches CrowdSec
-    # (services/protection). The port is never published
+    # (services/protection), metrics Luxembourg's exporters
+    # (services/metriques). The port is never published
     networks:
       - vigie
       - proxy
       - protection-metrics
+      - metrics
 
   grafana:
     image: grafana/grafana:13.3.0
@@ -89,4 +91,8 @@ networks:
   # Created by both playbooks; empty on a host without CrowdSec
   protection-metrics:
     name: protection-metrics
+    external: true
+  # VictoriaMetrics and the exporters of services/metriques only
+  metrics:
+    name: "${METRICS_NETWORK}"
     external: true

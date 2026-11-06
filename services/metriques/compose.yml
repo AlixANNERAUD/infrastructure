@@ -1,0 +1,93 @@
+name: metriques
+
+# Container logs are unbounded by default and would fill the disk
+x-logging: &logging
+  driver: local
+  options:
+    max-size: "20m"
+    max-file: "3"
+
+# Exporters scraped by Vigie (services/vigie), never published: on the host
+# running Vigie they sit in the internal metriques network with
+# VictoriaMetrics; elsewhere (Bruxelles) in the proxy network, routed by
+# Traefik behind the internal allowlist (METRICS_ROUTED)
+services:
+  # Host CPU, memory, load, filesystems, ZFS ARC and pool states, read from
+  # the host's /proc and mounts (pid host, root filesystem read-only)
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    logging: *logging
+    restart: unless-stopped
+    mem_limit: 128m
+    pid: host
+    read_only: true
+    # Root without privileges, except reading through folders that only their
+    # owner may enter (service folders, datasets mounted below them)
+    user: "0:0"
+    cap_drop: [ALL]
+    cap_add: [DAC_READ_SEARCH]
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - "--path.rootfs=/host"
+      # The container's own network namespace, not the host's
+      - "--no-collector.arp"
+      - "--no-collector.netclass"
+      - "--no-collector.netdev"
+      - "--no-collector.netstat"
+      - "--no-collector.sockstat"
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - metrics
+    labels:
+      - traefik.enable=${METRICS_ROUTED}
+      - traefik.docker.network=${METRICS_NETWORK}
+      - traefik.http.routers.metriques-node.rule=Host(`${METRICS_HOST}`) && PathPrefix(`/node`)
+      - traefik.http.routers.metriques-node.entrypoints=web-secure
+      - traefik.http.routers.metriques-node.tls=true
+      - traefik.http.routers.metriques-node.middlewares=internal-allowlist@file,metriques-node-path
+      # Only the metrics: every path below /node serves them
+      - traefik.http.middlewares.metriques-node-path.replacepath.path=/metrics
+      - traefik.http.services.metriques-node.loadbalancer.server.port=9100
+
+  # CPU and memory of every container, labelled with its Compose project
+  # (the app: TrueNAS Apps are ix-<app> projects)
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.60.6
+    logging: *logging
+    restart: unless-stopped
+    mem_limit: 512m
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - "--docker_only=true"
+      - "--enable_metrics=cpu,memory"
+      - "--housekeeping_interval=30s"
+      - "--store_container_labels=false"
+      - "--whitelisted_container_labels=com.docker.compose.project,com.docker.compose.service"
+    # As cAdvisor's documentation, without privileges: the Docker socket (in
+    # /var/run) for container names and labels, cgroups in /sys, and the
+    # Docker root folder through /rootfs
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+    networks:
+      - metrics
+    labels:
+      - traefik.enable=${METRICS_ROUTED}
+      - traefik.docker.network=${METRICS_NETWORK}
+      - traefik.http.routers.metriques-containers.rule=Host(`${METRICS_HOST}`) && PathPrefix(`/containers`)
+      - traefik.http.routers.metriques-containers.entrypoints=web-secure
+      - traefik.http.routers.metriques-containers.tls=true
+      - traefik.http.routers.metriques-containers.middlewares=internal-allowlist@file,metriques-containers-path
+      # Only the metrics, not cAdvisor's web interface
+      - traefik.http.middlewares.metriques-containers-path.replacepath.path=/metrics
+      - traefik.http.services.metriques-containers.loadbalancer.server.port=8080
+
+networks:
+  metrics:
+    name: "${METRICS_NETWORK}"
+    external: true

@@ -169,7 +169,20 @@ jobs:
           uv sync --locked
           uv run ansible-galaxy collection install -r requirements.yml
 
+      # A small pool on a file: node_exporter reads its state from the kernel
+      # and its free space from its mount, as on Bruxelles
+      - name: Create a ZFS pool
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q zfsutils-linux
+          sudo modprobe zfs
+          truncate -s 1G "$RUNNER_TEMP/vigie-check.img"
+          sudo zpool create vigie-check "$RUNNER_TEMP/vigie-check.img"
+          zpool list vigie-check
+
       - name: Provision VictoriaMetrics and Grafana and evaluate the alerts
+        env:
+          CHECK_ZFS_POOL: vigie-check
         run: .github/scripts/check-vigie.sh
 
   protection:

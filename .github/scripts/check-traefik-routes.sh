@@ -38,7 +38,7 @@ cp services/proxy/policy.yml "$directory/dynamic/policy.yml"
 # The default certificate is refused (sniStrict) and the ACME server is
 # unreachable on purpose, so the tested names get a self-signed certificate
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=check.test \
-    -addext "subjectAltName=DNS:anneraud.fr,DNS:*.anneraud.fr,DNS:*.dera.page,DNS:*.xila.dev" \
+    -addext "subjectAltName=DNS:anneraud.fr,DNS:*.anneraud.fr,DNS:*.bruxelles.anneraud.fr,DNS:*.dera.page,DNS:*.xila.dev" \
     -keyout "$directory/dynamic/check.key" -out "$directory/dynamic/check.crt" 2> /dev/null
 cat > "$directory/dynamic/check.yml" <<'EOF'
 tls:
@@ -83,15 +83,19 @@ def placeholder(name):
 
 
 def deployed_environment(stack):
-    """Variables deploy.yml writes to .env from the host's variables (not the vault's)."""
+    """Variables deploy.yml writes to .env from the host's variables alone: values that need the vault,
+    other hosts or Ansible's own filters keep their placeholder."""
     environment = {}
     for play in yaml.safe_load(Path(f"services/{stack}/deploy.yml").read_text()):
         for role in play.get("roles", []):
             if isinstance(role, dict) and role.get("role") == "compose_service":
                 for name, value in role.get("vars", {}).get("compose_service_environment", {}).items():
-                    if isinstance(value, str) and "traefik_" in value:
-                        template = jinja2.Environment(undefined=jinja2.StrictUndefined).from_string(value)
-                        environment[name] = template.render(**host_variables)
+                    if isinstance(value, str) and "{{" in value:
+                        try:
+                            template = jinja2.Environment(undefined=jinja2.StrictUndefined).from_string(value)
+                            environment[name] = template.render(**host_variables)
+                        except jinja2.TemplateError:
+                            pass
     return environment
 
 
@@ -265,6 +269,15 @@ expected = {
         "stand_in": "secrets_xila-openbao", "rule": "Host(`vault.xila.dev`)", "middlewares": internal,
         "url": "https:8200", "transport": "insecure-backend@file", "zone": "xila.dev",
     },
+    # Exporters scraped by Vigie over Netbird: only their metrics, behind the allowlist
+    "metriques-node": {
+        "stand_in": "metriques-node-exporter", "rule": "Host(`metriques.bruxelles.anneraud.fr`) && PathPrefix(`/node`)",
+        "middlewares": internal + ["metriques-node-path@docker"], "url": "http:9100",
+    },
+    "metriques-containers": {
+        "stand_in": "metriques-cadvisor", "rule": "Host(`metriques.bruxelles.anneraud.fr`) && PathPrefix(`/containers`)",
+        "middlewares": internal + ["metriques-containers-path@docker"], "url": "http:8080",
+    },
 }
 check({f"{name}@docker" for name in expected} <= docker_routers, f"routers missing: {sorted({f'{name}@docker' for name in expected} - docker_routers)}")
 for name, expectation in expected.items():
@@ -424,7 +437,7 @@ for name, expectation in expected.items():
     prefix = re.search(r"PathPrefix\(`([^`]+)`\)", rule)
     path = (prefix.group(1) if prefix else "") + "/check"
     status, body = request(host, path)
-    if expectation.get("middlewares") == internal:
+    if internal[0] in expectation.get("middlewares", []):
         check(status == 403, f"https://{host}{path} answers {status} outside the allowlist")
     elif expectation["url"].startswith("http:"):
         check(status == 200 and f"Hostname: {expectation['stand_in']}" in body, f"https://{host}{path} answers {status} from {body[:40]!r}")

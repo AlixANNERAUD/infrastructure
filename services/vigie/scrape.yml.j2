@@ -32,3 +32,42 @@ scrape_configs:
         labels:
           host: {{ inventory_hostname }}
 {% endif %}
+
+  # Host and container metrics of every host of the metriques group
+  # (services/metriques): inside the metriques network on Vigie's own host,
+  # through the host's Traefik (metriques_host) elsewhere
+{% for host in groups['metriques'] | sort %}
+{%   set routed = hostvars[host].metriques_host is defined %}
+  - job_name: node-{{ host }}
+    metrics_path: {{ '/node/metrics' if routed else '/metrics' }}
+    scheme: {{ 'https' if routed else 'http' }}
+    static_configs:
+      - targets: ["{{ hostvars[host].metriques_host if routed else 'node-exporter:9100' }}"]
+        labels:
+          host: {{ host }}
+
+  - job_name: containers-{{ host }}
+    metrics_path: {{ '/containers/metrics' if routed else '/metrics' }}
+    scheme: {{ 'https' if routed else 'http' }}
+    static_configs:
+      - targets: ["{{ hostvars[host].metriques_host if routed else 'cadvisor:8080' }}"]
+        labels:
+          host: {{ host }}
+    metric_relabel_configs:
+      # Only what the Hosts dashboard and alerts read
+      - source_labels: [__name__]
+        regex: container_(cpu_usage_seconds_total|memory_working_set_bytes|memory_rss|spec_memory_limit_bytes)|machine_(cpu_cores|memory_bytes)
+        action: keep
+      # app: the Compose project without TrueNAS' ix- prefix, or the container
+      # name for containers started outside Compose
+      - source_labels: [name]
+        target_label: container
+      - source_labels: [name]
+        target_label: app
+      - source_labels: [container_label_com_docker_compose_project]
+        regex: (?:ix-)?(.+)
+        target_label: app
+      - regex: id|name|container_label_.*
+        action: labeldrop
+
+{% endfor %}

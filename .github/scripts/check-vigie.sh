@@ -1,25 +1,36 @@
 #!/usr/bin/env bash
 # Lay Vigie out as services/vigie/deploy.yml does, start it with its own
-# Compose file, feed VictoriaMetrics sample Traefik metrics and check what
-# Grafana provisioned: datasource, dashboard and alert rules, and that the
-# rules evaluate as expected.
+# Compose file next to the exporters of services/metriques (laid out as on
+# Luxembourg, in the metrics network), feed VictoriaMetrics sample Traefik
+# metrics and check what Grafana provisioned: datasource, dashboards and alert
+# rules, that the rules evaluate as expected and that the exporters' metrics
+# answer every query of the Hosts dashboard.
+# With CHECK_ZFS_POOL set to the name of a healthy ZFS pool on this machine,
+# node_exporter must read its state and free space, and no pool alert fires.
 set -euo pipefail
 
 directory=$(mktemp -d)
 project=check-vigie-$$
 network=$project-proxy
+metrics_network=$project-metrics
 password=check-vigie-password
+zfs_pool=${CHECK_ZFS_POOL:-}
 compose() {
     docker compose -p "$project" --project-directory "$directory" \
         -f "$directory/compose.yml" -f "$directory/compose.check.yml" "$@"
+}
+exporters() {
+    docker compose -p "$project-metriques" --project-directory "$directory/metriques" "$@"
 }
 cleanup() {
     status=$?
     if [ "$status" -ne 0 ] && [ -f "$directory/compose.yml" ]; then
         compose logs --no-color --tail 50 || true
+        exporters logs --no-color --tail 30 || true
     fi
     compose down --volumes --timeout 5 > /dev/null 2>&1 || true
-    docker network rm "$network" protection-metrics > /dev/null 2>&1 || true
+    exporters down --volumes --timeout 5 > /dev/null 2>&1 || true
+    docker network rm "$network" "$metrics_network" protection-metrics > /dev/null 2>&1 || true
     rm -rf "$directory"
     exit "$status"
 }
@@ -60,6 +71,9 @@ while read -r kind source destination; do
             ;;
     esac
 done < "$directory/layout"
+# The exporters, with the files services/metriques/deploy.yml copies
+mkdir -p "$directory/metriques"
+cp services/metriques/compose.yml "$directory/metriques/"
 chmod -R a+rX "$directory"
 
 # Containers run as the current user, who owns the data folders here
@@ -67,7 +81,14 @@ cat > "$directory/.env" <<EOF
 USER_ID=$(id -u)
 GROUP_ID=$(id -g)
 PROXY_NETWORK=$network
+METRICS_NETWORK=$metrics_network
 GRAFANA_ADMIN_PASSWORD=$password
+EOF
+# As on Luxembourg: in the metrics network, not routed by Traefik
+cat > "$directory/metriques/.env" <<EOF
+METRICS_ROUTED=false
+METRICS_HOST=
+METRICS_NETWORK=$metrics_network
 EOF
 cat > "$directory/compose.check.yml" <<'EOF'
 services:
@@ -79,6 +100,8 @@ EOF
 docker network create "$network" > /dev/null
 # Shared with CrowdSec, which does not run here: its target is down
 docker network create --internal protection-metrics > /dev/null
+docker network create --internal "$metrics_network" > /dev/null
+exporters up -d --wait --quiet-pull
 
 # VictoriaMetrics must accept the scrape configuration as it is
 compose run --rm --no-deps victoriametrics \
@@ -169,10 +192,13 @@ EOF
 
 cat > "$directory/check.py" <<'EOF'
 import json
+import re
 import sys
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
-directory = Path(sys.argv[1])
+directory, metrics, zfs_pool, project = Path(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4]
 
 
 def load(name):
@@ -191,17 +217,26 @@ def check(condition, message):
 
 
 targets = {
-    (target["labels"].get("job"), target["labels"].get("host")): target["scrapeUrl"]
+    target["labels"].get("job"): (target["scrapeUrl"], target["health"], target["labels"].get("host"))
     for target in load("targets.json").get("data", {}).get("activeTargets", [])
 }
+urls = {job: url for job, (url, _, _) in targets.items()}
 check(
-    targets == {
-        ("traefik-luxembourg", "luxembourg"): "http://traefik:8082/metrics",
-        ("traefik-bruxelles", "bruxelles"): "https://traefik.bruxelles.anneraud.fr/metrics",
-        ("crowdsec", "luxembourg"): "http://crowdsec:6060/metrics",
+    urls == {
+        "traefik-luxembourg": "http://traefik:8082/metrics",
+        "traefik-bruxelles": "https://traefik.bruxelles.anneraud.fr/metrics",
+        "crowdsec": "http://crowdsec:6060/metrics",
+        "node-luxembourg": "http://node-exporter:9100/metrics",
+        "containers-luxembourg": "http://cadvisor:8080/metrics",
+        "node-bruxelles": "https://metriques.bruxelles.anneraud.fr/node/metrics",
+        "containers-bruxelles": "https://metriques.bruxelles.anneraud.fr/containers/metrics",
     },
-    f"scrape targets are {targets}",
+    f"scrape targets are {urls}",
 )
+check(targets.get("crowdsec", (None, None, None))[2] == "luxembourg", f"crowdsec target is {targets.get('crowdsec')}")
+# Luxembourg's exporters are reached in the metrics network
+for job in ("node-luxembourg", "containers-luxembourg"):
+    check(targets.get(job, (None, None, None))[1] == "up", f"target {job} is {targets.get(job, (None, None, None))[1]}")
 
 datasource = load("datasource.json")
 check(datasource.get("status") == "OK", f"datasource health is {datasource}")
@@ -211,8 +246,16 @@ for uid in ("traefik", "crowdsec", "rate-limits"):
     check(dashboard.get("uid") == uid, f"dashboard {uid} is missing")
     variables = [variable["name"] for variable in dashboard.get("templating", {}).get("list", [])]
     check("host" in variables, f"dashboard {uid} variables are {variables}")
+hosts_dashboard = load("dashboard-hosts.json").get("dashboard", {})
+check(hosts_dashboard.get("uid") == "hosts", "dashboard hosts is missing")
 
 groups = load("rules.json").get("data", {}).get("groups", [])
+
+
+def group_rules(name):
+    return {rule["name"]: rule for group in groups if group.get("file") == "Vigie" and group.get("name") == name for rule in group["rules"]}
+
+
 rules = {rule["name"]: rule for group in groups if group.get("file") == "Vigie" for rule in group["rules"]}
 expected_groups = {
     "Traefik": {"Traefik server errors", "Traefik slow responses", "Traefik metrics missing"},
@@ -221,13 +264,10 @@ expected_groups = {
         "CrowdSec metrics missing", "CrowdSec bouncer silent", "CrowdSec reads no access log",
         "CrowdSec alert spike", "Login rate limit spike",
     },
+    "Hosts": {"Host disk space low", "ZFS pool unhealthy", "Host memory high", "Host CPU high", "Host metrics missing"},
 }
 for name, expected in expected_groups.items():
-    found = {
-        rule["name"]
-        for group in groups if group.get("file") == "Vigie" and group.get("name") == name
-        for rule in group["rules"]
-    }
+    found = set(group_rules(name))
     check(found == expected, f"rules of group {name} are {sorted(found)}")
 check(set(rules) == set().union(*expected_groups.values()), f"rules in folder Vigie are {sorted(rules)}")
 for name, rule in rules.items():
@@ -272,22 +312,70 @@ for name in ("CrowdSec bouncer silent", "CrowdSec reads no access log"):
     state = rules.get(name, {}).get("state")
     check(state == "inactive", f"rule {name} is {state}")
 
+hosts = group_rules("Hosts")
+expected = expected_groups["Hosts"]
+check(set(hosts) == expected, f"rules in group Hosts are {sorted(hosts)}")
+for name, rule in hosts.items():
+    check(rule.get("health") == "ok" and not rule.get("lastError"), f"rule {name} health {rule.get('health')}: {rule.get('lastError')}")
+# Bruxelles' exporters are unreachable here, Luxembourg's are scraped
+missing = hosts.get("Host metrics missing", {})
+# Grafana lists every series of the rule, scraped ones too (state Normal)
+firing = [alert for alert in missing.get("alerts", []) if alert.get("state", "").lower() not in ("normal", "inactive")]
+check(missing.get("state") in ("pending", "firing"), f"rule Host metrics missing is {missing.get('state')}")
+jobs = sorted(alert["labels"].get("job", alert["labels"].get("exporter")) for alert in firing)
+check(jobs == ["containers-bruxelles", "node-bruxelles"],
+      f"rule Host metrics missing alerts for {jobs}")
+for alert in firing:
+    summary = alert.get("annotations", {}).get("summary", "")
+    check(alert["labels"].get("job", "") in summary and "cannot be scraped" in summary, f"rule Host metrics missing summary is {summary!r}")
+# The pool is ONLINE: its rule is evaluated and does not fire
+unhealthy = hosts.get("ZFS pool unhealthy", {})
+check(unhealthy.get("state") == "inactive", f"rule ZFS pool unhealthy is {unhealthy.get('state')}")
+
+
+def query(expression):
+    url = f"{metrics}/api/v1/query?" + urllib.parse.urlencode({"query": expression})
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            return json.load(response)
+    except Exception as error:
+        return {"status": "error", "error": str(error)}
+
+
+# Every query of the Hosts dashboard parses and, once the exporters have been scraped twice, returns
+# series (ZFS ones only with a pool)
+panels = [panel for panel in json.loads(Path("services/vigie/grafana/dashboards/hosts.json").read_text())["panels"] if panel["type"] != "row"]
+for panel in panels:
+    for target in panel.get("targets", []):
+        expression = target["expr"].replace("$__rate_interval", "2m").replace("$host", ".*").replace("$app", ".*")
+        result = query(expression)
+        check(result.get("status") == "success", f"panel {panel['title']}: {result.get('error')}")
+        if zfs_pool or not re.search(r"zfs", expression):
+            check(bool(result.get("data", {}).get("result")), f"panel {panel['title']} has no data: {expression}")
+# Containers are named after their Compose project (app) and container
+grafana = query(f'container_memory_working_set_bytes{{host="luxembourg", app="{project}", container="{project}-grafana-1"}}')
+check(bool(grafana.get("data", {}).get("result")), f"no memory series for Grafana's container: {grafana}")
+if zfs_pool:
+    state = query(f'node_zfs_zpool_state{{host="luxembourg", zpool="{zfs_pool}", state="online"}}')
+    values = [sample["value"][1] for sample in state.get("data", {}).get("result", [])]
+    check(values == ["1"], f"state of the ZFS pool {zfs_pool} is {state}")
+
 print("\n".join(failures))
 sys.exit(1 if failures else 0)
 EOF
 
-# Poll until every check passes, at most 2 minutes
+# Poll until every check passes, at most 4 minutes: rates need two scrapes, 30 s apart
 failures=""
-for _ in $(seq 24); do
+for _ in $(seq 48); do
     # A failed request leaves an unreadable file: the checks fail and the next round retries
     curl -fsS "$metrics/api/v1/targets" > "$directory/targets.json" || true
     curl -sS "$grafana/api/datasources/uid/victoriametrics/health" > "$directory/datasource.json" || true
-    for uid in traefik crowdsec rate-limits; do
+    for uid in traefik crowdsec rate-limits hosts; do
         curl -sS "$grafana/api/dashboards/uid/$uid" > "$directory/dashboard-$uid.json" || true
     done
     curl -fsS "$grafana/api/prometheus/grafana/api/v1/rules" > "$directory/rules.json" || true
-    if failures=$(uv run python "$directory/check.py" "$directory"); then
-        echo "Vigie provisioned: datasource healthy, dashboard present, alert rules evaluated as expected"
+    if failures=$(uv run python "$directory/check.py" "$directory" "$metrics" "$zfs_pool" "$project"); then
+        echo "Vigie provisioned: datasource healthy, dashboards present, exporters scraped, alert rules evaluated as expected"
         exit 0
     fi
     sleep 5
