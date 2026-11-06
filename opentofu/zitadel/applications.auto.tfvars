@@ -40,4 +40,12 @@ applications = {
     authentication = "client_secret"
     redirect_uris  = ["https://wakapi.dera.page/oidc/zitadel/callback"]
   }
+
+  # Tolgee (translate.anneraud.fr), through its generic OAuth2 login, which
+  # sends the client secret in the request body
+  translate = {
+    project        = "Translate"
+    authentication = "client_secret_post"
+    redirect_uris  = ["https://translate.anneraud.fr/login/auth_callback/oauth2"]
+  }
 }

@@ -264,9 +264,9 @@ mise exec -- uv run ansible-vault view vault/<service>/vault.yml
 
 `ANSIBLE_VAULT_PASSWORD`, when set, takes precedence over the keyring (for machines without one).
 
-## Zitadel login of Wakapi
+## Zitadel login of Wakapi and Tolgee
 
-The deploy provisions its Zitadel application (`wakapi` in `opentofu/zitadel/applications.auto.tfvars`) and passes the client to the service, so run it from the laptop with mise: `mise deploy services/wakapi/deploy.yml`. Without the Zitadel credentials the service keeps only its local login; when provisioning fails, it keeps the client of its previous deploy. The local login stays, as the fallback. No Zitadel role is mapped: administrators stay the ones set in the service, and linking an account keeps its rights.
+Both deploys provision their Zitadel application (`wakapi` and `translate` in `opentofu/zitadel/applications.auto.tfvars`) and pass the client to the service, so run them from the laptop with mise: `mise deploy services/wakapi/deploy.yml`, `mise deploy services/translate/deploy.yml`. Without the Zitadel credentials the service keeps only its local login; when provisioning fails, it keeps the client of its previous deploy. The local login stays in both, as the fallback. Neither maps a Zitadel role: their administrators stay the ones set in the service, and linking an account keeps its rights.
 
 Wakapi (`services/wakapi`): a "Zitadel" button on the login page. Its callback is on its public URL, so Traefik sends a Zitadel login started on `wakapi.anneraud.fr` to `wakapi.dera.page`. Wakapi finds the account of a Zitadel login by its Zitadel user ID only, never by email, and refuses logins that no account is linked to (`WAKAPI_OIDC_ALLOW_SIGNUP=false`, otherwise it would create an empty duplicate). Link each existing account once, on Bruxelles:
 
@@ -275,5 +275,12 @@ Wakapi (`services/wakapi`): a "Zitadel" button on the login page. Its callback i
 3. `UPDATE users SET auth_type = 'zitadel', sub = '<Zitadel user ID>' WHERE id = '<Wakapi username>';`
 
 The account keeps its data, its API key (editor plugins need no change), its admin flag and its password, which still logs in; Wakapi no longer sends it password reset emails. To undo: `UPDATE users SET auth_type = 'local', sub = NULL WHERE id = '<Wakapi username>';`. New people: create their account as before, then link it. Wakapi reads Zitadel's discovery document when it starts and stops if Zitadel does not answer: Docker restarts it until Zitadel is up (after a reboot of Bruxelles, for instance).
+
+Tolgee (`services/translate`): an "OAuth2 login" button on the login page (Tolgee's generic OAuth2 login; its server-wide SSO is in the enterprise edition only). Registrations stay closed: a Zitadel login is refused when no Tolgee account is linked to it, including when an account has the same email, so no duplicate is created. Each person links their account once:
+
+1. Make sure the email of the Tolgee account is their Zitadel email (`<username>@anneraud.fr`): Tolgee only links a Zitadel login with the same email. Change it in Account settings first if needed.
+2. Log in with the Tolgee password, then Account security → Third-party authentication providers → "Use OAuth2", log in to Zitadel and accept the change.
+
+The password keeps working. New people: invite them to an organization or project; they can accept the invitation by logging in through Zitadel. The login rate limit only covers password logins (`POST /api/public/generatetoken`); the Zitadel callback (`GET /api/public/authorize_oauth/oauth2`) is not limited, since Zitadel's own login is (on Bruxelles) and each code works once.
 
 Notes (Docmost) and Téléchargement (qBittorrent) keep their local logins: Docmost's SSO (OpenID Connect, SAML, LDAP) is in its enterprise edition only, and qBittorrent's web interface only has a username and password.

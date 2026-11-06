@@ -6,6 +6,19 @@
     - ../../vault/ansible/vault.yml
     - ../../vault/translate/vault.yml
     - ../../vault/cloudflare/vault.yml
+  pre_tasks:
+    # Without the Zitadel credentials the client id is empty: Tolgee shows no
+    # Zitadel button and keeps only its local login
+    - name: Get Tolgee's Zitadel login
+      ansible.builtin.include_role:
+        name: zitadel
+        tasks_from: login
+      vars:
+        zitadel_login_application: translate
+        zitadel_login_environment_file: "{{ services_root }}/tolgee_anneraud/.env"
+        zitadel_login_client_id_variable: OIDC_CLIENT_ID
+        zitadel_login_client_secret_variable: OIDC_CLIENT_SECRET
+
   roles:
     - role: compose_service
       vars:
@@ -19,6 +32,8 @@
           TOLGEE_SMTP_HOST: "{{ tolgee_smtp_host }}"
           TOLGEE_SMTP_PASSWORD: "{{ tolgee_smtp_password }}"
           TOLGEE_SMTP_USERNAME: "{{ tolgee_smtp_username }}"
+          OIDC_CLIENT_ID: "{{ zitadel_login_client_id }}"
+          OIDC_CLIENT_SECRET: "{{ zitadel_login_client_secret }}"
         compose_service_dns_records:
           - record: translate.anneraud.fr
           - record: translate.xila.dev

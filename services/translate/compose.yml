@@ -16,6 +16,17 @@ services:
       - TOLGEE_AUTHENTICATION_ENABLED=true
       - TOLGEE_AUTHENTICATION_JWT_SECRET=${TOLGEE_AUTHENTICATION_JWT_SECRET}
 
+      # Zitadel login (Tolgee's generic OAuth2), next to the local login,
+      # which stays as the fallback; no button while the client id is empty.
+      # Registrations stay closed (Tolgee's default): a Zitadel login reaches
+      # an existing account only once its owner linked it (readme, Tolgee)
+      - TOLGEE_AUTHENTICATION_OAUTH2_CLIENT_ID=${OIDC_CLIENT_ID}
+      - TOLGEE_AUTHENTICATION_OAUTH2_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
+      - TOLGEE_AUTHENTICATION_OAUTH2_AUTHORIZATION_URL=https://authentification.anneraud.fr/oauth/v2/authorize
+      - TOLGEE_AUTHENTICATION_OAUTH2_TOKEN_URL=https://authentification.anneraud.fr/oauth/v2/token
+      - TOLGEE_AUTHENTICATION_OAUTH2_USER_URL=https://authentification.anneraud.fr/oidc/v1/userinfo
+      - TOLGEE_AUTHENTICATION_OAUTH2_SCOPES=openid,email,profile
+
       - TOLGEE_SMTP_AUTH=true
       - TOLGEE_SMTP_FROM=Translate <translate@anneraud.fr>
       - TOLGEE_SMTP_HOST=${TOLGEE_SMTP_HOST}
@@ -47,7 +58,9 @@ services:
 
       # Logins (POST /api/public/generatetoken) get their own router, rate
       # limited per client address: a burst of 10, then one every 6 s (as the
-      # Bruxelles logins, inventory/host_vars/bruxelles/traefik.yml)
+      # Bruxelles logins, inventory/host_vars/bruxelles/traefik.yml). The
+      # Zitadel callback (GET /api/public/authorize_oauth/oauth2) stays on the
+      # main router: Zitadel checks the password, and the code is single-use
       # yamllint disable-line rule:line-length
       - traefik.http.routers.tolgee-login.rule=Host(`translate.anneraud.fr`) && Method(`POST`) && PathPrefix(`/api/public/generatetoken`)
       - traefik.http.routers.tolgee-login.entrypoints=web-secure
