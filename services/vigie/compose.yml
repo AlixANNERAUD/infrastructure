@@ -23,10 +23,12 @@ services:
       - ./scrape.yml:/etc/vigie/scrape.yml:ro
       - ./victoriametrics:/victoria-metrics-data
     # The proxy network reaches Luxembourg's Traefik and, through the host,
-    # Bruxelles' over Netbird; the port is never published
+    # Bruxelles' over Netbird; protection-metrics only reaches CrowdSec's
+    # metrics proxy (services/protection). The port is never published
     networks:
       - vigie
       - proxy
+      - protection-metrics
 
   grafana:
     image: grafana/grafana:13.3.0
@@ -83,4 +85,8 @@ networks:
     internal: true
   proxy:
     name: "${PROXY_NETWORK}"
+    external: true
+  # Created by both playbooks; empty on a host without CrowdSec
+  protection-metrics:
+    name: protection-metrics
     external: true

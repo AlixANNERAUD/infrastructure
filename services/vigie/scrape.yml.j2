@@ -20,3 +20,15 @@ scrape_configs:
       - targets: ["{{ hostvars['bruxelles'].traefik_dashboard_host }}"]
         labels:
           host: bruxelles
+{% if inventory_hostname in groups['protection'] %}
+
+  # CrowdSec on this host (services/protection), through its metrics proxy on
+  # the internal protection-metrics network: only /metrics gets through
+  - job_name: crowdsec
+    metrics_path: /metrics
+    scheme: http
+    static_configs:
+      - targets: ["crowdsec-metrics:6060"]
+        labels:
+          host: {{ inventory_hostname }}
+{% endif %}

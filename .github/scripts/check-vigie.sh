@@ -19,7 +19,7 @@ cleanup() {
         compose logs --no-color --tail 50 || true
     fi
     compose down --volumes --timeout 5 > /dev/null 2>&1 || true
-    docker network rm "$network" > /dev/null 2>&1 || true
+    docker network rm "$network" protection-metrics > /dev/null 2>&1 || true
     rm -rf "$directory"
     exit "$status"
 }
@@ -77,6 +77,8 @@ services:
     ports: ["127.0.0.1::3000"]
 EOF
 docker network create "$network" > /dev/null
+# Shared with CrowdSec's metrics proxy, which does not run here: its target is down
+docker network create --internal protection-metrics > /dev/null
 
 # VictoriaMetrics must accept the scrape configuration as it is
 compose run --rm --no-deps victoriametrics \
@@ -124,9 +126,46 @@ for step in range(17):
             print(f'traefik_service_request_duration_seconds_bucket{{{labels},le="{bound}"}} {total if fast else 0} {timestamp}')
         print(f"traefik_service_request_duration_seconds_count{{{labels}}} {total} {timestamp}")
         print(f"traefik_service_request_duration_seconds_sum{{{labels}}} {total * 0.05 if service == 'app@file' else total * 4} {timestamp}")
+    # Protection: 80 login requests over the limit on vaultwarden-login@file (the
+    # rate limit rule must fire), 160 429 answers on app@file, which has no
+    # login rate limit (it must not), and 48 CrowdSec alerts (the spike rule must fire)
+    for router, count in (("vaultwarden-login@file", step * 5), ("app@file", step * 10)):
+        service = router.replace("-login", "")
+        labels = f'router="{router}",service="{service}",code="429",method="POST",protocol="http",host="bruxelles"'
+        print(f"traefik_router_requests_total{{{labels}}} {count} {timestamp}")
+    labels = 'name="crowdsecurity/http-probing",job="crowdsec",host="luxembourg"'
+    print(f"cs_bucket_overflowed_total{{{labels}}} {step * 3} {timestamp}")
 EOF
 curl -fsS --data-binary "@$directory/samples.prom" "$metrics/api/v1/import/prometheus"
 curl -fsS "$metrics/internal/force_flush" > /dev/null
+
+# Every query of the protection dashboards must be valid MetricsQL
+uv run python - "$metrics" <<'EOF'
+import json
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+failures = []
+for name in ("crowdsec.json", "rate_limits.json"):
+    panels = json.loads(Path("services/vigie/grafana/dashboards", name).read_text())["panels"]
+    for panel in panels:
+        for target in panel.get("targets", []):
+            query = target["expr"].replace("$host", ".*").replace("$__rate_interval", "2m")
+            query = query.replace("$__interval", "1m").replace("$__range", "1h")
+            url = sys.argv[1] + "/api/v1/query?" + urllib.parse.urlencode({"query": query})
+            try:
+                with urllib.request.urlopen(url) as response:
+                    status = json.load(response).get("status")
+            except urllib.error.HTTPError as error:
+                status = error.read().decode()
+            if status != "success":
+                failures.append(f"{name}, {panel['title']}: {status}")
+print("\n".join(failures) or "The protection dashboards' queries are valid")
+sys.exit(1 if failures else 0)
+EOF
 
 cat > "$directory/check.py" <<'EOF'
 import json
@@ -152,26 +191,45 @@ def check(condition, message):
 
 
 targets = {
-    target["labels"].get("host"): target["scrapeUrl"]
+    (target["labels"].get("job"), target["labels"].get("host")): target["scrapeUrl"]
     for target in load("targets.json").get("data", {}).get("activeTargets", [])
 }
 check(
-    targets == {"luxembourg": "http://traefik:8082/metrics", "bruxelles": "https://traefik.bruxelles.anneraud.fr/metrics"},
+    targets == {
+        ("traefik-luxembourg", "luxembourg"): "http://traefik:8082/metrics",
+        ("traefik-bruxelles", "bruxelles"): "https://traefik.bruxelles.anneraud.fr/metrics",
+        ("crowdsec", "luxembourg"): "http://crowdsec-metrics:6060/metrics",
+    },
     f"scrape targets are {targets}",
 )
 
 datasource = load("datasource.json")
 check(datasource.get("status") == "OK", f"datasource health is {datasource}")
 
-dashboard = load("dashboard.json").get("dashboard", {})
-check(dashboard.get("uid") == "traefik", "dashboard traefik is missing")
-variables = [variable["name"] for variable in dashboard.get("templating", {}).get("list", [])]
-check("host" in variables, f"dashboard variables are {variables}")
+for uid in ("traefik", "crowdsec", "rate-limits"):
+    dashboard = load(f"dashboard-{uid}.json").get("dashboard", {})
+    check(dashboard.get("uid") == uid, f"dashboard {uid} is missing")
+    variables = [variable["name"] for variable in dashboard.get("templating", {}).get("list", [])]
+    check("host" in variables, f"dashboard {uid} variables are {variables}")
 
 groups = load("rules.json").get("data", {}).get("groups", [])
 rules = {rule["name"]: rule for group in groups if group.get("file") == "Vigie" for rule in group["rules"]}
-expected = {"Traefik server errors", "Traefik slow responses", "Traefik metrics missing"}
-check(set(rules) == expected, f"rules in folder Vigie are {sorted(rules)}")
+expected_groups = {
+    "Traefik": {"Traefik server errors", "Traefik slow responses", "Traefik metrics missing"},
+    # Luxembourg, Vigie's host, runs CrowdSec: its rules are rendered
+    "Protection": {
+        "CrowdSec metrics missing", "CrowdSec bouncer silent", "CrowdSec reads no access log",
+        "CrowdSec alert spike", "Login rate limit spike",
+    },
+}
+for name, expected in expected_groups.items():
+    found = {
+        rule["name"]
+        for group in groups if group.get("file") == "Vigie" and group.get("name") == name
+        for rule in group["rules"]
+    }
+    check(found == expected, f"rules of group {name} are {sorted(found)}")
+check(set(rules) == set().union(*expected_groups.values()), f"rules in folder Vigie are {sorted(rules)}")
 for name, rule in rules.items():
     check(rule.get("health") == "ok" and not rule.get("lastError"), f"rule {name} health {rule.get('health')}: {rule.get('lastError')}")
 # The error rule waits 10 minutes before firing, so pending means its condition holds
@@ -190,6 +248,30 @@ for alert in errors.get("alerts", []):
 latency = rules.get("Traefik slow responses", {})
 check(latency.get("state") == "inactive", f"rule Traefik slow responses is {latency.get('state')}")
 
+
+def alerting(name, label, values, words):
+    """The rule is pending or firing for exactly these label values, with these words in its summary"""
+    rule = rules.get(name, {})
+    check(rule.get("state") in ("pending", "firing"), f"rule {name} is {rule.get('state')}")
+    found = sorted(alert["labels"].get(label) for alert in rule.get("alerts", []))
+    check(found == values, f"rule {name} alerts for {found}")
+    for alert in rule.get("alerts", []):
+        summary = alert.get("annotations", {}).get("summary", "")
+        check(
+            all(word in summary for word in words) and "no value" not in summary and "<" not in summary,
+            f"rule {name} summary is {summary!r}",
+        )
+
+
+# Its target does not resolve here: up = 0
+alerting("CrowdSec metrics missing", "host", ["luxembourg"], ["luxembourg", "cannot be scraped"])
+alerting("CrowdSec alert spike", "host", ["luxembourg"], ["luxembourg", "48 alerts"])
+alerting("Login rate limit spike", "router", ["vaultwarden-login@file"], ["vaultwarden-login@file", "bruxelles", "80 login"])
+# Both wait for CrowdSec to answer, which it does not here
+for name in ("CrowdSec bouncer silent", "CrowdSec reads no access log"):
+    state = rules.get(name, {}).get("state")
+    check(state == "inactive", f"rule {name} is {state}")
+
 print("\n".join(failures))
 sys.exit(1 if failures else 0)
 EOF
@@ -200,7 +282,9 @@ for _ in $(seq 24); do
     # A failed request leaves an unreadable file: the checks fail and the next round retries
     curl -fsS "$metrics/api/v1/targets" > "$directory/targets.json" || true
     curl -sS "$grafana/api/datasources/uid/victoriametrics/health" > "$directory/datasource.json" || true
-    curl -sS "$grafana/api/dashboards/uid/traefik" > "$directory/dashboard.json" || true
+    for uid in traefik crowdsec rate-limits; do
+        curl -sS "$grafana/api/dashboards/uid/$uid" > "$directory/dashboard-$uid.json" || true
+    done
     curl -fsS "$grafana/api/prometheus/grafana/api/v1/rules" > "$directory/rules.json" || true
     if failures=$(uv run python "$directory/check.py" "$directory"); then
         echo "Vigie provisioned: datasource healthy, dashboard present, alert rules evaluated as expected"
