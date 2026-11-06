@@ -1,6 +1,6 @@
 # Projects, roles and applications all belong to this organization, the one
-# the service account is ORG_OWNER of. Named rather than the default one: the
-# instance's default organization (ZITADEL) only holds its administrator
+# the service account is ORG_OWNER of. Named rather than taken as the default
+# one, so changing the instance's default never moves the applications
 data "zitadel_organizations" "organization" {
   name        = var.organization
   name_method = "TEXT_QUERY_METHOD_EQUALS"
