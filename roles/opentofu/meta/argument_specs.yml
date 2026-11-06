@@ -1,0 +1,24 @@
+---
+argument_specs:
+  main:
+    short_description: Apply an OpenTofu configuration from the controller
+    description:
+      - Runs tofu init and apply on the controller, with variables from a temporary file and secrets through the environment.
+      - Registers opentofu_apply (with the outputs) and sets opentofu_state_changed. Reminds to commit the state when it changed,
+        also after an apply that failed halfway. Fails with OpenTofu's error.
+    options:
+      opentofu_project_path:
+        type: path
+        required: true
+        description: Folder of the OpenTofu configuration.
+      opentofu_state_path:
+        type: path
+        required: true
+        description: Encrypted state file, in the vault repository; also passed as TF_VAR_state_path.
+      opentofu_variables:
+        type: dict
+        description: Variables written to a temporary 0600 file (never on the command line).
+      opentofu_secret_variables:
+        type: dict
+        no_log: true
+        description: Secrets passed only through the environment, as TF_VAR_<name>.

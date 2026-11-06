@@ -1,0 +1,14 @@
+---
+# OpenTofu configuration to apply (required)
+# opentofu_project_path:
+
+# Encrypted state of that configuration, compared before and after the apply
+# and passed as TF_VAR_state_path (the local backend's path) (required)
+# opentofu_state_path:
+
+# Variables written to a temporary 0600 file, so they never reach the process
+# list; they override the configuration's *.auto.tfvars
+opentofu_variables: {}
+
+# Secrets, passed only through the environment as TF_VAR_<name>
+opentofu_secret_variables: {}

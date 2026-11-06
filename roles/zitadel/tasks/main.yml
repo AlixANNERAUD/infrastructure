@@ -31,20 +31,6 @@
   delegate_to: localhost
   run_once: true
   block:
-    # community.general.terraform needs the binary's full path
-    - name: Find OpenTofu
-      ansible.builtin.command:
-        argv: [which, tofu]
-      register: zitadel_opentofu_binary
-      changed_when: false
-      failed_when: false
-
-    - name: Check that OpenTofu is installed
-      ansible.builtin.assert:
-        that: zitadel_opentofu_binary.rc == 0
-        fail_msg: OpenTofu is not installed; run mise install at the root of the repository.
-        quiet: true
-
     # An apply without users would delete every one of them
     - name: Check that the users are listed
       ansible.builtin.assert:
@@ -62,87 +48,27 @@
           (an empty host would delete Zitadel's SMTP provider), or zitadel_opentofu_smtp_enabled to false.
         quiet: true
 
-    # Even a failed apply can change the state (resources created before the error)
-    - name: Read the state before the apply
-      ansible.builtin.stat:
-        path: "{{ zitadel_opentofu_state_path }}"
-        checksum_algorithm: sha256
-      register: zitadel_state_before
-
     - name: Apply the OpenTofu configuration
-      block:
-        # Variables on the command line override applications.auto.tfvars;
-        # a file keeps the applications map out of the process list
-        - name: Create the variables file
-          ansible.builtin.tempfile:
-            suffix: .tfvars.json
-          register: zitadel_opentofu_variables_file
-          changed_when: false
+      ansible.builtin.include_role:
+        name: opentofu
+      vars:
+        opentofu_project_path: "{{ zitadel_opentofu_project_path }}"
+        opentofu_state_path: "{{ zitadel_opentofu_state_path }}"
+        opentofu_variables: >-
+          {{ zitadel_opentofu_variables
+             | combine({'users': zitadel_opentofu_users,
+                        'smtp_host': zitadel_opentofu_smtp_host,
+                        'smtp_user': zitadel_opentofu_smtp_user}) }}
+        opentofu_secret_variables:
+          zitadel_token: "{{ zitadel_opentofu_token }}"
+          state_passphrase: "{{ zitadel_opentofu_state_passphrase }}"
+          smtp_password: "{{ zitadel_opentofu_smtp_password }}"
 
-        - name: Write the variables file
-          ansible.builtin.copy:
-            dest: "{{ zitadel_opentofu_variables_file.path }}"
-            content: >-
-              {{ zitadel_opentofu_variables
-                 | combine({'users': zitadel_opentofu_users,
-                            'smtp_host': zitadel_opentofu_smtp_host,
-                            'smtp_user': zitadel_opentofu_smtp_user})
-                 | to_json }}
-            mode: "0600"
-          changed_when: false
-
-        # tofu apply re-reads the variables to compare them with the plan's, so
-        # it gets the file too; the token and the passphrase only go through the
-        # environment, as does state_path, which tofu init needs for the backend
-        - name: Run tofu apply
-          community.general.terraform:
-            project_path: "{{ zitadel_opentofu_project_path }}"
-            binary_path: "{{ zitadel_opentofu_binary.stdout }}"
-            variables_files:
-              - "{{ zitadel_opentofu_variables_file.path }}"
-            force_init: true
-            init_reconfigure: true
-            state: present
-          environment: >-
-            {{ {'TF_VAR_zitadel_token': zitadel_opentofu_token,
-                'TF_VAR_state_passphrase': zitadel_opentofu_state_passphrase,
-                'TF_VAR_smtp_password': zitadel_opentofu_smtp_password,
-                'TF_CLI_ARGS_apply': '-var-file=' ~ zitadel_opentofu_variables_file.path,
-                'TF_REGISTRY_CLIENT_TIMEOUT': '120'}
-               | combine({'TF_VAR_state_path': zitadel_opentofu_variables.state_path}
-                         if zitadel_opentofu_variables.state_path is defined else {}) }}
-          register: zitadel_apply
-          no_log: true
-
-      # no_log hides the failure; OpenTofu redacts sensitive values from its errors
-      rescue:
-        - name: Report the OpenTofu error
-          ansible.builtin.fail:
-            msg: "{{ zitadel_apply.msg | default('tofu apply failed') }}"
-
-      always:
-        - name: Read the state after the apply
-          ansible.builtin.stat:
-            path: "{{ zitadel_opentofu_state_path }}"
-            checksum_algorithm: sha256
-          register: zitadel_state_after
-
-        - name: Tell whether the state changed
-          ansible.builtin.set_fact:
-            zitadel_state_changed: >-
-              {{ zitadel_state_before.stat.checksum | default('') != zitadel_state_after.stat.checksum | default('') }}
-
-        - name: Remind to commit the state
-          ansible.builtin.debug:
-            msg: Commit vault/authentification/opentofu.tfstate in the vault repository.
-          when: zitadel_state_changed
-
-        - name: Remove the variables file
-          ansible.builtin.file:
-            path: "{{ zitadel_opentofu_variables_file.path }}"
-            state: absent
-          changed_when: false
-          when: zitadel_opentofu_variables_file.path is defined
+    - name: Keep the apply's result
+      ansible.builtin.set_fact:
+        zitadel_apply: "{{ opentofu_apply }}"
+        zitadel_state_changed: "{{ opentofu_state_changed }}"
+      no_log: true
 
     - name: Set the provisioning facts
       ansible.builtin.set_fact:

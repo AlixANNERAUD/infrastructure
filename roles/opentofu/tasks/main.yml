@@ -1,0 +1,94 @@
+---
+# Everything runs on the controller, which holds the vault and the state
+- name: Apply the OpenTofu configuration
+  delegate_to: localhost
+  run_once: true
+  become: false
+  block:
+    # community.general.terraform needs the binary's full path
+    - name: Find OpenTofu
+      ansible.builtin.command:
+        argv: [which, tofu]
+      register: opentofu_binary
+      changed_when: false
+      failed_when: false
+
+    - name: Check that OpenTofu is installed
+      ansible.builtin.assert:
+        that: opentofu_binary.rc == 0
+        fail_msg: OpenTofu is not installed or not on PATH; run the playbook with mise (mise deploy <playbook>).
+        quiet: true
+
+    # Even a failed apply can change the state (resources created before the error)
+    - name: Read the state before the apply
+      ansible.builtin.stat:
+        path: "{{ opentofu_state_path }}"
+        checksum_algorithm: sha256
+      register: opentofu_state_before
+
+    - name: Run the apply
+      block:
+        - name: Create the variables file
+          ansible.builtin.tempfile:
+            suffix: .tfvars.json
+          register: opentofu_variables_file
+          changed_when: false
+
+        - name: Write the variables file
+          ansible.builtin.copy:
+            dest: "{{ opentofu_variables_file.path }}"
+            content: "{{ opentofu_variables | to_json }}"
+            mode: "0600"
+          changed_when: false
+
+        # tofu apply re-reads the variables to compare them with the plan's, so
+        # it gets the file too; secrets and the state path (which tofu init
+        # needs for the backend) only go through the environment
+        - name: Run tofu apply
+          community.general.terraform:
+            project_path: "{{ opentofu_project_path }}"
+            binary_path: "{{ opentofu_binary.stdout }}"
+            variables_files:
+              - "{{ opentofu_variables_file.path }}"
+            force_init: true
+            init_reconfigure: true
+            state: present
+          environment: >-
+            {{ dict(opentofu_secret_variables | dict2items
+                    | map(attribute='key') | map('regex_replace', '^', 'TF_VAR_')
+                    | zip(opentofu_secret_variables.values()))
+               | combine({'TF_VAR_state_path': opentofu_state_path,
+                          'TF_CLI_ARGS_apply': '-var-file=' ~ opentofu_variables_file.path,
+                          'TF_REGISTRY_CLIENT_TIMEOUT': '120'}) }}
+          register: opentofu_apply
+          no_log: true
+
+      # no_log hides the failure; OpenTofu redacts sensitive values from its errors
+      rescue:
+        - name: Report the OpenTofu error
+          ansible.builtin.fail:
+            msg: "{{ opentofu_apply.msg | default('tofu apply failed') }}"
+
+      always:
+        - name: Read the state after the apply
+          ansible.builtin.stat:
+            path: "{{ opentofu_state_path }}"
+            checksum_algorithm: sha256
+          register: opentofu_state_after
+
+        - name: Tell whether the state changed
+          ansible.builtin.set_fact:
+            opentofu_state_changed: >-
+              {{ opentofu_state_before.stat.checksum | default('') != opentofu_state_after.stat.checksum | default('') }}
+
+        - name: Remind to commit the state
+          ansible.builtin.debug:
+            msg: Commit {{ opentofu_state_path | realpath }} in the vault repository.
+          when: opentofu_state_changed
+
+        - name: Remove the variables file
+          ansible.builtin.file:
+            path: "{{ opentofu_variables_file.path }}"
+            state: absent
+          changed_when: false
+          when: opentofu_variables_file.path is defined
