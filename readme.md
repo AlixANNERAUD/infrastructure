@@ -192,6 +192,7 @@ OpenTofu (`opentofu/zitadel/`) owns the whole Anneraud organization: the organiz
 
 - `zitadel_automation_token`: personal access token of the `opentofu` service user of the ZITADEL organization, a manager of the instance with IAM_OWNER (Default settings → Managers).
 - `zitadel_state_passphrase`: passphrase of the state (`openssl rand -base64 32`).
+- `zitadel_smtp_host` (`host:port`), `zitadel_smtp_user`, `zitadel_smtp_password`: SMTP2GO credentials for Zitadel's emails, sent from `authentification@anneraud.fr`. Without a host, Zitadel sends no email.
 - `zitadel_users`: the people, keyed by username, kept out of the public repository. The role refuses to run without them: an empty list would delete every user.
 
 ```yaml

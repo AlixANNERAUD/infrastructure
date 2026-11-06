@@ -46,6 +46,25 @@ variable "state_path" {
   default     = "../../vault/authentification/opentofu.tfstate"
 }
 
+variable "smtp_host" {
+  description = "SMTP server with its port (host:port); empty sends no emails."
+  type        = string
+  default     = ""
+}
+
+variable "smtp_user" {
+  description = "SMTP user."
+  type        = string
+  default     = ""
+}
+
+variable "smtp_password" {
+  description = "SMTP password."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "users" {
   description = "People of the organization, keyed by username (from the vault)."
   type = map(object({

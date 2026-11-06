@@ -22,6 +22,16 @@ argument_specs:
         type: dict
         no_log: true
         description: People of the organization keyed by username (vault zitadel_users); the role fails when it is empty.
+      zitadel_opentofu_smtp_host:
+        type: str
+        description: SMTP server as host:port (vault zitadel_smtp_host); empty configures no SMTP.
+      zitadel_opentofu_smtp_user:
+        type: str
+        description: SMTP user (vault zitadel_smtp_user).
+      zitadel_opentofu_smtp_password:
+        type: str
+        no_log: true
+        description: SMTP password (vault zitadel_smtp_password), passed through the environment.
       zitadel_opentofu_variables:
         type: dict
         description: >-

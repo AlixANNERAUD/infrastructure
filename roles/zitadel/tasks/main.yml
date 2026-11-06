@@ -66,7 +66,12 @@
         - name: Write the variables file
           ansible.builtin.copy:
             dest: "{{ zitadel_opentofu_variables_file.path }}"
-            content: "{{ zitadel_opentofu_variables | combine({'users': zitadel_opentofu_users}) | to_json }}"
+            content: >-
+              {{ zitadel_opentofu_variables
+                 | combine({'users': zitadel_opentofu_users,
+                            'smtp_host': zitadel_opentofu_smtp_host,
+                            'smtp_user': zitadel_opentofu_smtp_user})
+                 | to_json }}
             mode: "0600"
           changed_when: false
 
@@ -85,6 +90,7 @@
           environment: >-
             {{ {'TF_VAR_zitadel_token': zitadel_opentofu_token,
                 'TF_VAR_state_passphrase': zitadel_opentofu_state_passphrase,
+                'TF_VAR_smtp_password': zitadel_opentofu_smtp_password,
                 'TF_CLI_ARGS_apply': '-var-file=' ~ zitadel_opentofu_variables_file.path,
                 'TF_REGISTRY_CLIENT_TIMEOUT': '120'}
                | combine({'TF_VAR_state_path': zitadel_opentofu_variables.state_path}

@@ -13,6 +13,11 @@ zitadel_opentofu_project_path: "{{ playbook_dir }}/../../opentofu/zitadel"
 # without them, since OpenTofu would delete every user
 zitadel_opentofu_users: "{{ zitadel_users | default({}) }}"
 
+# SMTP2GO for Zitadel's emails; without a host, Zitadel sends none
+zitadel_opentofu_smtp_host: "{{ zitadel_smtp_host | default('') }}"
+zitadel_opentofu_smtp_user: "{{ zitadel_smtp_user | default('') }}"
+zitadel_opentofu_smtp_password: "{{ zitadel_smtp_password | default('') }}"
+
 # Extra OpenTofu variables, overriding the configuration's defaults and
 # applications.auto.tfvars: {zitadel_domain: localhost, applications: {...}}
 zitadel_opentofu_variables: {}
