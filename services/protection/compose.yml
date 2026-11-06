@@ -11,7 +11,7 @@ services:
   # Security engine: reads Traefik's access log, detects attacks with the hub's
   # scenarios and serves the resulting decisions (local API) to Traefik's bouncer
   crowdsec:
-    image: crowdsecurity/crowdsec:v1.8.1
+    image: crowdsecurity/crowdsec:v1.8.2
     logging: *logging
     container_name: crowdsec
     restart: unless-stopped
