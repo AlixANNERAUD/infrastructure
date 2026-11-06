@@ -34,17 +34,16 @@ services:
       - traefik
     labels:
       - traefik.enable=true
-      # Main Router for the new domain
-      - traefik.http.routers.weblate.rule=Host(`translate.anneraud.fr`) || Host(`translate.xila.dev`)
-      - traefik.http.routers.weblate.entrypoints=web-secure
-      - traefik.http.routers.weblate.tls=true
-      - traefik.http.routers.weblate.tls.certResolver=letsencrypt
-      - traefik.http.services.weblate.loadbalancer.server.port=8080
+      # Main router; translate.xila.dev redirects to translate.anneraud.fr
+      - traefik.http.routers.tolgee.rule=Host(`translate.anneraud.fr`) || Host(`translate.xila.dev`)
+      - traefik.http.routers.tolgee.entrypoints=web-secure
+      - traefik.http.routers.tolgee.tls=true
+      - traefik.http.routers.tolgee.tls.certResolver=letsencrypt
+      - traefik.http.services.tolgee.loadbalancer.server.port=8080
 
-      # 2. Attach the redirect middleware
-      - traefik.http.routers.weblate.middlewares=weblate-redirection
-      - traefik.http.middlewares.weblate-redirection.redirectregex.regex=^https?://translate.xila.dev/(.*)
-      - traefik.http.middlewares.weblate-redirection.redirectregex.replacement=https://translate.anneraud.fr/$$1
+      - traefik.http.routers.tolgee.middlewares=tolgee-redirection
+      - traefik.http.middlewares.tolgee-redirection.redirectregex.regex=^https?://translate.xila.dev/(.*)
+      - traefik.http.middlewares.tolgee-redirection.redirectregex.replacement=https://translate.anneraud.fr/$$1
 
       # Logins (POST /api/public/generatetoken) get their own router, rate
       # limited per client address: a burst of 10, then one every 6 s (as the
@@ -53,7 +52,7 @@ services:
       - traefik.http.routers.tolgee-login.rule=Host(`translate.anneraud.fr`) && Method(`POST`) && PathPrefix(`/api/public/generatetoken`)
       - traefik.http.routers.tolgee-login.entrypoints=web-secure
       - traefik.http.routers.tolgee-login.tls=true
-      - traefik.http.routers.tolgee-login.service=weblate
+      - traefik.http.routers.tolgee-login.service=tolgee
       - traefik.http.routers.tolgee-login.middlewares=tolgee-login-rate-limit
       - traefik.http.middlewares.tolgee-login-rate-limit.ratelimit.average=10
       - traefik.http.middlewares.tolgee-login-rate-limit.ratelimit.period=1m
