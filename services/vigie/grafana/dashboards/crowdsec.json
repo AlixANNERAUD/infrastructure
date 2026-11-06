@@ -374,8 +374,8 @@
     },
     {
       "type": "stat",
-      "title": "Last heartbeat",
-      "description": "Time since the engine's log processor last checked in with its local API",
+      "title": "Lines parsed over the period",
+      "description": "Access log lines parsed into events over the selected period",
       "datasource": {
         "type": "prometheus",
         "uid": "victoriametrics"
@@ -390,16 +390,17 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "red",
                 "value": null
               },
               {
-                "color": "red",
-                "value": 300
+                "color": "green",
+                "value": 1
               }
             ]
           },
-          "unit": "s"
+          "unit": "short",
+          "decimals": 0
         },
         "overrides": []
       },
@@ -424,11 +425,11 @@
             "uid": "victoriametrics"
           },
           "editorMode": "code",
-          "expr": "time() - max(cs_machines_last_heartbeat_timestamp{host=~\"$host\"})",
-          "legendFormat": "Heartbeat",
+          "expr": "sum(increase(cs_parser_hits_ok_total{host=~\"$host\"}[$__range])) or vector(0)",
+          "legendFormat": "Parsed",
           "refId": "A",
-          "range": true,
-          "instant": false
+          "range": false,
+          "instant": true
         }
       ],
       "id": 7,

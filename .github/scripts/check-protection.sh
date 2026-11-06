@@ -262,7 +262,7 @@ fi
 for series in cs_info cs_lapi_bouncer_requests_total cs_lapi_route_requests_total cs_lapi_request_duration_seconds_bucket \
     cs_dockersource_hits_total cs_parser_hits_ok_total cs_bucket_poured_total \
     'cs_bucket_overflowed_total{name="crowdsecurity/http-probing"}' 'cs_active_decisions{action="ban",origin="crowdsec"' \
-    cs_alerts cs_machines_last_heartbeat_timestamp process_resident_memory_bytes; do
+    cs_alerts process_resident_memory_bytes; do
     if ! grep -qF "$series" <<< "$metrics"; then
         echo "CrowdSec's metrics lack $series"
         exit 1
