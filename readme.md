@@ -224,7 +224,21 @@ zitadel_users:
 
 Users without `temporary_password` get Zitadel's invitation email. Both only happen when the user is created: setting `temporary_password` on an existing user changes nothing in Zitadel (reset the password from the console instead). Logins read `<username>@anneraud.fr`.
 
-To add an OIDC application, add an entry to `applications.auto.tfvars` (`authentication = "client_secret"` and `configured_in` when the service needs a secret pasted in) and run `mise deploy services/authentification/applications.yml`: it prints the issuer, client id and `configured_in`, and writes client secrets to `~/.config/infrastructure/zitadel/<application>.secret`.
+A service deployed by this repository gets its login from the role's `login` entry point in its playbook's `pre_tasks`; the client id and secret come back as `zitadel_login_client_id` and `zitadel_login_client_secret`, for its `.env`. They are empty without the Zitadel credentials, and keep the previous deploy's values when provisioning fails:
+
+```yaml
+- name: Get MCPHub's Zitadel login
+  ansible.builtin.include_role:
+    name: zitadel
+    tasks_from: login
+  vars:
+    zitadel_login_application: mcphub                         # key in applications.auto.tfvars
+    zitadel_login_environment_file: "{{ services_root }}/MCPHub/.env"
+    zitadel_login_client_id_variable: OIDC_CLIENT_ID          # names in that .env
+    zitadel_login_client_secret_variable: OIDC_CLIENT_SECRET  # omitted for PKCE clients
+```
+
+For a service managed outside this repository, add an entry to `applications.auto.tfvars` (`authentication = "client_secret"` and `configured_in` when the service needs a secret pasted in) and run `mise deploy services/authentification/applications.yml`: it prints the issuer, client id and `configured_in`, and writes client secrets to `~/.config/infrastructure/zitadel/<application>.secret`.
 
 ## Vault
 

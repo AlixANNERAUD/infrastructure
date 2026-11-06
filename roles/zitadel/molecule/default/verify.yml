@@ -368,3 +368,73 @@
           - not zitadel_provisioned
           - zitadel_client_ids == {}
           - zitadel_client_secrets == {}
+
+    # The login entry point, as the services' playbooks use it
+    - name: Get Grafana's login
+      ansible.builtin.include_role:
+        name: zitadel
+        tasks_from: login
+      vars:
+        zitadel_opentofu_token: "{{ zitadel_test_token }}"
+        zitadel_opentofu_state_passphrase: "{{ zitadel_test_state_passphrase }}"
+        zitadel_opentofu_users: "{{ zitadel_test_users }}"
+        zitadel_opentofu_variables: "{{ zitadel_test_variables }}"
+        zitadel_login_application: grafana
+        zitadel_login_environment_file: "{{ zitadel_test_directory }}/missing.env"
+        zitadel_login_client_id_variable: GRAFANA_OAUTH_CLIENT_ID
+
+    - name: Check Grafana's login
+      ansible.builtin.assert:
+        that:
+          - zitadel_login_client_id == zitadel_test_client_ids.grafana
+          - zitadel_login_client_secret == ''
+
+    - name: Get MCPHub's login
+      ansible.builtin.include_role:
+        name: zitadel
+        tasks_from: login
+      vars:
+        zitadel_opentofu_token: "{{ zitadel_test_token }}"
+        zitadel_opentofu_state_passphrase: "{{ zitadel_test_state_passphrase }}"
+        zitadel_opentofu_users: "{{ zitadel_test_users }}"
+        zitadel_opentofu_variables: "{{ zitadel_test_variables }}"
+        zitadel_login_application: mcphub
+        zitadel_login_environment_file: "{{ zitadel_test_directory }}/missing.env"
+        zitadel_login_client_id_variable: OIDC_CLIENT_ID
+        zitadel_login_client_secret_variable: OIDC_CLIENT_SECRET
+
+    - name: Check MCPHub's login
+      ansible.builtin.assert:
+        that:
+          - zitadel_login_client_id == zitadel_test_client_ids.mcphub
+          - zitadel_login_client_secret == zitadel_client_secrets.mcphub
+      no_log: true
+
+    - name: Write the environment of a previous deploy
+      ansible.builtin.copy:
+        dest: "{{ zitadel_test_directory }}/previous.env"
+        content: |
+          OTHER=value
+          OIDC_CLIENT_ID=previous-id
+          OIDC_CLIENT_SECRET=previous=secret
+        mode: "0600"
+
+    - name: Get MCPHub's login with a token Zitadel refuses
+      ansible.builtin.include_role:
+        name: zitadel
+        tasks_from: login
+      vars:
+        zitadel_opentofu_token: refused-token
+        zitadel_opentofu_state_passphrase: "{{ zitadel_test_state_passphrase }}"
+        zitadel_opentofu_users: "{{ zitadel_test_users }}"
+        zitadel_opentofu_variables: "{{ zitadel_test_variables }}"
+        zitadel_login_application: mcphub
+        zitadel_login_environment_file: "{{ zitadel_test_directory }}/previous.env"
+        zitadel_login_client_id_variable: OIDC_CLIENT_ID
+        zitadel_login_client_secret_variable: OIDC_CLIENT_SECRET
+
+    - name: Check that the previous login is kept
+      ansible.builtin.assert:
+        that:
+          - zitadel_login_client_id == 'previous-id'
+          - zitadel_login_client_secret == 'previous=secret'

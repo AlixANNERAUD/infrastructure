@@ -28,3 +28,9 @@ zitadel_opentofu_state_path: >-
 # Extra OpenTofu variables, overriding the configuration's defaults and
 # applications.auto.tfvars: {zitadel_domain: localhost, applications: {...}}
 zitadel_opentofu_variables: {}
+
+# Entry point login (tasks_from: login), for a service's playbook
+# The Zitadel vault, loaded when present (absent: the service keeps its local login only)
+zitadel_login_vault_path: "{{ playbook_dir }}/../../vault/authentification/vault.yml"
+# The service's .env variable holding the client secret; empty for PKCE clients
+zitadel_login_client_secret_variable: ""

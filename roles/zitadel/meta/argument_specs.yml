@@ -44,3 +44,29 @@ argument_specs:
         description: >-
           Extra OpenTofu variables (zitadel_domain, zitadel_port, zitadel_insecure, organization_name,
           organization_domain, state_path, applications).
+  login:
+    short_description: Get a service's Zitadel login, provisioning the organization
+    description:
+      - For a service's playbook. Loads the Zitadel vault when present, provisions the organization (main), then sets
+        zitadel_login_client_id and zitadel_login_client_secret for the service's .env.
+      - Without the Zitadel credentials both are empty. When provisioning fails, the values of the previous deploy are
+        kept, read from the service's .env.
+    options:
+      zitadel_login_application:
+        type: str
+        required: true
+        description: The application's key in opentofu/zitadel/applications.auto.tfvars.
+      zitadel_login_environment_file:
+        type: path
+        required: true
+        description: The service's .env on the host, read for the previous deploy's values.
+      zitadel_login_client_id_variable:
+        type: str
+        required: true
+        description: Name of the client id variable in that .env.
+      zitadel_login_client_secret_variable:
+        type: str
+        description: Name of the client secret variable in that .env; empty for PKCE clients.
+      zitadel_login_vault_path:
+        type: path
+        description: The Zitadel vault (token, state passphrase, users, SMTP).

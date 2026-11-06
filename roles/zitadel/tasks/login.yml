@@ -1,0 +1,69 @@
+---
+# A service's login through Zitadel: provisions the organization (main.yml)
+# and returns the service's client id and secret in zitadel_login_client_id
+# and zitadel_login_client_secret. Without the Zitadel credentials both are
+# empty and the service keeps only its local login; when provisioning fails,
+# the values of the service's previous deploy (its .env) are kept.
+
+- name: Look for the Zitadel vault
+  ansible.builtin.stat:
+    path: "{{ zitadel_login_vault_path }}"
+  register: zitadel_login_vault
+  delegate_to: localhost
+  become: false
+
+- name: Load the Zitadel vault
+  ansible.builtin.include_vars:
+    file: "{{ zitadel_login_vault_path }}"
+  when: zitadel_login_vault.stat.exists
+  no_log: true
+
+- name: Read the environment of the previous deploy
+  ansible.builtin.slurp:
+    path: "{{ zitadel_login_environment_file }}"
+  register: zitadel_login_previous_environment
+  failed_when: false
+  no_log: true   # also holds the service's other secrets
+
+- name: Keep the previous login values
+  ansible.builtin.set_fact:
+    zitadel_login_previous_client_id: "{{ zitadel_login_previous_values[zitadel_login_client_id_variable] | default('') }}"
+    zitadel_login_previous_client_secret: "{{ zitadel_login_previous_values[zitadel_login_client_secret_variable] | default('') }}"
+  vars:
+    zitadel_login_previous_lines: "{{ (zitadel_login_previous_environment.content | default('') | b64decode).splitlines() }}"
+    # KEY=value lines as a dictionary; values may contain "="
+    zitadel_login_previous_values: >-
+      {{ dict(zitadel_login_previous_lines | select('search', '=') | map('regex_replace', '^([^=]*)=.*$', '\1')
+              | zip(zitadel_login_previous_lines | select('search', '=') | map('regex_replace', '^[^=]*=', ''))) }}
+  no_log: true
+
+- name: Provision the service's application in Zitadel
+  block:
+    - name: Provision the organization
+      ansible.builtin.include_tasks:
+        file: main.yml
+        apply:
+          become: false
+
+    - name: Use the provisioned login
+      ansible.builtin.set_fact:
+        zitadel_login_client_id: "{{ zitadel_client_ids[zitadel_login_application] | default('') }}"
+        zitadel_login_client_secret: >-
+          {{ zitadel_client_secrets[zitadel_login_application] | default('') if zitadel_login_client_secret_variable | length > 0 else '' }}
+      no_log: true
+
+  rescue:
+    - name: Keep the login of the previous deploy
+      ansible.builtin.set_fact:
+        zitadel_login_client_id: "{{ zitadel_login_previous_client_id }}"
+        zitadel_login_client_secret: "{{ zitadel_login_previous_client_secret }}"
+      no_log: true
+
+    - name: Report that Zitadel provisioning failed
+      ansible.builtin.debug:
+        msg: >-
+          Zitadel provisioning failed:
+          {{ 'the service keeps the Zitadel login of its previous deploy' if zitadel_login_client_id | length > 0 else 'the Zitadel login stays off' }}
+          and the local login still works. A missing tofu means the playbook was not run with
+          mise (mise deploy <playbook>). First line of the error:
+          {{ (ansible_failed_result.msg | default('unknown error') | string).splitlines() | first | default('unknown error') }}
