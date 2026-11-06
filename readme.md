@@ -263,3 +263,32 @@ mise exec -- uv run ansible-vault view vault/<service>/vault.yml
 ```
 
 `ANSIBLE_VAULT_PASSWORD`, when set, takes precedence over the keyring (for machines without one).
+
+## Netbird login through Zitadel
+
+Netbird (`services/vpn`, 0.81.4) keeps its embedded identity provider (`https://netbird.anneraud.fr/oauth2`, Dex) and its local logins; Zitadel is added to it as an external connector, an official feature of the embedded provider (Netbird's [Zitadel page](https://docs.netbird.io/selfhosted/identity-providers/zitadel), "Management Setup"). The login page then shows "Continue with Email" (the local users, always first) and a "Zitadel" button. Switching Netbird to Zitadel as its only provider ("Standalone Setup") is not done: Netbird would stop knowing every existing user, and Zitadel runs on Bruxelles, at home, while the VPN is how home is reached.
+
+What a Zitadel login does, from Netbird's source at that version:
+
+- It never reaches an existing Netbird user. A user's id encodes the connector it logged in with (`EncodeDexUserID` in `idp/dex/provider.go`), so a Zitadel login is a new user, matched neither by email nor otherwise. In the single account, it joins as a regular user with no groups and no peers (`addNewUserToDomainAccount` in `management/server/account.go`), blocked until approved when Settings → Authentication → *User Approval Required* is on (the default of new accounts).
+- A device registered by a local user refuses a Zitadel login (`checkAuth` in `management/server/peer.go`: "user mismatch"); nothing changes on its peer, logging in again with "Continue with Email" works.
+- Netbird has no command or API to move peers or groups from one user to another (the peer API cannot change its user, the admin CLI's `user` commands only change passwords and MFA, and `netbird-idp-migrate` only converts users of a former standalone provider, skipping the embedded provider's users). Moving someone means registering their devices again under their Zitadel user.
+- Roles (owner, admin, user) are set in Netbird's Users page: JWT group sync only feeds Netbird groups, so no Zitadel role is mapped. Leave JWT group sync off.
+
+Adding the connector (existing logins keep working):
+
+1. Netbird → Settings → Authentication: check that *User Approval Required* is on, so a stray Zitadel login waits for approval instead of joining.
+2. `mise deploy services/authentification/applications.yml`: it creates the `netbird` application (project `VPN`, redirect `https://netbird.anneraud.fr/oauth2/callback`), prints its client id and writes its secret to `~/.config/infrastructure/zitadel/netbird.secret`. Commit the state in the vault repository.
+3. Netbird → Settings → Identity Providers → Add Identity Provider: type *Zitadel*, name `Zitadel`, issuer `https://authentification.anneraud.fr` (no trailing slash), the client id and the secret. Check that the redirect URL it shows is `https://netbird.anneraud.fr/oauth2/callback`, then Save. The Zitadel type reads the email and name from Zitadel's userinfo, so the token settings of Netbird's guide are not needed.
+4. In a private window, log in with Zitadel: a new pending user appears in Users. Approve it only to move that person (below); otherwise reject it. Log in with "Continue with Email" once more to check that the local logins still work.
+
+Rollback: delete the connector in Settings → Identity Providers (and the `netbird` entry in `applications.auto.tfvars`). Users it created stay in Netbird but can no longer log in: their peers keep working until their login expires, then must be registered again with a local login.
+
+Moving a person to Zitadel (optional, one person at a time, e.g. camille):
+
+1. Note camille's local user: role and auto-assigned groups (Users), and each of their peers: name, IP and groups (Peers). Servers registered with a setup key belong to no user and are not touched; never delete a user who owns a server peer (Vigie scrapes Bruxelles through Netbird).
+2. Camille logs in to the dashboard with Zitadel; approve the new user and give it the same role and auto-assigned groups. For the owner, an owner gives it the owner role too.
+3. For each device: delete its peer (Peers → Delete), then reconnect it (`netbird up`, or Connect in the app) and choose Zitadel. Give the new peer the old name, IP (Peers → edit, or the `ip` field of `PUT /api/peers/{id}`) and groups.
+4. Once camille's local user owns no peer, block it (Users), and delete it a few weeks later. Deleting a user deletes the peers it still owns.
+
+Rollback, until the local user is deleted: delete the new peers, register them again with "Continue with Email" (unblock the local user first) and restore their IP and groups, then block the Zitadel user. Keep one local owner with no peers for good, with its password in a password manager: it is the way into the dashboard when Bruxelles, and so Zitadel, is down. Never set `localAuthDisabled`.

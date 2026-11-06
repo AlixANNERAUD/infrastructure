@@ -32,4 +32,16 @@ applications = {
     authentication = "client_secret"
     redirect_uris  = ["https://deploiement.anneraud.fr/api/auth/oidc/zitadel/redirect"]
   }
+
+  # Netbird (netbird.anneraud.fr, services/vpn): an external connector of
+  # Netbird's embedded identity provider, added in its dashboard next to the
+  # local logins, which stay (see the readme's "Netbird login through
+  # Zitadel"). The callback is the embedded provider's, for every connector
+  netbird = {
+    project          = "VPN"
+    authentication   = "client_secret"
+    redirect_uris    = ["https://netbird.anneraud.fr/oauth2/callback"]
+    post_logout_uris = ["https://netbird.anneraud.fr/oauth2/logout/callback"]
+    configured_in    = "Netbird → Settings → Identity Providers → Add Identity Provider (type Zitadel)"
+  }
 }
