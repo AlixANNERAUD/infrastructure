@@ -21,4 +21,4 @@ argument_specs:
       opentofu_secret_variables:
         type: dict
         no_log: true
-        description: Secrets passed only through the environment, as TF_VAR_<name>.
+        description: Secrets passed through the environment, as TF_VAR_<name> (on the module's command line while it runs).

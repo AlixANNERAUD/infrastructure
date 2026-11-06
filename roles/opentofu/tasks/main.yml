@@ -43,7 +43,8 @@
 
         # tofu apply re-reads the variables to compare them with the plan's, so
         # it gets the file too; secrets and the state path (which tofu init
-        # needs for the backend) only go through the environment
+        # needs for the backend) go through the environment, which Ansible puts
+        # on the module's command line (visible to local users while it runs)
         - name: Run tofu apply
           community.general.terraform:
             project_path: "{{ opentofu_project_path }}"

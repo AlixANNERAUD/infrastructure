@@ -10,5 +10,8 @@
 # list; they override the configuration's *.auto.tfvars
 opentofu_variables: {}
 
-# Secrets, passed only through the environment as TF_VAR_<name>
+# Secrets, passed through the environment as TF_VAR_<name>: never in files or
+# Ansible's output, but Ansible prefixes the module command with them, so local
+# users can see them in the process list while the apply runs
+
 opentofu_secret_variables: {}

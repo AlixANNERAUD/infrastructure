@@ -49,26 +49,33 @@
         quiet: true
 
     - name: Apply the OpenTofu configuration
-      ansible.builtin.include_role:
-        name: opentofu
-      vars:
-        opentofu_project_path: "{{ zitadel_opentofu_project_path }}"
-        opentofu_state_path: "{{ zitadel_opentofu_state_path }}"
-        opentofu_variables: >-
-          {{ zitadel_opentofu_variables
-             | combine({'users': zitadel_opentofu_users,
-                        'smtp_host': zitadel_opentofu_smtp_host,
-                        'smtp_user': zitadel_opentofu_smtp_user}) }}
-        opentofu_secret_variables:
-          zitadel_token: "{{ zitadel_opentofu_token }}"
-          state_passphrase: "{{ zitadel_opentofu_state_passphrase }}"
-          smtp_password: "{{ zitadel_opentofu_smtp_password }}"
+      block:
+        - name: Run the opentofu role
+          ansible.builtin.include_role:
+            name: opentofu
+          vars:
+            opentofu_project_path: "{{ zitadel_opentofu_project_path }}"
+            opentofu_state_path: "{{ zitadel_opentofu_state_path }}"
+            opentofu_variables: >-
+              {{ zitadel_opentofu_variables
+                 | combine({'users': zitadel_opentofu_users,
+                            'smtp_host': zitadel_opentofu_smtp_host,
+                            'smtp_user': zitadel_opentofu_smtp_user}) }}
+            opentofu_secret_variables:
+              zitadel_token: "{{ zitadel_opentofu_token }}"
+              state_passphrase: "{{ zitadel_opentofu_state_passphrase }}"
+              smtp_password: "{{ zitadel_opentofu_smtp_password }}"
 
-    - name: Keep the apply's result
-      ansible.builtin.set_fact:
-        zitadel_apply: "{{ opentofu_apply }}"
-        zitadel_state_changed: "{{ opentofu_state_changed }}"
-      no_log: true
+        - name: Keep the apply's result
+          ansible.builtin.set_fact:
+            zitadel_apply: "{{ opentofu_apply }}"
+          no_log: true
+
+      # Also after an apply that failed halfway, which can change the state
+      always:
+        - name: Keep whether the state changed
+          ansible.builtin.set_fact:
+            zitadel_state_changed: "{{ opentofu_state_changed | default(false) }}"
 
     - name: Set the provisioning facts
       ansible.builtin.set_fact:
