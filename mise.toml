@@ -42,3 +42,7 @@ run = [
 [tasks.vault]
 description = "Edit a vault file: mise vault vault/<service>/vault.yml"
 run = "uv run ansible-vault edit"
+
+[tasks."vault:create"]
+description = "Create a new vault file: mise vault:create vault/<service>/vault.yml"
+run = "uv run ansible-vault create"
