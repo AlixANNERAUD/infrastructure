@@ -6,7 +6,10 @@
 # - a banned address gets 403 from Traefik while others get through,
 # - the LAN and the VPN get through even when banned (the bouncer trusts them),
 # - an unban lets the address back in,
-# - CrowdSec reads Traefik's access log and bans a scanning address by itself.
+# - CrowdSec reads Traefik's access log and bans a scanning address by itself,
+# - from Vigie's protection-metrics network, the metrics proxy serves CrowdSec's
+#   metrics (with the series Vigie's dashboards and alerts read) and nothing
+#   else: no profiling pages, no local API, no direct way to CrowdSec.
 # Test clients are told apart with X-Forwarded-For, which this Traefik trusts
 # from the Docker networks the way the deployed one trusts it from Cloudflare.
 set -euo pipefail
@@ -42,7 +45,7 @@ cleanup() {
     fi
     compose_proxy down --volumes --timeout 5 > /dev/null 2>&1 || true
     compose_protection down --volumes --timeout 5 > /dev/null 2>&1 || true
-    docker network rm "$proxy_network" protection > /dev/null 2>&1 || true
+    docker network rm "$proxy_network" protection protection-metrics > /dev/null 2>&1 || true
     # CrowdSec's files belong to root
     sudo -n rm -rf "$directory" 2> /dev/null || rm -rf "$directory"
     exit "$status"
@@ -151,6 +154,7 @@ if ! grep -q '^TRAEFIK_ENTRYPOINT_MIDDLEWARES=crowdsec@file,' "$proxy/.env"; the
 fi
 
 docker network create --internal protection > /dev/null
+docker network create --internal protection-metrics > /dev/null
 docker network create "$proxy_network" > /dev/null
 
 # The engine installs the hub collections before its local API answers
@@ -243,3 +247,45 @@ if ! wait_for 90 answers "$scanner" 403; then
     exit 1
 fi
 echo "ok    CrowdSec read Traefik's access log and banned a scanning address"
+
+# What VictoriaMetrics sees from the protection-metrics network
+curl_image=curlimages/curl:8.22.0
+docker pull --quiet "$curl_image" > /dev/null
+from_vigie() {
+    docker run --rm --network protection-metrics "$curl_image" -s --max-time 5 "$@"
+}
+# The engine's metrics, with the series of services/vigie (dashboards and alerts)
+if ! metrics=$(from_vigie -f http://crowdsec-metrics:6060/metrics); then
+    echo "The metrics proxy does not serve CrowdSec's metrics"
+    exit 1
+fi
+for series in cs_info cs_lapi_bouncer_requests_total cs_lapi_route_requests_total cs_lapi_request_duration_seconds_bucket \
+    cs_dockersource_hits_total cs_parser_hits_ok_total cs_bucket_poured_total \
+    'cs_bucket_overflowed_total{name="crowdsecurity/http-probing"}' 'cs_active_decisions{action="ban",origin="crowdsec"' \
+    cs_alerts cs_machines_last_heartbeat_timestamp process_resident_memory_bytes; do
+    if ! grep -qF "$series" <<< "$metrics"; then
+        echo "CrowdSec's metrics lack $series"
+        exit 1
+    fi
+done
+echo "ok    the metrics proxy serves CrowdSec's metrics to the protection-metrics network"
+
+# Nothing but GET /metrics: CrowdSec also serves Go's profiling pages there
+for check in "404 http://crowdsec-metrics:6060/debug/pprof/" "404 http://crowdsec-metrics:6060/v1/decisions" \
+    "403 -X POST http://crowdsec-metrics:6060/metrics"; do
+    read -r expected arguments <<< "$check"
+    # shellcheck disable=SC2086
+    status=$(from_vigie -o /dev/null -w '%{http_code}' $arguments || true)
+    if [ "$status" != "$expected" ]; then
+        echo "The metrics proxy answers $status instead of $expected to $arguments"
+        exit 1
+    fi
+done
+# CrowdSec itself (local API and metrics) and the proxy's other ports are out of reach
+for address in http://crowdsec:8080/v1/heartbeat http://crowdsec:6060/metrics http://crowdsec-metrics:8080/; do
+    if from_vigie -o /dev/null "$address"; then
+        echo "$address answers from the protection-metrics network"
+        exit 1
+    fi
+done
+echo "ok    from there, only GET /metrics answers: no profiling pages, no local API"

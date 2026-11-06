@@ -25,6 +25,8 @@
         compose_service_external_networks:
           - name: protection
             internal: true
+          - name: protection-metrics
+            internal: true
 
   tasks:
     # The engine installs the hub collections before its local API answers
