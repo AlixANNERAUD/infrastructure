@@ -59,8 +59,9 @@
       [mcp_servers.mcphub]
       url = "{{ mcp_clients_url }}"
 
-# OpenCode and Antigravity: a key merged into their JSON configuration (a file
-# with comments, which OpenCode allows, cannot be read: remove them first)
+# OpenCode and Antigravity: a key merged into their JSON configuration. A
+# missing or empty file counts as {}; a file with comments, which OpenCode
+# allows, cannot be read: remove them first
 - name: List the JSON configurations
   ansible.builtin.set_fact:
     mcp_clients_json:
@@ -92,7 +93,7 @@
   ansible.builtin.copy:
     dest: "{{ mcp_clients_home }}/{{ item.item.path }}"
     content: >-
-      {{ (item.content | default('e30=') | b64decode | from_json)
+      {{ ((item.content | default('') | b64decode | trim) or '{}') | from_json
          | combine(item.item.entry, recursive=true)
          | to_nice_json(indent=2, sort_keys=false) }}
     mode: "0600"

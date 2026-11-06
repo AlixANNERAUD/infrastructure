@@ -37,8 +37,9 @@
             command = "other-server"
         - path: .config/opencode/opencode.json
           content: '{"$schema": "https://opencode.ai/config.json", "theme": "dark", "mcp": {"other": {"type": "local", "command": ["other-server"]}}}'
+        # Antigravity can leave an empty file behind
         - path: .gemini/config/mcp_config.json
-          content: '{"mcpServers": {"other": {"command": "other-server"}}}'
+          content: ""
       loop_control:
         label: "{{ item.path }}"
 
@@ -65,7 +66,6 @@
           - opencode.mcp.other.command == ['other-server']
           - "opencode.mcp.mcphub == {'type': 'remote', 'url': 'https://mcphub.example/mcp/$smart', 'enabled': true}"
           # Antigravity: serverUrl, not url
-          - agy.mcpServers.other.command == 'other-server'
           - "agy.mcpServers.mcphub == {'serverUrl': 'https://mcphub.example/mcp/$smart'}"
       vars:
         codex: "{{ mcp_test_first.results[0].content | b64decode }}"
