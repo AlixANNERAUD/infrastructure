@@ -45,3 +45,30 @@ trusted_key_servers:
   
 enable_registration: True
 registration_requires_token: True
+{% if matrix_anneraud_oidc_client_id | length > 0 %}
+
+# Login through Zitadel (application matrix in
+# opentofu/zitadel/applications.auto.tfvars), next to the password login,
+# which stays for existing clients and as the fallback. Without a client, no
+# provider: no button that cannot work.
+oidc_providers:
+  # Logins are linked to "oidc-zitadel": changing idp_id unlinks every account
+  - idp_id: zitadel
+    idp_name: Zitadel
+    issuer: "https://authentification.anneraud.fr"
+    client_id: {{ matrix_anneraud_oidc_client_id | to_json }}
+    client_secret: {{ matrix_anneraud_oidc_client_secret | to_json }}
+    client_auth_method: client_secret_basic
+    scopes: [openid, profile]
+    # Zitadel leaves the profile (preferred_username) out of the ID token
+    user_profile_method: userinfo_endpoint
+    # A first login is linked to the existing account whose localpart is the
+    # Zitadel username (alix@anneraud.fr → @alix:anneraud.fr), and never
+    # creates an account: a login matching none is refused rather than
+    # duplicated. Users of other Zitadel organizations get no localpart.
+    allow_existing_users: true
+    enable_registration: false
+    user_mapping_provider:
+      config:
+        localpart_template: "{% raw %}{{ user.preferred_username | localpart_from_email if user.preferred_username is string and user.preferred_username.endswith('@anneraud.fr') else '' }}{% endraw %}"
+{% endif %}

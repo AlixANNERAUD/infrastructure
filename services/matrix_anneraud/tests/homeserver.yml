@@ -1,0 +1,67 @@
+---
+# Renders Synapse's configuration on the controller: no host needed
+- name: Test Synapse's configuration
+  hosts: localhost
+  gather_facts: false
+  vars:
+    database_user: synapse
+    database_password: database-password
+    database_name: synapse
+    registration_shared_secret: registration-secret
+    macaroon_secret_key: macaroon-key
+    form_secret: form-secret
+    homeserver_template: "{{ playbook_dir }}/../homeserver.yaml.j2"
+    # Synapse's template, compared as it is (!unsafe: Ansible must not render it)
+    # yamllint disable-line rule:line-length
+    localpart_template: !unsafe "{{ user.preferred_username | localpart_from_email if user.preferred_username is string and user.preferred_username.endswith('@anneraud.fr') else '' }}"
+  tasks:
+    - name: Render the configuration with a Zitadel client
+      ansible.builtin.set_fact:
+        homeserver: "{{ lookup('ansible.builtin.template', homeserver_template) | from_yaml }}"
+      vars:
+        matrix_anneraud_oidc_client_id: client-id
+        matrix_anneraud_oidc_client_secret: client-secret
+
+    - name: Check the Zitadel provider
+      ansible.builtin.assert:
+        that:
+          # Password login stays: existing sessions, clients and the owner's fallback
+          - homeserver.password_config is not defined or homeserver.password_config.enabled
+          - homeserver.oidc_providers | length == 1
+          # Logins are linked to oidc-zitadel: changing it unlinks everyone
+          - provider.idp_id == 'zitadel'
+          - provider.idp_name == 'Zitadel'
+          - provider.issuer == 'https://authentification.anneraud.fr'
+          - provider.client_id == 'client-id'
+          - provider.client_secret == 'client-secret'
+          - provider.client_auth_method == 'client_secret_basic'
+          - provider.scopes == ['openid', 'profile']
+          # Zitadel leaves the profile out of the ID token
+          - provider.user_profile_method == 'userinfo_endpoint'
+          # A first login links to the account of the same localpart, and
+          # never creates one: no duplicate when the localparts differ
+          - provider.allow_existing_users
+          - not provider.enable_registration
+          # Kept as Synapse's own template, not rendered by Ansible
+          - provider.user_mapping_provider.config.localpart_template == localpart_template
+          - provider.user_mapping_provider.config.keys() | list == ['localpart_template']
+          # The rest of the configuration is untouched
+          - homeserver.server_name == 'anneraud.fr'
+          - homeserver.public_baseurl == 'https://matrix.anneraud.fr/'
+          - homeserver.enable_registration
+          - homeserver.registration_requires_token
+      vars:
+        provider: "{{ homeserver.oidc_providers[0] }}"
+
+    - name: Render the configuration without a client
+      ansible.builtin.set_fact:
+        homeserver: "{{ lookup('ansible.builtin.template', homeserver_template) | from_yaml }}"
+      vars:
+        matrix_anneraud_oidc_client_id: ""
+        matrix_anneraud_oidc_client_secret: ""
+
+    - name: Check that there is no provider, so no broken button
+      ansible.builtin.assert:
+        that:
+          - homeserver.oidc_providers is not defined
+          - homeserver.server_name == 'anneraud.fr'

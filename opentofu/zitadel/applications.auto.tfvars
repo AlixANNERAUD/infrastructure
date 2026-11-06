@@ -32,4 +32,11 @@ applications = {
     authentication = "client_secret"
     redirect_uris  = ["https://deploiement.anneraud.fr/api/auth/oidc/zitadel/redirect"]
   }
+
+  # Synapse (matrix.anneraud.fr): a confidential client, secret over HTTP Basic
+  matrix = {
+    project        = "Matrix"
+    authentication = "client_secret"
+    redirect_uris  = ["https://matrix.anneraud.fr/_synapse/client/oidc/callback"]
+  }
 }

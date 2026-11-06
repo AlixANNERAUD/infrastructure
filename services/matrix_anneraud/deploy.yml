@@ -4,10 +4,27 @@
   become: true
   vars:
     database_name: synapse
+    # Synapse's Zitadel provider (homeserver.yaml.j2): none without a client
+    matrix_anneraud_oidc_client_id: "{{ zitadel_login_client_id }}"
+    matrix_anneraud_oidc_client_secret: "{{ zitadel_login_client_secret }}"
   vars_files:
     - ../../vault/ansible/vault.yml
     - ../../vault/matrix_anneraud/vault.yml
     - ../../vault/cloudflare/vault.yml
+  pre_tasks:
+    # Without the Zitadel credentials the client id is empty: Synapse keeps
+    # only its password login; when provisioning fails, the client of the
+    # previous deploy is kept
+    - name: Get Synapse's Zitadel login
+      ansible.builtin.include_role:
+        name: zitadel
+        tasks_from: login
+      vars:
+        zitadel_login_application: matrix
+        zitadel_login_environment_file: "{{ services_root }}/Matrix_anneraud/.env"
+        zitadel_login_client_id_variable: OIDC_CLIENT_ID
+        zitadel_login_client_secret_variable: OIDC_CLIENT_SECRET
+
   roles:
     - role: compose_service
       vars:
@@ -21,6 +38,9 @@
           DATABASE_USER: "{{ database_user }}"
           DATABASE_PASSWORD: "{{ database_password }}"
           DATABASE_NAME: "{{ database_name }}"
+          # Unused by Compose: kept so a failed provisioning can reuse them (zitadel role, login)
+          OIDC_CLIENT_ID: "{{ zitadel_login_client_id }}"
+          OIDC_CLIENT_SECRET: "{{ zitadel_login_client_secret }}"
         compose_service_external_networks:
           - name: databases   # shared with Databasus
             internal: true

@@ -200,6 +200,21 @@ Prerequisites:
 
 `mise deploy hosts/workstations/mcp.yml` points the workstation's MCP clients at MCPHub (`https://mcphub.anneraud.fr/mcp`, not `/mcp/$smart`, whose tool search needs pgvector and an embedding service MCPHub does not have), so every model reaches the same servers whatever its provider: Claude Code (through its CLI, user scope), Codex (`~/.codex/config.toml`), OpenCode (`~/.config/opencode/opencode.json`) and Antigravity (`~/.gemini/config/mcp_config.json`). Other settings of those files are kept; an OpenCode file with comments must lose them first. No key is written: the clients log in through MCPHub's OAuth, so its OAuth server must be enabled in MCPHub's settings. Restart the clients afterwards. Every enabled tool reaches the model's context: keep only the tools needed enabled on each MCPHub server (Paperless's `archive` server: its read tools only). The workstation must be on the LAN or Netbird (internal allowlist).
 
+## Matrix
+
+Synapse for `anneraud.fr` (`services/matrix_anneraud`, Bruxelles, https://matrix.anneraud.fr) offers a "Zitadel" login (application `matrix` in `opentofu/zitadel/applications.auto.tfvars`, provisioned by `mise deploy services/matrix_anneraud/deploy.yml`, which writes the client to `homeserver.yaml`) next to the password login, which stays: existing sessions, clients and passwords keep working, and it is the fallback when Zitadel is down. Matrix clients (Element…) show the button through Synapse's SSO flow, whose callback is `https://matrix.anneraud.fr/_synapse/client/oidc/callback`. Without the Zitadel credentials there is no button; when provisioning fails, the client of the previous deploy is kept. Federation and delegation are unchanged.
+
+A first Zitadel login is linked, for good, to the existing account whose localpart is the Zitadel username (`camille@anneraud.fr` → `@camille:anneraud.fr`, case-insensitive), then by Zitadel user id. It never creates an account: a login that matches no account is refused (`enable_registration: false` on the provider), and logins from outside the Anneraud organization get no localpart. New people still register with a registration token (`registration_requires_token`), or the admin API, then log in through Zitadel. Synapse cannot map a Zitadel role to its server admin flag: linked accounts keep theirs, and the admin API sets it (`PUT /_synapse/admin/v2/users/<user id>` with `{"admin": true}`).
+
+Once, before the first deploy with Zitadel (the admin API is only reachable from the LAN or the VPN; the access token of a server admin is in Element → Settings → Help & About):
+
+1. List the accounts: `curl -H "Authorization: Bearer <token>" "https://matrix.anneraud.fr/_synapse/admin/v2/users?guests=false&limit=100"`.
+2. For each Zitadel user (`zitadel_users` in `vault/authentification/vault.yml`), check that the account `@<username>:anneraud.fr`, if it exists, belongs to that same person: otherwise their first Zitadel login would take it over.
+3. For someone whose account has another localpart, or whose localpart is taken by someone else, link the account explicitly before the deploy, with their Zitadel user id (Zitadel console → Users → the user → ID): `curl -X PUT -H "Authorization: Bearer <token>" -d '{"external_ids": [{"auth_provider": "oidc-zitadel", "external_id": "<Zitadel user id>"}]}' "https://matrix.anneraud.fr/_synapse/admin/v2/users/@<account>:anneraud.fr"` (it replaces the account's SSO links; there are none before Zitadel). Check a link with `GET /_synapse/admin/v1/auth_providers/oidc-zitadel/users/<Zitadel user id>`.
+4. Deploy: `mise deploy services/matrix_anneraud/deploy.yml` (OpenTofu must be on `PATH`), commit `vault/authentification/opentofu.tfstate` in the vault repository, then log in once with "Zitadel" in Element.
+
+Never change the provider's `idp_id` (`zitadel`): the links are stored under `oidc-zitadel`, and every account would be unlinked.
+
 ## TrueNAS apps
 
 Apps installed in TrueNAS's interface on Bruxelles keep their configuration there, login through Zitadel included: TrueNAS can only replace an app's settings section as a whole (passwords and keys included), so this repository does not write it. A service's playbook provisions its Zitadel application and writes the environment variables to paste instead.
