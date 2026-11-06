@@ -1,0 +1,86 @@
+---
+# Builds Nextcloud's Zitadel login settings on the controller: no TrueNAS needed.
+# The occ outputs are those of user_oidc 8.13 (user_oidc:provider --output=json,
+# config:system:get user_oidc --output=json).
+- name: Test Nextcloud's Zitadel login settings
+  hosts: localhost
+  gather_facts: false
+  vars:
+    nuage_client_id: client-id
+    # The provider as the playbook configures it
+    nuage_test_provider:
+      id: 1
+      identifier: Zitadel
+      clientId: client-id
+      discoveryEndpoint: https://authentification.anneraud.fr/.well-known/openid-configuration
+      endSessionEndpoint: null
+      postLogoutUri: null
+      scope: openid
+      settings:
+        uniqueUid: false
+        providerBasedId: false
+        mappingUid: nextcloud_account
+        mappingDisplayName: ""
+        checkBearer: false
+  tasks:
+    - name: Build the settings of a Nextcloud without the provider
+      ansible.builtin.include_tasks: ../tasks/login_settings.yml
+      vars:
+        nuage_provider_output: ""
+        nuage_system_output: ""
+
+    - name: Check the provider's arguments
+      ansible.builtin.assert:
+        that:
+          - not nuage_provider_up_to_date
+          - not nuage_system_up_to_date
+          - nuage_provider_arguments[:3] == ['occ', 'user_oidc:provider', 'Zitadel']
+          - "'--clientid=client-id' in nuage_provider_arguments"
+          - "'--discoveryuri=https://authentification.anneraud.fr/.well-known/openid-configuration' in nuage_provider_arguments"
+          # No profile or email claims: the account's name and email stay Nextcloud's
+          - "'--scope=openid' in nuage_provider_arguments"
+          # The user id is the claim as it is (an existing account id), not a hash of it
+          - "'--unique-uid=0' in nuage_provider_arguments"
+          - "'--mapping-uid=nextcloud_account' in nuage_provider_arguments"
+          # The secret is read from the exec's environment, never put on the command line
+          - "'--clientsecret-env=' ~ nuage_client_secret_variable in nuage_provider_arguments"
+          - nuage_provider_arguments | select('search', 'clientsecret=') | list == []
+          - nuage_client_secret_variable == 'NUAGE_ZITADEL_CLIENT_SECRET'
+          # Never creates an account: a login only reaches an existing one
+          - "nuage_system_settings == {'auto_provision': false}"
+
+    - name: Build the settings of a configured Nextcloud
+      ansible.builtin.include_tasks: ../tasks/login_settings.yml
+      vars:
+        nuage_provider_output: "{{ nuage_test_provider | to_json }}"
+        nuage_system_output: '{"auto_provision": false, "other": 1}'
+
+    - name: Check that nothing changes
+      ansible.builtin.assert:
+        that:
+          - nuage_provider_up_to_date
+          - nuage_system_up_to_date
+
+    - name: Check that a provider that differs is updated
+      ansible.builtin.include_tasks: tasks/differing_provider.yml
+      loop:
+        - clientId: other-client-id
+        - discoveryEndpoint: https://other.example/.well-known/openid-configuration
+        - scope: openid email profile
+        - settings: {uniqueUid: true}
+        - settings: {mappingUid: sub}
+        - settings: {providerBasedId: true}
+      loop_control:
+        loop_var: nuage_test_difference
+
+    - name: Build the settings of a Nextcloud that creates accounts
+      ansible.builtin.include_tasks: ../tasks/login_settings.yml
+      vars:
+        nuage_provider_output: "{{ nuage_test_provider | to_json }}"
+        nuage_system_output: '{"auto_provision": true}'
+
+    - name: Check that automatic account creation gets turned off
+      ansible.builtin.assert:
+        that:
+          - nuage_provider_up_to_date
+          - not nuage_system_up_to_date

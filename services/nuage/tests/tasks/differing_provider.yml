@@ -1,0 +1,14 @@
+---
+# One provider that differs from the expected one by nuage_test_difference
+- name: Build the settings
+  ansible.builtin.include_tasks: ../../tasks/login_settings.yml
+  vars:
+    nuage_provider_output: "{{ nuage_test_provider | combine(nuage_test_difference, recursive=true) | to_json }}"
+    nuage_system_output: '{"auto_provision": false}'
+
+- name: Check that the provider gets updated
+  ansible.builtin.assert:
+    that:
+      - not nuage_provider_up_to_date
+      - nuage_system_up_to_date
+    fail_msg: "Not updated with {{ nuage_test_difference }}"

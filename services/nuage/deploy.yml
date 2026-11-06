@@ -1,0 +1,133 @@
+---
+# Nuage (nuage.anneraud.fr) is Nextcloud as a TrueNAS app. This playbook
+# provisions its Zitadel application and configures Nextcloud's official
+# user_oidc app with occ, inside the app's container: Nextcloud keeps that in
+# its own database and config.php, not in TrueNAS's app settings. People land in
+# their existing account: its id is the nextcloud_account claim, filled by
+# Zitadel from their user metadata. Run it with mise (OpenTofu provisions Zitadel).
+- name: Log in to Nuage through Zitadel
+  hosts: nuage
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../../vault/ansible/vault.yml
+    - ../../vault/authentification/vault.yml
+  vars:
+    nuage_container: ix-nextcloud-nextcloud-1
+    # user_oidc reads the client secret from an environment variable since 8.4.0
+    nuage_user_oidc_minimum_version: 8.4.0
+  tasks:
+    - name: Provision the organization in Zitadel
+      ansible.builtin.include_role:
+        name: zitadel
+        apply:
+          become: false
+
+    - name: Check that Nextcloud's Zitadel application is provisioned
+      ansible.builtin.assert:
+        that:
+          - zitadel_provisioned
+          - zitadel_client_ids.nextcloud | default('') | length > 0
+          - zitadel_client_secrets.nextcloud | default('') | length > 0
+        fail_msg: Zitadel is not provisioned (see the messages above) or has no nextcloud application with a secret.
+        quiet: true
+
+    - name: List Nextcloud's apps
+      community.docker.docker_container_exec:
+        container: "{{ nuage_container }}"
+        argv: [occ, app:list, --output=json]
+        user: www-data
+      register: nuage_apps
+      changed_when: false
+      check_mode: false
+
+    # Nextcloud's official OpenID Connect app, from its app store
+    - name: Install user_oidc
+      community.docker.docker_container_exec:
+        container: "{{ nuage_container }}"
+        argv: [occ, app:install, user_oidc]
+        user: www-data
+      when: "'user_oidc' not in apps.enabled and 'user_oidc' not in apps.disabled"
+      changed_when: true
+      vars:
+        apps: "{{ nuage_apps.stdout | from_json }}"
+
+    - name: Enable user_oidc
+      community.docker.docker_container_exec:
+        container: "{{ nuage_container }}"
+        argv: [occ, app:enable, user_oidc]
+        user: www-data
+      when: "'user_oidc' in apps.disabled"
+      changed_when: true
+      vars:
+        apps: "{{ nuage_apps.stdout | from_json }}"
+
+    - name: Read user_oidc's version
+      community.docker.docker_container_exec:
+        container: "{{ nuage_container }}"
+        argv: [occ, app:list, --output=json]
+        user: www-data
+      register: nuage_enabled_apps
+      changed_when: false
+      check_mode: false
+
+    - name: Check user_oidc's version
+      ansible.builtin.assert:
+        that: version is version(nuage_user_oidc_minimum_version, '>=')
+        fail_msg: >-
+          user_oidc {{ version }} is too old (needs {{ nuage_user_oidc_minimum_version }}):
+          update it in Nextcloud → Apps, then run this playbook again.
+        quiet: true
+      vars:
+        version: "{{ (nuage_enabled_apps.stdout | from_json).enabled.user_oidc | default('0') }}"
+
+    - name: Read the Zitadel provider
+      community.docker.docker_container_exec:
+        container: "{{ nuage_container }}"
+        argv: [occ, user_oidc:provider, Zitadel, --output=json]
+        user: www-data
+      register: nuage_provider
+      changed_when: false
+      check_mode: false
+      # Absent before the first run ("Provider not found")
+      failed_when: false
+
+    - name: Read user_oidc's system settings
+      community.docker.docker_container_exec:
+        container: "{{ nuage_container }}"
+        argv: [occ, config:system:get, user_oidc, --output=json]
+        user: www-data
+      register: nuage_system
+      changed_when: false
+      check_mode: false
+      # Unset until the first run
+      failed_when: false
+
+    - name: Build the login settings
+      ansible.builtin.include_tasks: tasks/login_settings.yml
+      vars:
+        nuage_client_id: "{{ zitadel_client_ids.nextcloud }}"
+        nuage_provider_output: "{{ nuage_provider.stdout if nuage_provider.rc == 0 else '' }}"
+        nuage_system_output: "{{ nuage_system.stdout if nuage_system.rc == 0 else '' }}"
+
+    # The secret only changes with the client id (a new Zitadel application),
+    # so an unchanged provider is left alone
+    - name: Write the Zitadel provider
+      community.docker.docker_container_exec:
+        container: "{{ nuage_container }}"
+        argv: "{{ nuage_provider_arguments }}"
+        user: www-data
+        # Through Docker's API, not on a command line
+        env: "{{ {nuage_client_secret_variable: zitadel_client_secrets.nextcloud} }}"
+      when: not nuage_provider_up_to_date
+      changed_when: true
+      no_log: true   # holds the client secret
+
+    - name: Turn off account creation by user_oidc
+      community.docker.docker_container_exec:
+        container: "{{ nuage_container }}"
+        argv: [occ, config:system:set, user_oidc, "{{ item.key }}", --type=boolean, "--value={{ item.value | lower }}"]
+        user: www-data
+      loop: "{{ nuage_system_settings | dict2items }}"
+      when: not nuage_system_up_to_date
+      changed_when: true

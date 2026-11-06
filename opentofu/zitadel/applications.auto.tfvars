@@ -32,4 +32,19 @@ applications = {
     authentication = "client_secret"
     redirect_uris  = ["https://deploiement.anneraud.fr/api/auth/oidc/zitadel/redirect"]
   }
+
+  # Nuage (nuage.anneraud.fr), Nextcloud as a TrueNAS app: services/nuage
+  # configures its user_oidc app. Its accounts predate Zitadel: the user id
+  # comes from the nextcloud_account claim (user metadata, see actions.tf).
+  # Both redirects: Nextcloud adds index.php without pretty URLs
+  nextcloud = {
+    project        = "Nuage"
+    authentication = "client_secret_post"
+    account_claim  = "nextcloud_account"
+    redirect_uris = [
+      "https://nuage.anneraud.fr/apps/user_oidc/code",
+      "https://nuage.anneraud.fr/index.php/apps/user_oidc/code",
+    ]
+    post_logout_uris = ["https://nuage.anneraud.fr/"]
+  }
 }

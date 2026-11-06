@@ -1,0 +1,49 @@
+---
+# Nextcloud's login through Zitadel, with its official user_oidc app.
+# In: nuage_client_id; nuage_provider_output, the output of
+# occ user_oidc:provider Zitadel --output=json (empty when there is none);
+# nuage_system_output, of occ config:system:get user_oidc --output=json (empty when unset).
+# Out: nuage_provider_arguments, the occ command that writes the provider
+# (its secret comes from the variable nuage_client_secret_variable of the exec),
+# nuage_provider_up_to_date, nuage_system_settings and nuage_system_up_to_date.
+- name: Build Nextcloud's login settings
+  ansible.builtin.set_fact:
+    nuage_client_secret_variable: NUAGE_ZITADEL_CLIENT_SECRET
+    nuage_provider_arguments:
+      - occ
+      - user_oidc:provider
+      - "{{ nuage_provider_identifier }}"
+      - --clientid={{ nuage_client_id }}
+      - --clientsecret-env=NUAGE_ZITADEL_CLIENT_SECRET
+      - --discoveryuri={{ nuage_provider_expected.discoveryEndpoint }}
+      - --scope={{ nuage_provider_expected.scope }}
+      - --unique-uid=0
+      - --mapping-uid={{ nuage_provider_expected_settings.mappingUid }}
+    nuage_provider_up_to_date: >-
+      {{ nuage_provider_current | length > 0
+         and (nuage_provider_current | combine(nuage_provider_expected)) == nuage_provider_current
+         and (nuage_provider_current.settings | default({}) | combine(nuage_provider_expected_settings))
+             == nuage_provider_current.settings | default({}) }}
+    nuage_system_settings: "{{ nuage_system_expected }}"
+    nuage_system_up_to_date: "{{ (nuage_system_current | combine(nuage_system_expected)) == nuage_system_current }}"
+  vars:
+    nuage_provider_identifier: Zitadel
+    nuage_provider_current: "{{ nuage_provider_output | trim | split('\n') | last | default('{}', true) | from_json }}"
+    nuage_provider_expected:
+      clientId: "{{ nuage_client_id }}"
+      discoveryEndpoint: https://authentification.anneraud.fr/.well-known/openid-configuration
+      # Only the sub and the action's nextcloud_account claim: no profile or
+      # email, so the account's name, email and language stay Nextcloud's
+      scope: openid
+    nuage_provider_expected_settings:
+      # The user id is the claim as it is: the id of an existing account
+      # (a display name, "Camille EXAMPLE"), not a hash of the provider and sub
+      uniqueUid: false
+      providerBasedId: false
+      # Filled from the user's metadata by Zitadel (opentofu/zitadel/actions.tf)
+      mappingUid: nextcloud_account
+    nuage_system_current: "{{ nuage_system_output | trim | split('\n') | last | default('{}', true) | from_json }}"
+    # user_oidc never creates or changes an account: a Zitadel login reaches the
+    # existing account whose id is the claim, or is refused
+    nuage_system_expected:
+      auto_provision: false
