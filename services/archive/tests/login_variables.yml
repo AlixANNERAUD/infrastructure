@@ -13,7 +13,10 @@
     - name: Check the variables
       ansible.builtin.assert:
         that:
-          - archive_login_variables | map(attribute='name') | list == ['PAPERLESS_APPS', 'PAPERLESS_SOCIALACCOUNT_PROVIDERS']
+          - archive_login_variables | map(attribute='name') | list
+            == ['PAPERLESS_APPS', 'PAPERLESS_SOCIALACCOUNT_PROVIDERS', 'PAPERLESS_SOCIALACCOUNT_ALLOW_SIGNUPS']
+          # A Zitadel login only reaches an account already linked to it: no empty duplicate
+          - archive_login_variables[2].value == 'false'
           - archive_login_variables[0].value == 'allauth.socialaccount.providers.openid_connect'
           - providers.openid_connect.OAUTH_PKCE_ENABLED
           - providers.openid_connect.APPS | length == 1

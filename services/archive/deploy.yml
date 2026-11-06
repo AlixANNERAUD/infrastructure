@@ -1,6 +1,6 @@
 ---
 # Paperless (archive.anneraud.fr) is a TrueNAS app, configured in TrueNAS. This
-# playbook provisions its Zitadel application and gives the two environment
+# playbook provisions its Zitadel application and gives the three environment
 # variables to enter in the app (TrueNAS can only replace an app's settings
 # section as a whole, so it is not written from here). Run it with mise.
 - name: Prepare Paperless's Zitadel login
@@ -47,7 +47,7 @@
     - name: Say what to enter in TrueNAS
       ansible.builtin.debug:
         msg:
-          - "TrueNAS → Apps → paperless-ngx → Edit → Additional Environment Variables: keep the existing entries, add or update these two"
+          - "TrueNAS → Apps → paperless-ngx → Edit → Additional Environment Variables: keep the existing entries, add or update these three"
           - "1. Container: paperless"
           - "   Name: {{ archive_login_variables[0].name }}"
           - "   Value: {{ archive_login_variables[0].value }}"
@@ -55,4 +55,7 @@
           - "   Name: {{ archive_login_variables[1].name }}"
           - "   Value: the content of {{ archive_providers_file }} (holds the client secret)"
           - "   Copy it with: wl-copy < {{ archive_providers_file }} (Wayland), xclip -selection clipboard < … (X11) or pbcopy < … (macOS)"
+          - "3. Container: paperless"
+          - "   Name: {{ archive_login_variables[2].name }}"
+          - "   Value: {{ archive_login_variables[2].value }}"
           - Save; Paperless restarts.

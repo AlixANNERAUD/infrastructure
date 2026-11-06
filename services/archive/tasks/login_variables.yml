@@ -1,5 +1,5 @@
 ---
-# Paperless's login through Zitadel, as two environment variables of its
+# Paperless's login through Zitadel, as three environment variables of its
 # TrueNAS app. In: archive_client_id, archive_client_secret.
 # Out: archive_login_variables, [{name, value}].
 - name: Build Paperless's login variables
@@ -9,6 +9,11 @@
         value: allauth.socialaccount.providers.openid_connect
       - name: PAPERLESS_SOCIALACCOUNT_PROVIDERS
         value: "{{ archive_login_providers | to_json }}"
+      # Paperless never links a Zitadel login to an existing account by email:
+      # without this, an unlinked login would create an empty duplicate account.
+      # People link theirs once (Profile → Connect), new accounts are made by the admin
+      - name: PAPERLESS_SOCIALACCOUNT_ALLOW_SIGNUPS
+        value: "false"
   vars:
     # django-allauth's OpenID Connect provider; the secret goes in the token
     # request's body, as the Zitadel application expects (client_secret_post)
