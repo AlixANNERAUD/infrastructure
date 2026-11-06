@@ -1,11 +1,20 @@
-# Projects, roles and applications all belong to the default organization,
-# the one the service account is ORG_OWNER of
-data "zitadel_organizations" "default" {
-  is_default = true
+# Projects, roles and applications all belong to this organization, the one
+# the service account is ORG_OWNER of. Named rather than the default one: the
+# instance's default organization (ZITADEL) only holds its administrator
+data "zitadel_organizations" "organization" {
+  name        = var.organization
+  name_method = "TEXT_QUERY_METHOD_EQUALS"
+
+  lifecycle {
+    postcondition {
+      condition     = length(self.ids) == 1
+      error_message = "The service account sees no organization named ${var.organization}: it must be ORG_OWNER of it."
+    }
+  }
 }
 
 locals {
-  organization_id = data.zitadel_organizations.default.ids[0]
+  organization_id = data.zitadel_organizations.organization.ids[0]
 
   projects = toset([for application in values(var.applications) : application.project])
 
