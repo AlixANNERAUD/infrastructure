@@ -1,11 +1,20 @@
-# One entry per OIDC application. authentication: pkce (default) or
-# client_secret; configured_in: where the owner pastes the result, for
-# services managed outside this repository.
+# One entry per OIDC application. authentication: pkce (default),
+# client_secret (HTTP Basic) or client_secret_post (secret in the request
+# body); configured_in: where the owner pastes the result, for services
+# managed outside this repository.
 applications = {
   grafana = {
     project          = "Vigie"
     roles            = [{ key = "vigie-admin", display_name = "Vigie administrator" }]
     redirect_uris    = ["https://vigie.anneraud.fr/login/generic_oauth"]
     post_logout_uris = ["https://vigie.anneraud.fr/login"]
+  }
+
+  # Better Auth sends the client secret in the request body
+  mcphub = {
+    project          = "MCPHub"
+    authentication   = "client_secret_post"
+    redirect_uris    = ["https://mcphub.anneraud.fr/api/auth/better/oauth2/callback/oidc"]
+    post_logout_uris = ["https://mcphub.anneraud.fr/"]
   }
 }

@@ -184,6 +184,16 @@ Prerequisites:
 - The deploy provisions the Zitadel application with OpenTofu, so run it with `mise deploy services/vigie/deploy.yml` (mise puts `tofu` on `PATH`). A missing `tofu` means the playbook was run without mise.
 - The Bruxelles scrape goes from Luxembourg to Bruxelles over Netbird and relies on Bruxelles' Traefik internal allowlist accepting the VPN range.
 
+## MCPHub
+
+MCPHub (`services/mcphub`) runs on Bruxelles at `https://mcphub.anneraud.fr/`, behind Traefik's internal allowlist, in database mode with its own PostgreSQL (backed up by Databasus through the `databases` network). People log in through Zitadel (application `mcphub` in `opentofu/zitadel/applications.auto.tfvars`, provisioned by the deploy, which passes the client id and secret to MCPHub); the local `admin` login stays available as a fallback.
+
+Prerequisites:
+
+- `vault/mcphub/vault.yml` (`mise vault:create vault/mcphub/vault.yml`) holds `mcphub_database_password`, `mcphub_jwt_secret`, `mcphub_better_auth_secret` (`openssl rand -hex 32` each) and `mcphub_admin_password` (used only when MCPHub creates its first user).
+- Deploy with `mise deploy services/mcphub/deploy.yml` (OpenTofu must be on `PATH`). Without the Zitadel credentials, only the local admin login is available.
+- A first Zitadel login creates a regular MCPHub user named after the email (`alix@anneraud.fr`). Make it an administrator once from the local `admin` account (Users). Each user can then connect their own account to servers that use OAuth ("Connect" on the server), and servers are shared through their visibility (`private`, `group` or `public`).
+
 ## Zitadel
 
 OpenTofu (`opentofu/zitadel/`) owns the whole Anneraud organization: the organization itself (the instance's default), its domain `anneraud.fr`, its login, password, lockout, domain and label policies, its users and their roles, and the projects and OIDC applications of `applications.auto.tfvars`. The instance defaults are not managed, so the ZITADEL organization's admin stays a working fallback whatever the code does. Apply it with `mise deploy services/authentification/applications.yml`; deploys that need an application (Vigie) apply it too. The state is encrypted in `vault/authentification/opentofu.tfstate`: commit it in the vault repository after each change.

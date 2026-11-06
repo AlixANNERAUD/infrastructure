@@ -4,7 +4,72 @@
   become: true
   vars_files:
     - ../../vault/ansible/vault.yml
+    - ../../vault/mcphub/vault.yml
     - ../../vault/cloudflare/vault.yml
+  pre_tasks:
+    # The login through Zitadel is optional: without the Zitadel credentials
+    # the deploy goes on with MCPHub's local admin login only
+    - name: Look for the Zitadel vault
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../../vault/authentification/vault.yml"
+      register: mcphub_zitadel_vault
+      delegate_to: localhost
+      become: false
+
+    - name: Load the Zitadel vault
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../vault/authentification/vault.yml"
+      when: mcphub_zitadel_vault.stat.exists
+      no_log: true
+
+    # A failed provisioning keeps the login of the previous deploy rather than switching it off
+    - name: Read the environment of the previous deploy
+      ansible.builtin.slurp:
+        path: "{{ services_root }}/MCPHub/.env"
+      register: mcphub_previous_environment_file
+      failed_when: false
+      no_log: true   # also holds the secrets
+
+    - name: Keep the previous Zitadel login values
+      ansible.builtin.set_fact:
+        mcphub_previous_oidc_client_id: >-
+          {{ mcphub_previous_lines | select('match', '^OIDC_CLIENT_ID=') | map('regex_replace', '^[^=]*=', '') | first | default('') }}
+        mcphub_previous_oidc_client_secret: >-
+          {{ mcphub_previous_lines | select('match', '^OIDC_CLIENT_SECRET=') | map('regex_replace', '^[^=]*=', '') | first | default('') }}
+      vars:
+        mcphub_previous_lines: "{{ (mcphub_previous_environment_file.content | default('') | b64decode).splitlines() }}"
+      no_log: true
+
+    - name: Provision the MCPHub application in Zitadel
+      block:
+        - name: Run the Zitadel role
+          ansible.builtin.include_role:
+            name: zitadel
+            apply:
+              become: false
+
+        - name: Use the provisioned Zitadel login
+          ansible.builtin.set_fact:
+            mcphub_oidc_client_id: "{{ zitadel_client_ids.mcphub | default('') }}"
+            mcphub_oidc_client_secret: "{{ zitadel_client_secrets.mcphub | default('') }}"
+          no_log: true
+
+      rescue:
+        - name: Keep the Zitadel login of the previous deploy
+          ansible.builtin.set_fact:
+            mcphub_oidc_client_id: "{{ mcphub_previous_oidc_client_id }}"
+            mcphub_oidc_client_secret: "{{ mcphub_previous_oidc_client_secret }}"
+          no_log: true
+
+        - name: Report that Zitadel provisioning failed
+          ansible.builtin.debug:
+            msg: >-
+              Zitadel provisioning failed:
+              {{ 'MCPHub keeps the Zitadel login of the previous deploy' if mcphub_oidc_client_id | length > 0 else 'the Zitadel login stays off' }}
+              and the local admin login still works. A missing tofu means the playbook was not
+              run with mise (mise deploy services/mcphub/deploy.yml). First line of the error:
+              {{ (ansible_failed_result.msg | default('unknown error') | string).splitlines() | first | default('unknown error') }}
+
   roles:
     - role: compose_service
       vars:
@@ -12,6 +77,20 @@
         compose_service_directory: MCPHub
         compose_service_directories:
           - data
+          - Postgres
+        compose_service_external_networks:
+          - name: databases   # shared with Databasus
+            internal: true
+        compose_service_environment:
+          POSTGRES_DB: mcphub
+          POSTGRES_USER: mcphub
+          POSTGRES_PASSWORD: "{{ mcphub_database_password }}"
+          JWT_SECRET: "{{ mcphub_jwt_secret }}"
+          BETTER_AUTH_SECRET: "{{ mcphub_better_auth_secret }}"
+          ADMIN_PASSWORD: "{{ mcphub_admin_password }}"
+          OIDC_ENABLED: "{{ (mcphub_oidc_client_id | length > 0) | string | lower }}"
+          OIDC_CLIENT_ID: "{{ mcphub_oidc_client_id }}"
+          OIDC_CLIENT_SECRET: "{{ mcphub_oidc_client_secret }}"
         compose_service_dns_records:
           - record: mcphub.anneraud.fr
             visibility: private

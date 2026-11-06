@@ -19,9 +19,10 @@
       ansible.builtin.assert:
         that:
           - zitadel_provisioned
-          - zitadel_client_ids.keys() | sort == ['grafana', 'nextcloud']
-          - zitadel_client_ids.values() | select | list | length == 2
-          - zitadel_client_secrets.keys() | list == ['nextcloud']
+          - zitadel_client_ids.keys() | sort == ['grafana', 'mcphub', 'nextcloud']
+          - zitadel_client_ids.values() | select | list | length == 3
+          - zitadel_client_secrets.keys() | sort == ['mcphub', 'nextcloud']
+          - zitadel_client_secrets.mcphub | length > 0
           - zitadel_client_secrets.nextcloud | length > 0
           - "zitadel_configured_in == {'nextcloud': 'Nextcloud → Administration → OpenID Connect'}"
           - not zitadel_apply.changed
@@ -230,7 +231,7 @@
     - name: Check the project's applications
       ansible.builtin.assert:
         that:
-          - applications.keys() | sort == ['grafana', 'nextcloud']
+          - applications.keys() | sort == ['grafana', 'mcphub', 'nextcloud']
           - applications.grafana.clientId == zitadel_test_client_ids.grafana
           - applications.grafana.redirectUris == ['https://grafana.molecule.example/login/generic_oauth']
           - applications.grafana.postLogoutRedirectUris == ['https://grafana.molecule.example/login']
@@ -238,6 +239,7 @@
           - applications.nextcloud.clientId == zitadel_test_client_ids.nextcloud
           - applications.nextcloud.redirectUris == ['https://nextcloud.molecule.example/apps/user_oidc/code']
           - applications.nextcloud.authMethodType | default('OIDC_AUTH_METHOD_TYPE_BASIC') == 'OIDC_AUTH_METHOD_TYPE_BASIC'
+          - applications.mcphub.authMethodType == 'OIDC_AUTH_METHOD_TYPE_POST'
       vars:
         applications: "{{ zitadel_test_applications_found.json.result | items2dict(key_name='name', value_name='oidcConfig') }}"
 

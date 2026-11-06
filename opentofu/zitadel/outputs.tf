@@ -13,7 +13,7 @@ output "client_secrets" {
   description = "Client secret of each client_secret application."
   value = {
     for name, application in zitadel_application_oidc.application : name => application.client_secret
-    if var.applications[name].authentication == "client_secret"
+    if var.applications[name].authentication != "pkce"
   }
   sensitive = true
 }

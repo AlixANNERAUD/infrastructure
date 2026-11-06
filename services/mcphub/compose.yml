@@ -10,18 +10,65 @@ services:
     image: samanhappy/mcphub:1.1.10
     logging: *logging
     restart: unless-stopped
+    environment:
+      # Database mode: Better Auth (the Zitadel login) needs PostgreSQL
+      DB_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Fixed secrets, so a restart keeps everyone logged in
+      JWT_SECRET: ${JWT_SECRET}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      # The local admin, kept next to Zitadel as the break-glass login
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      # Login through Zitadel; off when the deploy had no client (OIDC_ENABLED=false)
+      BETTER_AUTH_ENABLED: ${OIDC_ENABLED}
+      BETTER_AUTH_URL: https://mcphub.anneraud.fr
+      BETTER_AUTH_OIDC_ENABLED: ${OIDC_ENABLED}
+      BETTER_AUTH_OIDC_PROVIDER_ID: oidc
+      BETTER_AUTH_OIDC_DISCOVERY_URL: https://authentification.anneraud.fr/.well-known/openid-configuration
+      BETTER_AUTH_OIDC_SCOPES: openid,profile,email
+      BETTER_AUTH_OIDC_PKCE: "true"
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
     volumes:
       - ./data:/app/data
     networks:
+      - internal
       - proxy
+    depends_on:
+      postgres:
+        condition: service_healthy
     labels:
       - traefik.enable=true
+      - traefik.docker.network=proxy
       - traefik.http.routers.mcphub.rule=Host(`mcphub.anneraud.fr`)
       - traefik.http.routers.mcphub.entrypoints=web-secure
       - traefik.http.routers.mcphub.tls=true
       - traefik.http.routers.mcphub.middlewares=internal-allowlist@file
       - traefik.http.services.mcphub.loadbalancer.server.port=3000
 
+  postgres:
+    image: postgres:18.6-alpine
+    logging: *logging
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - ./Postgres:/var/lib/postgresql
+    networks:
+      - internal
+      - databases   # backed up by Databasus, as Zitadel's
+
 networks:
+  # MCPHub to its database only: no route out of the Docker network
+  internal:
+    internal: true
+  databases:
+    external: true
   proxy:
     external: true

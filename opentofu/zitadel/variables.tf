@@ -98,6 +98,8 @@ variable "applications" {
     redirect_uris    = list(string)
     post_logout_uris = optional(list(string), [])
     # pkce: public client (no secret); client_secret: confidential client
+    # sending its secret with HTTP Basic; client_secret_post: in the request
+    # body (Better Auth, as in MCPHub)
     authentication = optional(string, "pkce")
     # Where the owner pastes the client id and secret, for services managed outside this repository
     configured_in = optional(string)
@@ -105,8 +107,8 @@ variable "applications" {
   default = {}
 
   validation {
-    condition     = alltrue([for application in values(var.applications) : contains(["pkce", "client_secret"], application.authentication)])
-    error_message = "authentication must be pkce or client_secret."
+    condition     = alltrue([for application in values(var.applications) : contains(["pkce", "client_secret", "client_secret_post"], application.authentication)])
+    error_message = "authentication must be pkce, client_secret or client_secret_post."
   }
 
   validation {
