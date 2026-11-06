@@ -2,6 +2,7 @@
 kinds:
   # Task files included by a playbook, listed before the playbook pattern
   - tasks: "services/proxy/check_published_ports.yml"
+  - tasks: "roles/zitadel/molecule/default/id_token.yml"
   - playbook: "services/*/*.yml"
   - playbook: "dns/*.yml"
   - playbook: "hosts/*/*.yml"

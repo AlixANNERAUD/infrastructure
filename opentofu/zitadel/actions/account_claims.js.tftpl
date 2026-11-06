@@ -1,0 +1,16 @@
+// Copies a user metadata value into a claim of the same name, for the
+// applications of account_claims (client id => metadata key). Zitadel parses
+// a value that is valid JSON, hence String().
+function accountClaims(ctx, api) {
+  var claims = ${account_claims};
+  var key = claims[ctx.v1.application.getClientId()];
+  if (!key) {
+    return;
+  }
+  var metadata = ctx.v1.user.getMetadata().metadata;
+  for (var i = 0; i < metadata.length; i++) {
+    if (metadata[i].key === key) {
+      api.v1.claims.setClaim(key, String(metadata[i].value));
+    }
+  }
+}

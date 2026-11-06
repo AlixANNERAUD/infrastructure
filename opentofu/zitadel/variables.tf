@@ -103,6 +103,9 @@ variable "applications" {
     authentication = optional(string, "pkce")
     # Where the owner pastes the client id and secret, for services managed outside this repository
     configured_in = optional(string)
+    # User metadata key passed to this application as a claim of the same name
+    # (actions.tf), for accounts that predate Zitadel: nextcloud_account
+    account_claim = optional(string)
   }))
   default = {}
 

@@ -1,0 +1,82 @@
+---
+# Logs zitadel_test_login_user in to zitadel_test_login_application through the
+# OIDC authorization code flow, the way Zitadel's login UI does it with its
+# API (zitadel_test_service_account_id is the token's user), and returns the
+# ID token's claims in zitadel_test_id_token_claims.
+# In: zitadel_test_login_application, zitadel_test_login_user (user id),
+# zitadel_test_login_password, zitadel_test_login_client_id,
+# zitadel_test_login_client_secret, zitadel_test_login_basic (HTTP Basic
+# rather than the secret in the body), zitadel_test_login_redirect_uri.
+
+# With this header, the request is handed to the API (Zitadel's login v2)
+# as that service account
+- name: Start the authorization request
+  ansible.builtin.uri:
+    url: >-
+      {{ zitadel_test_url }}/oauth/v2/authorize?{{ {
+           'client_id': zitadel_test_login_client_id,
+           'redirect_uri': zitadel_test_login_redirect_uri,
+           'response_type': 'code',
+           'scope': 'openid',
+           'state': 'molecule',
+           'nonce': 'molecule'
+         } | urlencode }}
+    headers:
+      x-zitadel-login-client: "{{ zitadel_test_service_account_id }}"
+    follow_redirects: none
+    status_code: [302, 303]
+  register: zitadel_test_authorize
+
+- name: Open a session for the user
+  ansible.builtin.uri:
+    url: "{{ zitadel_test_url }}/v2/sessions"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ zitadel_test_token }}"
+    body_format: json
+    body:
+      checks:
+        user: {userId: "{{ zitadel_test_login_user }}"}
+        password: {password: "{{ zitadel_test_login_password }}"}
+    status_code: [200, 201]
+  register: zitadel_test_session
+  no_log: true
+
+- name: Finish the authorization request with the session
+  ansible.builtin.uri:
+    url: "{{ zitadel_test_url }}/v2/oidc/auth_requests/{{ zitadel_test_authorize.location | regex_search('(?<=authRequest=)[^&]+') }}"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ zitadel_test_token }}"
+    body_format: json
+    body:
+      session:
+        sessionId: "{{ zitadel_test_session.json.sessionId }}"
+        sessionToken: "{{ zitadel_test_session.json.sessionToken }}"
+  register: zitadel_test_callback
+  no_log: true
+
+- name: Exchange the code for tokens
+  ansible.builtin.uri:
+    url: "{{ zitadel_test_url }}/oauth/v2/token"
+    method: POST
+    body_format: form-urlencoded
+    # The secret goes as the application expects it: HTTP Basic or in the body
+    body: >-
+      {{ {'grant_type': 'authorization_code',
+          'code': zitadel_test_callback.json.callbackUrl | regex_search('(?<=[?&]code=)[^&]+') | urldecode,
+          'redirect_uri': zitadel_test_login_redirect_uri}
+         | combine({} if zitadel_test_login_basic else
+                   {'client_id': zitadel_test_login_client_id, 'client_secret': zitadel_test_login_client_secret}) }}
+    url_username: "{{ zitadel_test_login_client_id if zitadel_test_login_basic else omit }}"
+    url_password: "{{ zitadel_test_login_client_secret if zitadel_test_login_basic else omit }}"
+    force_basic_auth: "{{ zitadel_test_login_basic }}"
+  register: zitadel_test_tokens
+  no_log: true
+
+- name: Read the ID token's claims
+  ansible.builtin.set_fact:
+    zitadel_test_id_token_claims: >-
+      {{ (payload ~ '=' * ((4 - payload | length % 4) % 4)) | b64decode | from_json }}
+  vars:
+    payload: "{{ zitadel_test_tokens.json.id_token.split('.')[1] | replace('-', '+') | replace('_', '/') }}"

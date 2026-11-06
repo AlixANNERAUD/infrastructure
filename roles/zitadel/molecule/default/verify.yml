@@ -134,6 +134,49 @@
       ansible.builtin.assert:
         that: zitadel_test_metadata.json.metadata.value | b64decode == 'Owner TEST'
 
+    - name: Read the service account
+      ansible.builtin.uri:
+        url: "{{ zitadel_test_url }}/auth/v1/users/me"
+        headers:
+          Authorization: "Bearer {{ zitadel_test_token }}"
+      register: zitadel_test_service_account
+      no_log: true
+
+    # The account claim (actions.tf): Nextcloud's user id, as it is
+    - name: Log the owner in to Nextcloud
+      ansible.builtin.include_tasks: id_token.yml
+      vars:
+        zitadel_test_service_account_id: "{{ zitadel_test_service_account.json.user.id }}"
+        zitadel_test_login_user: "{{ zitadel_test_user_ids.owner }}"
+        zitadel_test_login_password: "{{ zitadel_temporary_passwords.owner }}"
+        zitadel_test_login_client_id: "{{ zitadel_client_ids.nextcloud }}"
+        zitadel_test_login_client_secret: "{{ zitadel_client_secrets.nextcloud }}"
+        zitadel_test_login_basic: true
+        zitadel_test_login_redirect_uri: "{{ zitadel_test_applications.nextcloud.redirect_uris[0] }}"
+
+    - name: Check that Nextcloud gets the owner's account id
+      ansible.builtin.assert:
+        that:
+          - zitadel_test_id_token_claims.sub == zitadel_test_user_ids.owner
+          - zitadel_test_id_token_claims.nextcloud_account == 'Owner TEST'
+
+    - name: Log the owner in to MCPHub
+      ansible.builtin.include_tasks: id_token.yml
+      vars:
+        zitadel_test_service_account_id: "{{ zitadel_test_service_account.json.user.id }}"
+        zitadel_test_login_user: "{{ zitadel_test_user_ids.owner }}"
+        zitadel_test_login_password: "{{ zitadel_temporary_passwords.owner }}"
+        zitadel_test_login_client_id: "{{ zitadel_client_ids.mcphub }}"
+        zitadel_test_login_client_secret: "{{ zitadel_client_secrets.mcphub }}"
+        zitadel_test_login_basic: false
+        zitadel_test_login_redirect_uri: "{{ zitadel_test_applications.mcphub.redirect_uris[0] }}"
+
+    - name: Check that the other applications do not get it
+      ansible.builtin.assert:
+        that:
+          - zitadel_test_id_token_claims.sub == zitadel_test_user_ids.owner
+          - "'nextcloud_account' not in zitadel_test_id_token_claims"
+
     - name: List the owner's grants
       ansible.builtin.uri:
         url: "{{ zitadel_test_url }}/management/v1/users/grants/_search"
