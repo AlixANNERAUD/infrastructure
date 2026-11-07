@@ -25,10 +25,10 @@ exporters() {
 cleanup() {
     status=$?
     if [ "$status" -ne 0 ] && [ -f "$directory/compose.yml" ]; then
-        compose logs --no-color --tail 50 || true
+        COMPOSE_PROFILES=mcp compose logs --no-color --tail 50 || true
         exporters logs --no-color --tail 30 || true
     fi
-    compose down --volumes --timeout 5 > /dev/null 2>&1 || true
+    COMPOSE_PROFILES=mcp compose down --volumes --timeout 5 > /dev/null 2>&1 || true
     exporters down --volumes --timeout 5 > /dev/null 2>&1 || true
     docker network rm "$network" "$metrics_network" protection-metrics > /dev/null 2>&1 || true
     rm -rf "$directory"
@@ -96,6 +96,8 @@ services:
     ports: ["127.0.0.1::8428"]
   grafana:
     ports: ["127.0.0.1::3000"]
+  mcp:
+    ports: ["127.0.0.1::8000"]
 EOF
 docker network create "$network" > /dev/null
 # Shared with CrowdSec, which does not run here: its target is down
@@ -123,6 +125,86 @@ if [ "$ready" != true ]; then
     echo "VictoriaMetrics or Grafana did not become healthy within 2 minutes"
     exit 1
 fi
+
+# Grafana's MCP server (the mcp profile), with a Viewer service account's
+# token as deployed: it refuses callers without its own token, has no write
+# tools and reads Grafana's data sources
+account=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{"name":"mcp","role":"Viewer"}' "$grafana/api/serviceaccounts" | jq -r .id)
+grafana_token=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{"name":"mcp"}' "$grafana/api/serviceaccounts/$account/tokens" | jq -r .key)
+mcp_token=check-vigie-mcp-token
+GRAFANA_MCP_GRAFANA_TOKEN=$grafana_token GRAFANA_MCP_SERVER_TOKEN=$mcp_token COMPOSE_PROFILES=mcp \
+    compose up -d --no-deps --quiet-pull mcp
+mcp="http://$(COMPOSE_PROFILES=mcp compose port mcp 8000)/mcp"
+uv run python - "$mcp" "$mcp_token" <<'PYTHON'
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+
+url, token = sys.argv[1], sys.argv[2]
+session = None
+
+
+def call(method, params=None, authorization=f"Bearer {token}", notification=False):
+    global session
+    message = {"jsonrpc": "2.0", "method": method, "params": params or {}}
+    if not notification:
+        message["id"] = 1
+    headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+    if authorization:
+        headers["Authorization"] = authorization
+    if session:
+        headers["Mcp-Session-Id"] = session
+    request = urllib.request.Request(url, json.dumps(message).encode(), headers)
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            session = response.headers.get("Mcp-Session-Id") or session
+            body = response.read().decode()
+            status = response.status
+    except urllib.error.HTTPError as error:
+        return error.code, None
+    if notification or not body.strip():
+        return status, None
+    # Streamable HTTP answers JSON or a server-sent event
+    data = [line[5:].strip() for line in body.splitlines() if line.startswith("data:")]
+    return status, json.loads(data[-1] if data else body)
+
+
+for _ in range(30):
+    try:
+        status, _ = call("initialize", authorization=None)
+        break
+    except (urllib.error.URLError, ConnectionError):
+        time.sleep(2)
+else:
+    sys.exit("Grafana's MCP server did not answer within a minute")
+failures = []
+if status != 401:
+    failures.append(f"without its token the MCP server answers {status}")
+status, _ = call("initialize", authorization="Bearer wrong-token")
+if status != 401:
+    failures.append(f"with a wrong token the MCP server answers {status}")
+status, answer = call("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                     "clientInfo": {"name": "check-vigie", "version": "1"}})
+if status != 200 or "result" not in (answer or {}):
+    sys.exit(f"initialize answers {status}: {answer}")
+call("notifications/initialized", notification=True)
+_, answer = call("tools/list")
+names = {tool["name"] for tool in (answer or {}).get("result", {}).get("tools", [])}
+for name in ("query_prometheus", "search_dashboards", "list_datasources"):
+    if name not in names:
+        failures.append(f"tool {name} is missing from {sorted(names)}")
+writes = sorted(name for name in names if name.startswith(("update_", "create_", "delete_", "add_")))
+if writes:
+    failures.append(f"write tools are available: {writes}")
+_, answer = call("tools/call", {"name": "list_datasources", "arguments": {}})
+text = json.dumps((answer or {}).get("result", {}))
+if "victoriametrics" not in text:
+    failures.append(f"list_datasources does not reach Grafana: {text[:300]}")
+print("\n".join(failures) or "Grafana's MCP server: token required, read-only, reads Grafana")
+sys.exit(1 if failures else 0)
+PYTHON
 
 # Sample Traefik counters for the last 8 minutes, one point every 30 s:
 # app@file answers 9 % of its requests with a 5xx (the error rule must fire)

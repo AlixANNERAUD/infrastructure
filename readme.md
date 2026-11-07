@@ -202,6 +202,15 @@ Prerequisites:
 - The Bruxelles scrape goes from Luxembourg to Bruxelles over Netbird and relies on Bruxelles' Traefik internal allowlist accepting the VPN range.
 - The CrowdSec scrape needs CrowdSec's stack deployed on the `protection-metrics` network (`mise deploy services/protection/deploy.yml`); until then, CrowdSec metrics missing fires.
 
+### Grafana in MCPHub
+
+Vigie also runs Grafana's official MCP server (`grafana/mcp-grafana`, service `mcp`) at `https://vigie.anneraud.fr/mcp`, behind the internal allowlist: from MCPHub, an assistant can query VictoriaMetrics (PromQL), read the dashboards and the alert rules with their state. It has no write tools (`--disable-write`), reads Grafana with a Viewer service account, and refuses any request without its own bearer token. It only starts once both tokens are in `vault/vigie/vault.yml`, in order:
+
+1. In Grafana, as an admin: Administration → Users and access → Service accounts → Add service account `mcp`, role **Viewer** → Add service account token (no expiration, or note when it expires).
+2. `mise vault vault/vigie/vault.yml`: `vigie_mcp_grafana_token` (that token) and `vigie_mcp_server_token` (`openssl rand -hex 32`), then commit the vault and its pointer.
+3. `mise deploy services/vigie/deploy.yml`: the `mcp` container starts (Compose profile `mcp`).
+4. In MCPHub (Servers → Add): type Streamable HTTP, URL `https://vigie.anneraud.fr/mcp`, header `Authorization` = `Bearer <vigie_mcp_server_token>`. Every MCPHub user given this server sees all of Vigie's metrics: keep it in the owner's group.
+
 ### Host metrics
 
 `services/metriques` runs on every host of the `metriques` group (Luxembourg and Bruxelles), deployed with `mise deploy services/metriques/deploy.yml`:

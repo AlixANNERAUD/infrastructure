@@ -81,6 +81,43 @@ services:
       - traefik.http.routers.vigie.middlewares=internal-allowlist@file
       - traefik.http.services.vigie.loadbalancer.server.port=3000
 
+  # Grafana's official MCP server, read-only (no write tools), for MCPHub: it
+  # queries Grafana with a Viewer service account's token, and answers only
+  # requests carrying its own bearer token. Started only once both tokens are
+  # in the vault (COMPOSE_PROFILES), never open without the second one
+  mcp:
+    image: grafana/mcp-grafana:2.1.1
+    logging: *logging
+    restart: unless-stopped
+    profiles: [mcp]
+    mem_limit: 128m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - "--transport=streamable-http"
+      - "--address=0.0.0.0:8000"
+      - "--disable-write"
+    environment:
+      GRAFANA_URL: http://grafana:3000
+      GRAFANA_SERVICE_ACCOUNT_TOKEN: ${GRAFANA_MCP_GRAFANA_TOKEN}
+      MCP_GRAFANA_SERVER_TOKEN: ${GRAFANA_MCP_SERVER_TOKEN}
+    networks:
+      - vigie
+      - proxy
+    depends_on:
+      - grafana
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
+      - traefik.http.routers.vigie-mcp.rule=Host(`vigie.anneraud.fr`) && PathPrefix(`/mcp`)
+      - traefik.http.routers.vigie-mcp.entrypoints=web-secure
+      - traefik.http.routers.vigie-mcp.tls=true
+      - traefik.http.routers.vigie-mcp.tls.certresolver=letsencrypt
+      - traefik.http.routers.vigie-mcp.middlewares=internal-allowlist@file
+      - traefik.http.services.vigie-mcp.loadbalancer.server.port=8000
+
 networks:
   # Grafana to VictoriaMetrics only: no route out of the Docker network
   vigie:

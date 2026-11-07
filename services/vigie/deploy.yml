@@ -57,6 +57,12 @@
           PROXY_NETWORK: "{{ proxy_network }}"
           METRICS_NETWORK: metriques
           GRAFANA_OAUTH_ENABLED: "{{ (zitadel_login_client_id | length > 0) | string | lower }}"
+          # Grafana's MCP server (the mcp profile) starts only with both tokens
+          GRAFANA_MCP_GRAFANA_TOKEN: "{{ vigie_mcp_grafana_token | default('') }}"
+          GRAFANA_MCP_SERVER_TOKEN: "{{ vigie_mcp_server_token | default('') }}"
+          COMPOSE_PROFILES: >-
+            {{ 'mcp' if (vigie_mcp_grafana_token | default('') | length > 0
+                         and vigie_mcp_server_token | default('') | length > 0) else '' }}
           GRAFANA_OAUTH_CLIENT_ID: "{{ zitadel_login_client_id }}"
           # Ends the Zitadel session too, then comes back to Grafana's login page
           # (the post-logout URI registered for the application)
