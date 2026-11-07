@@ -22,13 +22,13 @@ scrape_configs:
           host: bruxelles
 {% if inventory_hostname in groups['protection'] %}
 
-  # CrowdSec on this host (services/protection), through its metrics proxy on
-  # the internal protection-metrics network: only /metrics gets through
+  # CrowdSec on this host (services/protection), over the internal
+  # protection-metrics network
   - job_name: crowdsec
     metrics_path: /metrics
     scheme: http
     static_configs:
-      - targets: ["crowdsec-metrics:6060"]
+      - targets: ["crowdsec:6060"]
         labels:
           host: {{ inventory_hostname }}
 {% endif %}

@@ -77,7 +77,7 @@ services:
     ports: ["127.0.0.1::3000"]
 EOF
 docker network create "$network" > /dev/null
-# Shared with CrowdSec's metrics proxy, which does not run here: its target is down
+# Shared with CrowdSec, which does not run here: its target is down
 docker network create --internal protection-metrics > /dev/null
 
 # VictoriaMetrics must accept the scrape configuration as it is
@@ -198,7 +198,7 @@ check(
     targets == {
         ("traefik-luxembourg", "luxembourg"): "http://traefik:8082/metrics",
         ("traefik-bruxelles", "bruxelles"): "https://traefik.bruxelles.anneraud.fr/metrics",
-        ("crowdsec", "luxembourg"): "http://crowdsec-metrics:6060/metrics",
+        ("crowdsec", "luxembourg"): "http://crowdsec:6060/metrics",
     },
     f"scrape targets are {targets}",
 )

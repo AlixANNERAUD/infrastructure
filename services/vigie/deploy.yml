@@ -60,7 +60,7 @@
             {{ ('https://authentification.anneraud.fr/oidc/v1/end_session?client_id=' ~ zitadel_login_client_id
                 ~ '&post_logout_redirect_uri=https%3A%2F%2Fvigie.anneraud.fr%2Flogin')
                if zitadel_login_client_id | length > 0 else '' }}
-        # Shared with CrowdSec's metrics proxy (services/protection)
+        # Shared with CrowdSec (services/protection)
         compose_service_external_networks:
           - name: protection-metrics
             internal: true

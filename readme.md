@@ -173,17 +173,17 @@ docker exec crowdsec cscli allowlists inspect internal     # never banned
 
 An unban reaches Traefik within 15 s. To add another host, add it to the `protection` group in `inventory/hosts.yml` and deploy Traefik then CrowdSec there.
 
-Vigie monitors both protections (see [Vigie](#vigie)): the CrowdSec dashboard (alerts and bans per scenario and origin, lines read and parsed, local API and bouncer requests, 403 answers per router) and the Rate limits dashboard (429 answers per login router and per router on both Traefik instances, from Traefik's own metrics). It scrapes CrowdSec's metrics through `crowdsec-metrics`, an nginx proxy in the protection stack that only forwards `GET /metrics`: CrowdSec's metrics port also serves Go's profiling pages (`/debug/pprof`) and its local API listens next to it, so Vigie never shares a network with CrowdSec. The proxy reaches CrowdSec over the stack's internal `metrics` network, and VictoriaMetrics reaches the proxy over the internal `protection-metrics` network, which both playbooks create; nothing is published.
+Vigie monitors both protections (see [Vigie](#vigie)): the CrowdSec dashboard (alerts and bans per scenario and origin, lines read and parsed, local API and bouncer requests, 403 answers per router) and the Rate limits dashboard (429 answers per login router and per router on both Traefik instances, from Traefik's own metrics). VictoriaMetrics scrapes CrowdSec's metrics (`crowdsec:6060`) over the internal `protection-metrics` network, which both playbooks create and only these two containers join; nothing is published. That port also serves Go's profiling pages and CrowdSec's local API listens next to it (it asks for credentials), so keep Grafana and other services off that network.
 
 ## Vigie
 
-Vigie (`services/vigie`) runs on Luxembourg: VictoriaMetrics (3 months of retention, 30 s scrape interval) and Grafana at `https://vigie.anneraud.fr/`, reachable only through Traefik's internal allowlist. It scrapes the metrics of both Traefik instances (Luxembourg and Bruxelles) and of CrowdSec on Luxembourg (through its metrics proxy, see [Protection](#protection)), and Grafana alerts a Home Assistant webhook on 5xx errors, high latency and unreachable targets. Its dashboards are Traefik, CrowdSec and Rate limits (`services/vigie/grafana/dashboards/`).
+Vigie (`services/vigie`) runs on Luxembourg: VictoriaMetrics (3 months of retention, 30 s scrape interval) and Grafana at `https://vigie.anneraud.fr/`, reachable only through Traefik's internal allowlist. It scrapes the metrics of both Traefik instances (Luxembourg and Bruxelles) and of CrowdSec on Luxembourg (see [Protection](#protection)), and Grafana alerts a Home Assistant webhook on 5xx errors, high latency and unreachable targets. Its dashboards are Traefik, CrowdSec and Rate limits (`services/vigie/grafana/dashboards/`).
 
 The Protection alert group (`services/vigie/grafana/protection_alerting.yml.j2`) sits above the background of scanners on a public address, so only what is out of the ordinary reaches the phone:
 
 | Alert | Fires when |
 |---|---|
-| CrowdSec metrics missing | CrowdSec or its metrics proxy cannot be scraped for 10 minutes |
+| CrowdSec metrics missing | CrowdSec cannot be scraped for 10 minutes |
 | CrowdSec bouncer silent | CrowdSec answers but Traefik's bouncer has not asked it for decisions for 20 minutes: bans are not applied |
 | CrowdSec reads no access log | Traefik serves requests but CrowdSec parsed none of its log lines in 30 minutes |
 | CrowdSec alert spike | More than 30 CrowdSec alerts (scenario overflows, each a 4-hour ban) in an hour |
@@ -199,7 +199,7 @@ Prerequisites:
 - `vault/authentification/vault.yml` holds `zitadel_automation_token` and `zitadel_state_passphrase`. Without them, the deploy goes on with OAuth off and only the local admin login. If provisioning fails, Grafana keeps the Zitadel login of the previous deploy (OAuth stays off when there was none). When the apply changes the applications, commit `vault/authentification/opentofu.tfstate` in the vault repository.
 - The deploy provisions the Zitadel application with OpenTofu, so run it with `mise deploy services/vigie/deploy.yml` (mise puts `tofu` on `PATH`). A missing `tofu` means the playbook was run without mise.
 - The Bruxelles scrape goes from Luxembourg to Bruxelles over Netbird and relies on Bruxelles' Traefik internal allowlist accepting the VPN range.
-- The CrowdSec scrape needs CrowdSec's stack deployed with its metrics proxy (`mise deploy services/protection/deploy.yml`); until then, CrowdSec metrics missing fires.
+- The CrowdSec scrape needs CrowdSec's stack deployed on the `protection-metrics` network (`mise deploy services/protection/deploy.yml`); until then, CrowdSec metrics missing fires.
 
 ## MCPHub
 

@@ -16,9 +16,8 @@ groups:
     interval: {{ vigie_alert_evaluation_interval }}
     rules:
 {% if inventory_hostname in groups['protection'] %}
-      # The metrics proxy answers 502 while CrowdSec is down, so up = 0 covers
-      # the engine and its proxy alike; no up series at all means the scrape
-      # job is missing
+      # up = 0 while CrowdSec is down or out of reach; no up series at all
+      # means the scrape job is missing
       - uid: crowdsec-metrics-missing
         title: CrowdSec metrics missing
         condition: threshold
@@ -43,7 +42,7 @@ groups:
               conditions:
                 - evaluator: {type: lt, params: [1]}
         annotations:
-          summary: "{% raw %}{{ if .Labels.host }}CrowdSec on {{ .Labels.host }} cannot be scraped: the engine or its metrics proxy is down{{ else }}No CrowdSec metrics at all: VictoriaMetrics does not scrape it{{ end }}{% endraw %}"
+          summary: "{% raw %}{{ if .Labels.host }}CrowdSec on {{ .Labels.host }} cannot be scraped: the engine is down or out of reach{{ else }}No CrowdSec metrics at all: VictoriaMetrics does not scrape it{{ end }}{% endraw %}"
 
       # In stream mode Traefik's bouncer asks the local API for new decisions
       # every 15 s. Without these requests (Traefik down, protection network

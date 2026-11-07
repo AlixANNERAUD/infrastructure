@@ -23,8 +23,8 @@ services:
       - ./scrape.yml:/etc/vigie/scrape.yml:ro
       - ./victoriametrics:/victoria-metrics-data
     # The proxy network reaches Luxembourg's Traefik and, through the host,
-    # Bruxelles' over Netbird; protection-metrics only reaches CrowdSec's
-    # metrics proxy (services/protection). The port is never published
+    # Bruxelles' over Netbird; protection-metrics only reaches CrowdSec
+    # (services/protection). The port is never published
     networks:
       - vigie
       - proxy
