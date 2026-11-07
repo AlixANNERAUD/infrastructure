@@ -1,0 +1,29 @@
+---
+# Builds MeshCentral's Zitadel login on the controller: no TrueNAS needed
+- name: Test MeshCentral's authentication strategy
+  hosts: localhost
+  gather_facts: false
+  vars:
+    parc_client_id: client-id
+    parc_client_secret: client-secret
+  tasks:
+    - name: Build the strategy
+      ansible.builtin.include_tasks: ../tasks/authentication_strategy.yml
+
+    - name: Check the strategy
+      ansible.builtin.assert:
+        that:
+          # Merged by hand into config.json, under the default domain
+          - parc_authentication_strategy | list == ['authStrategies']
+          - strategies | list == ['oidc']
+          - strategies.oidc.issuer == 'https://authentification.anneraud.fr'
+          - strategies.oidc.client.client_id == 'client-id'
+          - strategies.oidc.client.client_secret == 'client-secret'
+          - strategies.oidc.client.redirect_uri == 'https://parc.anneraud.fr/auth-oidc-callback'
+          - strategies.oidc.client.post_logout_redirect_uri == 'https://parc.anneraud.fr/login'
+          # A Zitadel login is always a new MeshCentral account: allowed, but
+          # without the right to create device groups until the admin grants some
+          - strategies.oidc.newAccounts
+          - strategies.oidc.newAccountsRights == ['nonewgroups']
+      vars:
+        strategies: "{{ parc_authentication_strategy.authStrategies }}"

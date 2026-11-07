@@ -32,4 +32,13 @@ applications = {
     authentication = "client_secret"
     redirect_uris  = ["https://deploiement.anneraud.fr/api/auth/oidc/zitadel/redirect"]
   }
+
+  # MeshCentral (parc.anneraud.fr), a TrueNAS app: services/parc gives the
+  # entry of its config.json. openid-client sends the secret with HTTP Basic
+  meshcentral = {
+    project          = "Parc"
+    authentication   = "client_secret"
+    redirect_uris    = ["https://parc.anneraud.fr/auth-oidc-callback"]
+    post_logout_uris = ["https://parc.anneraud.fr/login"]
+  }
 }

@@ -1,0 +1,53 @@
+---
+# MeshCentral (parc.anneraud.fr) is a TrueNAS app. Its login strategies are not
+# app settings but entries of its own config.json, in its data dataset, which
+# the app's setup script keeps when it starts. This playbook provisions its
+# Zitadel application and writes the entry to merge into that file by hand
+# (it holds the client secret, and the file holds the database password and
+# session key too, so it is not written from here). Run it with mise.
+- name: Prepare MeshCentral's Zitadel login
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../../vault/authentification/vault.yml
+  vars:
+    # Holds the client secret: written to a file, never printed (Semaphore keeps its logs)
+    parc_strategy_file: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/infrastructure/zitadel/parc-authentication.json"
+  roles:
+    - role: zitadel
+  tasks:
+    - name: Check that MeshCentral's Zitadel application is provisioned
+      ansible.builtin.assert:
+        that:
+          - zitadel_provisioned
+          - zitadel_client_ids.meshcentral | default('') | length > 0
+          - zitadel_client_secrets.meshcentral | default('') | length > 0
+        fail_msg: Zitadel is not provisioned (see the messages above) or has no meshcentral application with a secret.
+        quiet: true
+
+    - name: Build the authentication strategy
+      ansible.builtin.include_tasks: tasks/authentication_strategy.yml
+      vars:
+        parc_client_id: "{{ zitadel_client_ids.meshcentral }}"
+        parc_client_secret: "{{ zitadel_client_secrets.meshcentral }}"
+
+    - name: Create the folder of the strategy
+      ansible.builtin.file:
+        path: "{{ parc_strategy_file | dirname }}"
+        state: directory
+        mode: "0700"
+
+    - name: Write the strategy
+      ansible.builtin.copy:
+        dest: "{{ parc_strategy_file }}"
+        content: "{{ parc_authentication_strategy | to_nice_json(indent=2) }}\n"
+        mode: "0600"
+      no_log: true
+
+    - name: Say where to merge it
+      ansible.builtin.debug:
+        msg:
+          - "{{ parc_strategy_file }} holds the authStrategies entry of MeshCentral's default domain (with the client secret)"
+          - "Edit config.json in the app's meshcentral-data storage (/opt/meshcentral/meshcentral-data/config.json in the container)"
+          - 'Add the authStrategies key of that file inside domains → "" (next to title and newAccounts), keep everything else'
+          - Restart the app; the login page then shows a Zitadel button next to the password form
