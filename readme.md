@@ -221,6 +221,25 @@ Radarr (`services/films`) and Sonarr (`services/series`), in order:
 
 The OIDC login replaces their login form. To fall back to it (Zitadel down), remove the `…__AUTH__METHOD` entry: the form and its password come back from `config.xml`. API keys (Prowlarr, Jellyseerr, Bazarr) are not affected.
 
+Vaultwarden (Bitwarden) keeps its own login on purpose, although it supports OIDC: it holds the Zitadel passwords and passkeys, so a Zitadel login would make each one need the other to recover from lost devices, and it would add nothing (the master password is still asked, and the password login has to stay). Keep a way into Zitadel that does not go through Vaultwarden (a second passkey, the ZITADEL organization's admin on paper).
+
+These apps have no Zitadel login of their own at the version of the TrueNAS catalog in November 2026, so they keep theirs (no third-party plugin added):
+
+| App | Version | Why |
+| --- | --- | --- |
+| Odoo (Mini Train Store) | 20.0 | `auth_oauth` only requests `response_type=token` (implicit OAuth 2), which Zitadel does not offer (`code`, `id_token`, `id_token token`) |
+| Umami (Statistiques) | 3.4.1 | Username and password only (its `/sso` route hands over an existing session, it is not OIDC) |
+| Bichon | 2.3.1 | Username and password only; its OAuth 2 is for the mail accounts it archives |
+| Jellyseerr (Seerr) | 3.5.1 | Local, Plex and Jellyfin logins only |
+| Prowlarr | 3.0.0 | Forms, Basic or External; the OIDC of Radarr 7 and Sonarr 5 is not in it yet |
+| Bazarr | 1.6.2 | Forms or Basic |
+| Home Assistant (Maison) | 2026.11.0 | Home Assistant, trusted networks and command line providers only |
+| Jellyfin (Médiathèque) | 12.4 | Only through the third-party SSO plugin |
+| n8n (Automatisation) | 2.47.2 | OIDC needs an Enterprise license (`feat:oidc`) |
+| MeTube | 2026.11.06 | No login at all (internal route) |
+| SearXNG (Recherche) | 2026.11.5 | No accounts (internal route) |
+| BentoPDF (PDF) | 2.8.11 | No accounts, runs in the browser (internal route) |
+
 ## Zitadel
 
 OpenTofu (`opentofu/zitadel/`) owns the whole Anneraud organization: the organization itself (the instance's default), its domain `anneraud.fr`, its login, password, lockout, domain and label policies, its users and their roles, and the projects and OIDC applications of `applications.auto.tfvars`. The instance defaults are not managed, so the ZITADEL organization's admin stays a working fallback whatever the code does. Apply it with `mise deploy services/authentification/applications.yml`; deploys that need an application (Vigie) apply it too. The state is encrypted in `vault/authentification/opentofu.tfstate`: commit it in the vault repository after each change.
