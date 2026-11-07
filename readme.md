@@ -235,6 +235,16 @@ Open WebUI does not check whether the email is verified, so it trusts the email 
 4. Each person: "Sign in with Zitadel", then sign in once with their Gitea username and password. For a new person, create their account first (Site Administration → User Accounts → Create User Account).
 5. Admins are promoted by hand: Site Administration → User Accounts → the user → Edit → Is Administrator.
 
+### Portainer (Conteneurs Bruxelles)
+
+`services/conteneurs` (application `portainer`). Portainer CE (the catalog's default image) logs a Zitadel login into the account whose username is the login's email (any case). It refuses emails without an account, since automatic user provisioning is off. Once OAuth is on, only the initial admin (the first account) can still log in with a password ("Use internal authentication"): it is the fallback. Mapping admin rights or teams from the identity provider is a Business Edition feature.
+
+1. In Portainer, Users: rename every existing account except the initial admin to the Zitadel email of its owner (the user → Username).
+2. `mise deploy services/conteneurs/deploy.yml`: it prints what to enter. The client secret is in `~/.config/infrastructure/zitadel/portainer.secret` (0600).
+3. Settings → Authentication: Authentication method `OAuth`, Provider `Custom`, Use SSO on, Automatic user provisioning off. Fill in Client ID and Client secret, Authorization URL `https://authentification.anneraud.fr/oauth/v2/authorize`, Access token URL `https://authentification.anneraud.fr/oauth/v2/token`, Resource URL `https://authentification.anneraud.fr/oidc/v1/userinfo`, Redirect URL `https://conteneurs.bruxelles.anneraud.fr/`, User identifier `email`, Scopes `openid profile email`, Auth Style `In Header`. Save settings.
+4. For a new person: Users → Add user, with their email as the username (no password with OAuth on).
+5. Admins are promoted by hand: Users → the user → Administrator.
+
 ## Zitadel
 
 OpenTofu (`opentofu/zitadel/`) owns the whole Anneraud organization: the organization itself (the instance's default), its domain `anneraud.fr`, its login, password, lockout, domain and label policies, its users and their roles, and the projects and OIDC applications of `applications.auto.tfvars`. The instance defaults are not managed, so the ZITADEL organization's admin stays a working fallback whatever the code does. Apply it with `mise deploy services/authentification/applications.yml`; deploys that need an application (Vigie) apply it too. The state is encrypted in `vault/authentification/opentofu.tfstate`: commit it in the vault repository after each change.

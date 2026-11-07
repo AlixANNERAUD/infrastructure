@@ -1,0 +1,38 @@
+---
+# Portainer's login through Zitadel: OAuth settings made in Portainer's
+# administration. In: conteneurs_client_id. Out: conteneurs_login_fields,
+# [{name, value}] in the form's order; the client secret's entry has
+# secret: true and no value.
+- name: Build Portainer's login settings
+  ansible.builtin.set_fact:
+    conteneurs_login_fields:
+      - name: Authentication method
+        value: OAuth
+      - name: Provider
+        value: Custom
+      # Reuses the Zitadel session instead of asking again
+      - name: Use SSO
+        value: "on"
+      # Portainer finds the account named after the login's email; unknown
+      # emails are refused rather than given an account: the admin creates it
+      - name: Automatic user provisioning
+        value: "off"
+      - name: Client ID
+        value: "{{ conteneurs_client_id }}"
+      - name: Client secret
+        secret: true
+      - name: Authorization URL
+        value: https://authentification.anneraud.fr/oauth/v2/authorize
+      - name: Access token URL
+        value: https://authentification.anneraud.fr/oauth/v2/token
+      - name: Resource URL
+        value: https://authentification.anneraud.fr/oidc/v1/userinfo
+      - name: Redirect URL
+        value: https://conteneurs.bruxelles.anneraud.fr/
+      - name: User identifier
+        value: email
+      - name: Scopes
+        value: openid profile email
+      # HTTP Basic, as the Zitadel application expects (client_secret)
+      - name: Auth Style
+        value: In Header

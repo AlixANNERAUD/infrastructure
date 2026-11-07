@@ -57,4 +57,12 @@ applications = {
     authentication = "client_secret"
     redirect_uris  = ["https://git.anneraud.fr/user/oauth2/Zitadel/callback"]
   }
+
+  # Portainer (conteneurs.bruxelles.anneraud.fr), a TrueNAS app:
+  # services/conteneurs gives its OAuth settings
+  portainer = {
+    project        = "Conteneurs"
+    authentication = "client_secret"
+    redirect_uris  = ["https://conteneurs.bruxelles.anneraud.fr/"]
+  }
 }

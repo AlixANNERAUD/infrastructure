@@ -1,0 +1,40 @@
+---
+# Builds Portainer's OAuth settings on the controller: no TrueNAS needed
+- name: Test Portainer's login settings
+  hosts: localhost
+  gather_facts: false
+  vars:
+    conteneurs_client_id: client-id
+  tasks:
+    - name: Build the settings
+      ansible.builtin.include_tasks: ../tasks/login_settings.yml
+
+    - name: Check the settings
+      ansible.builtin.assert:
+        that:
+          - conteneurs_login_fields | map(attribute='name') | list
+            == ['Authentication method', 'Provider', 'Use SSO', 'Automatic user provisioning', 'Client ID', 'Client secret',
+                'Authorization URL', 'Access token URL', 'Resource URL', 'Redirect URL', 'User identifier', 'Scopes',
+                'Auth Style']
+          - fields['Authentication method'] == 'OAuth'
+          - fields['Provider'] == 'Custom'
+          - fields['Use SSO'] == 'on'
+          # Only accounts created beforehand, named after the person's email, can log in
+          - fields['Automatic user provisioning'] == 'off'
+          - fields['User identifier'] == 'email'
+          - fields['Client ID'] == 'client-id'
+          # The secret is never printed: deploy.yml writes it to a file
+          - secret_fields | map(attribute='name') | list == ['Client secret']
+          - secret_fields[0].value is not defined
+          - fields['Authorization URL'] == 'https://authentification.anneraud.fr/oauth/v2/authorize'
+          - fields['Access token URL'] == 'https://authentification.anneraud.fr/oauth/v2/token'
+          - fields['Resource URL'] == 'https://authentification.anneraud.fr/oidc/v1/userinfo'
+          # Registered in Zitadel (applications.auto.tfvars) as is
+          - fields['Redirect URL'] == 'https://conteneurs.bruxelles.anneraud.fr/'
+          # Space separated in Portainer's form
+          - fields['Scopes'] == 'openid profile email'
+          # HTTP Basic, as the Zitadel application expects (client_secret)
+          - fields['Auth Style'] == 'In Header'
+      vars:
+        fields: "{{ conteneurs_login_fields | rejectattr('secret', 'defined') | items2dict(key_name='name', value_name='value') }}"
+        secret_fields: "{{ conteneurs_login_fields | selectattr('secret', 'defined') | list }}"
