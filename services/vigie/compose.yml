@@ -99,6 +99,9 @@ services:
       - "--transport=streamable-http"
       - "--address=0.0.0.0:8000"
       - "--disable-write"
+      # Its DNS-rebinding protection only accepts loopback Host headers by
+      # default; Traefik forwards the public name
+      - "--allowed-hosts=vigie.anneraud.fr"
     environment:
       GRAFANA_URL: http://grafana:3000
       GRAFANA_SERVICE_ACCOUNT_TOKEN: ${GRAFANA_MCP_GRAFANA_TOKEN}

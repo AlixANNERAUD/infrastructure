@@ -146,12 +146,13 @@ url, token = sys.argv[1], sys.argv[2]
 session = None
 
 
-def call(method, params=None, authorization=f"Bearer {token}", notification=False):
+def call(method, params=None, authorization=f"Bearer {token}", notification=False, host="vigie.anneraud.fr"):
     global session
     message = {"jsonrpc": "2.0", "method": method, "params": params or {}}
     if not notification:
         message["id"] = 1
-    headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+    # The Host header Traefik forwards: the server only accepts its public name
+    headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream", "Host": host}
     if authorization:
         headers["Authorization"] = authorization
     if session:
@@ -185,6 +186,9 @@ if status != 401:
 status, _ = call("initialize", authorization="Bearer wrong-token")
 if status != 401:
     failures.append(f"with a wrong token the MCP server answers {status}")
+status, _ = call("initialize", host="attacker.example")
+if status != 403:
+    failures.append(f"with another Host the MCP server answers {status}")
 status, answer = call("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
                                      "clientInfo": {"name": "check-vigie", "version": "1"}})
 if status != 200 or "result" not in (answer or {}):
