@@ -49,4 +49,12 @@ applications = {
     roles          = [{ key = "recettes-admin", display_name = "Recettes administrator" }]
     redirect_uris  = ["https://recettes.anneraud.fr/login"]
   }
+
+  # Gitea (git.anneraud.fr), a TrueNAS app: services/git gives its
+  # authentication source, named Zitadel (part of the callback)
+  gitea = {
+    project        = "Git"
+    authentication = "client_secret"
+    redirect_uris  = ["https://git.anneraud.fr/user/oauth2/Zitadel/callback"]
+  }
 }

@@ -1,0 +1,40 @@
+---
+# Builds Gitea's authentication source fields on the controller: no TrueNAS needed
+- name: Test Gitea's login settings
+  hosts: localhost
+  gather_facts: false
+  vars:
+    git_client_id: client-id
+  tasks:
+    - name: Build the settings
+      ansible.builtin.include_tasks: ../tasks/login_settings.yml
+
+    - name: Check the authentication source
+      ansible.builtin.assert:
+        that:
+          - git_login_fields | map(attribute='name') | list
+            == ['Authentication Type', 'Authentication Name', 'OAuth2 Provider', 'Client ID (Key)', 'Client Secret',
+                'OpenID Connect Auto Discovery URL', 'Additional Scopes', 'This Authentication Source is Activated']
+          - fields['Authentication Type'] == 'OAuth2'
+          # The callback path holds the name: /user/oauth2/Zitadel/callback, registered in Zitadel
+          - fields['Authentication Name'] == 'Zitadel'
+          - git_login_callback == 'https://git.anneraud.fr/user/oauth2/Zitadel/callback'
+          - fields['OAuth2 Provider'] == 'OpenID Connect'
+          - fields['Client ID (Key)'] == 'client-id'
+          # The secret is never printed: deploy.yml writes it to a file
+          - secret_fields | map(attribute='name') | list == ['Client Secret']
+          - secret_fields[0].value is not defined
+          - fields['OpenID Connect Auto Discovery URL'] == 'https://authentification.anneraud.fr/.well-known/openid-configuration'
+          # Comma separated in Gitea's form
+          - fields['Additional Scopes'] == 'profile,email'
+          - fields['This Authentication Source is Activated'] == 'checked'
+      vars:
+        fields: "{{ git_login_fields | rejectattr('secret', 'defined') | items2dict(key_name='name', value_name='value') }}"
+        secret_fields: "{{ git_login_fields | selectattr('secret', 'defined') | list }}"
+
+    - name: Check the environment variable
+      ansible.builtin.assert:
+        that:
+          # Gitea never creates an account from a Zitadel login: people link theirs with their password
+          - git_login_variables | map(attribute='name') | list == ['GITEA__service__ALLOW_ONLY_INTERNAL_REGISTRATION']
+          - git_login_variables[0].value == 'true'

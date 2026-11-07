@@ -1,0 +1,36 @@
+---
+# Gitea's login through Zitadel: an authentication source made in Gitea's
+# administration, and one environment variable of its TrueNAS app.
+# In: git_client_id. Out: git_login_fields, [{name, value}] in the form's
+# order (the client secret's entry has secret: true and no value),
+# git_login_variables, [{name, value}], and git_login_callback.
+- name: Build Gitea's login settings
+  ansible.builtin.set_fact:
+    git_login_fields:
+      - name: Authentication Type
+        value: OAuth2
+      # Part of the callback URL registered in Zitadel
+      - name: Authentication Name
+        value: "{{ git_source_name }}"
+      - name: OAuth2 Provider
+        value: OpenID Connect
+      - name: Client ID (Key)
+        value: "{{ git_client_id }}"
+      - name: Client Secret
+        secret: true
+      - name: OpenID Connect Auto Discovery URL
+        value: https://authentification.anneraud.fr/.well-known/openid-configuration
+      - name: Additional Scopes
+        value: profile,email
+      - name: This Authentication Source is Activated
+        value: checked
+    # Gitea never links a Zitadel login to an account by itself: it asks for
+    # the account's password once (ACCOUNT_LINKING = login, the default). This
+    # refuses the "Register New Account" choice of that page, so a login is
+    # always linked to an existing account, never given an empty one
+    git_login_variables:
+      - name: GITEA__service__ALLOW_ONLY_INTERNAL_REGISTRATION
+        value: "true"
+    git_login_callback: https://git.anneraud.fr/user/oauth2/{{ git_source_name }}/callback
+  vars:
+    git_source_name: Zitadel

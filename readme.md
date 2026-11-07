@@ -225,6 +225,16 @@ Open WebUI does not check whether the email is verified, so it trusts the email 
 3. In Mealie, Admin → Users: give every existing account the Zitadel email of its owner. For a new person, create their account with that email first. Keep the local admin on an email that is not in Zitadel: it stays the fallback admin.
 4. `mise deploy services/recettes/deploy.yml`: it provisions the application and the grants, then prints eight entries for TrueNAS → Apps → mealie → Edit → Additional Environment Variables, all with container `mealie`. The value of `OIDC_CLIENT_SECRET` is in `~/.config/infrastructure/zitadel/mealie.secret` (0600). Keep the other entries and save; Mealie restarts. Commit `vault/authentification/opentofu.tfstate` in the vault repository.
 
+### Gitea (Git)
+
+`services/git` (application `gitea`). Gitea never links a Zitadel login to an account by itself: the first time, it asks the person to sign in with their Gitea password ("Link to Existing Account"). `GITEA__service__ALLOW_ONLY_INTERNAL_REGISTRATION=true` refuses the "Register New Account" choice of that page, so no empty duplicate accounts. Gitea cannot map an admin from Zitadel: it reads groups from a list or a comma-separated string, not from Zitadel's roles map. The password login stays available.
+
+1. `mise deploy services/git/deploy.yml`: it prints what to enter. The client secret is in `~/.config/infrastructure/zitadel/gitea.secret` (0600).
+2. TrueNAS → Apps → gitea → Edit: check that Root URL is `https://git.anneraud.fr/`. Under Additional Environment Variables, add `GITEA__service__ALLOW_ONLY_INTERNAL_REGISTRATION` = `true` with container `gitea`. Keep the other entries and save; Gitea restarts.
+3. In Gitea, as an administrator: Site Administration → Identity & Access → Authentication Sources → Add Authentication Source. Authentication Type `OAuth2`, Authentication Name `Zitadel` (the callback is `/user/oauth2/Zitadel/callback`), OAuth2 Provider `OpenID Connect`, Client ID (Key) and Client Secret, OpenID Connect Auto Discovery URL `https://authentification.anneraud.fr/.well-known/openid-configuration`, Additional Scopes `profile,email`, This Authentication Source is Activated. Leave the group claim fields empty, and Skip local 2FA unchecked.
+4. Each person: "Sign in with Zitadel", then sign in once with their Gitea username and password. For a new person, create their account first (Site Administration → User Accounts → Create User Account).
+5. Admins are promoted by hand: Site Administration → User Accounts → the user → Edit → Is Administrator.
+
 ## Zitadel
 
 OpenTofu (`opentofu/zitadel/`) owns the whole Anneraud organization: the organization itself (the instance's default), its domain `anneraud.fr`, its login, password, lockout, domain and label policies, its users and their roles, and the projects and OIDC applications of `applications.auto.tfvars`. The instance defaults are not managed, so the ZITADEL organization's admin stays a working fallback whatever the code does. Apply it with `mise deploy services/authentification/applications.yml`; deploys that need an application (Vigie) apply it too. The state is encrypted in `vault/authentification/opentofu.tfstate`: commit it in the vault repository after each change.

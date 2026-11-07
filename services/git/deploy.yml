@@ -1,0 +1,66 @@
+---
+# Gitea (git.anneraud.fr) is a TrueNAS app. Its Zitadel login is an
+# authentication source made in Gitea's administration, plus one environment
+# variable of the app (TrueNAS can only replace an app's settings section as a
+# whole, so it is not written from here). This playbook provisions the Zitadel
+# application and gives what to enter. Run it with mise.
+- name: Prepare Gitea's Zitadel login
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../../vault/authentification/vault.yml
+  vars:
+    # The client secret: written to a file, never printed (Semaphore keeps its
+    # logs); the same file services/authentification/applications.yml writes
+    git_secret_file: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/infrastructure/zitadel/gitea.secret"
+  roles:
+    - role: zitadel
+  tasks:
+    - name: Check that Gitea's Zitadel application is provisioned
+      ansible.builtin.assert:
+        that:
+          - zitadel_provisioned
+          - zitadel_client_ids.gitea | default('') | length > 0
+          - zitadel_client_secrets.gitea | default('') | length > 0
+        fail_msg: Zitadel is not provisioned (see the messages above) or has no gitea application with a secret.
+        quiet: true
+
+    - name: Build the login settings
+      ansible.builtin.include_tasks: tasks/login_settings.yml
+      vars:
+        git_client_id: "{{ zitadel_client_ids.gitea }}"
+
+    - name: Create the folder of the client secret
+      ansible.builtin.file:
+        path: "{{ git_secret_file | dirname }}"
+        state: directory
+        mode: "0700"
+
+    - name: Write the client secret
+      ansible.builtin.copy:
+        dest: "{{ git_secret_file }}"
+        content: "{{ zitadel_client_secrets.gitea }}"
+        mode: "0600"
+      no_log: true
+
+    - name: Say what to enter in TrueNAS first
+      ansible.builtin.debug:
+        msg:
+          - "1. TrueNAS → Apps → gitea → Edit → Additional Environment Variables: keep the existing entries, add or update"
+          - "   Container: gitea"
+          - "   Name: {{ git_login_variables[0].name }}"
+          - "   Value: {{ git_login_variables[0].value }}"
+          - "   Save; Gitea restarts."
+          - "2. In Gitea, as an administrator: Site Administration → Identity & Access → Authentication Sources →"
+          - "   Add Authentication Source (or the Zitadel source → Update Authentication Source), with the fields below;"
+          - "   leave the others empty. Its callback is {{ git_login_callback }}"
+
+    - name: Say what to enter in Gitea
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.name }}: {{ ('the content of ' ~ git_secret_file ~ ' (the client secret); copy it with: wl-copy < '
+          ~ git_secret_file ~ ' (Wayland), xclip -selection clipboard < … (X11) or pbcopy < … (macOS)')
+          if item.secret | default(false) else item.value }}
+      loop: "{{ git_login_fields }}"
+      loop_control:
+        label: "{{ item.name }}"
