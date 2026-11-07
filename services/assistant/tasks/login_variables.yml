@@ -1,0 +1,27 @@
+---
+# Open WebUI's login through Zitadel, as environment variables of its TrueNAS
+# app (read at each start: ENABLE_OAUTH_PERSISTENT_CONFIG is off by default).
+# In: assistant_client_id. Out: assistant_login_variables, [{name, value}];
+# the client secret's entry has secret: true and no value.
+- name: Build Open WebUI's login variables
+  ansible.builtin.set_fact:
+    assistant_login_variables:
+      - name: OPENID_PROVIDER_URL
+        value: https://authentification.anneraud.fr/.well-known/openid-configuration
+      - name: OAUTH_CLIENT_ID
+        value: "{{ assistant_client_id }}"
+      # Sent with HTTP Basic, as the Zitadel application expects (client_secret)
+      - name: OAUTH_CLIENT_SECRET
+        secret: true
+      - name: OAUTH_PROVIDER_NAME
+        value: Zitadel
+      # Otherwise built from the request, in http behind Traefik
+      - name: OPENID_REDIRECT_URI
+        value: https://assistant.anneraud.fr/oauth/oidc/callback
+      # A Zitadel login reaches the Open WebUI account with the same email (the
+      # emails are set by OpenTofu, verified); unknown emails are refused rather
+      # than given an account: the admin creates it first
+      - name: ENABLE_OAUTH_SIGNUP
+        value: "false"
+      - name: OAUTH_MERGE_ACCOUNTS_BY_EMAIL
+        value: "true"

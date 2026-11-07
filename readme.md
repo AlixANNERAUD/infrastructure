@@ -206,6 +206,16 @@ Apps installed in TrueNAS's interface on Bruxelles keep their configuration ther
 
 Paperless (`services/archive`): `mise deploy services/archive/deploy.yml` prints the three entries to add in TrueNAS → Apps → paperless-ngx → Edit → Additional Environment Variables, both with container `paperless`: `PAPERLESS_APPS`, with its value, and `PAPERLESS_SOCIALACCOUNT_PROVIDERS`, whose value holds the client secret and is written alone to `~/.config/infrastructure/zitadel/archive-providers.json` (0600) rather than printed, to copy into the Value field, and `PAPERLESS_SOCIALACCOUNT_ALLOW_SIGNUPS=false`: Paperless never links a Zitadel login to an existing account by itself, so this refuses unlinked logins instead of creating empty duplicate accounts. Keep the other entries; Paperless restarts when saved. Run it again only when the Zitadel application changes. The client secret is then visible to whoever can edit the app in TrueNAS. Existing Paperless users link their account once: log in with their Paperless password, then Profile → Connect a social account → Zitadel.
 
+### Open WebUI (Assistant)
+
+`services/assistant` (application `open_webui`). Open WebUI links a Zitadel login to the account with the same email, and refuses emails without an account rather than creating one. It cannot map an admin from Zitadel: it only reads roles from a list or a string, and Zitadel's roles claim is a map. The password login stays available as the fallback.
+
+1. In Open WebUI, Admin Panel → Users: give every existing account the Zitadel email of its owner (`<username>@anneraud.fr`). For a new person, create their account there with that email first.
+2. `mise deploy services/assistant/deploy.yml`: it prints seven entries for TrueNAS → Apps → open-webui → Edit → Additional Environment Variables, all with container `open-webui`. The value of `OAUTH_CLIENT_SECRET` is in `~/.config/infrastructure/zitadel/open_webui.secret` (0600). Keep the other entries and save; Open WebUI restarts. It reads these variables at every start.
+3. Admins are promoted by hand: Admin Panel → Users → the user → Role.
+
+Open WebUI does not check whether the email is verified, so it trusts the email Zitadel sends. Once everyone has logged in through Zitadel once, `OAUTH_MERGE_ACCOUNTS_BY_EMAIL` can be set to `false`. Logins then find accounts by their Zitadel id only, and a new person can no longer link an account.
+
 ## Zitadel
 
 OpenTofu (`opentofu/zitadel/`) owns the whole Anneraud organization: the organization itself (the instance's default), its domain `anneraud.fr`, its login, password, lockout, domain and label policies, its users and their roles, and the projects and OIDC applications of `applications.auto.tfvars`. The instance defaults are not managed, so the ZITADEL organization's admin stays a working fallback whatever the code does. Apply it with `mise deploy services/authentification/applications.yml`; deploys that need an application (Vigie) apply it too. The state is encrypted in `vault/authentification/opentofu.tfstate`: commit it in the vault repository after each change.

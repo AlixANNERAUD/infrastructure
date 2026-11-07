@@ -1,0 +1,33 @@
+---
+# Builds Open WebUI's login variables on the controller: no TrueNAS needed
+- name: Test Open WebUI's login variables
+  hosts: localhost
+  gather_facts: false
+  vars:
+    assistant_client_id: client-id
+  tasks:
+    - name: Build the variables
+      ansible.builtin.include_tasks: ../tasks/login_variables.yml
+
+    - name: Check the variables
+      ansible.builtin.assert:
+        that:
+          - assistant_login_variables | map(attribute='name') | list
+            == ['OPENID_PROVIDER_URL', 'OAUTH_CLIENT_ID', 'OAUTH_CLIENT_SECRET', 'OAUTH_PROVIDER_NAME',
+                'OPENID_REDIRECT_URI', 'ENABLE_OAUTH_SIGNUP', 'OAUTH_MERGE_ACCOUNTS_BY_EMAIL']
+          - values.OPENID_PROVIDER_URL == 'https://authentification.anneraud.fr/.well-known/openid-configuration'
+          - values.OAUTH_CLIENT_ID == 'client-id'
+          # The secret is never printed: deploy.yml writes it to a file
+          - secret_entries | map(attribute='name') | list == ['OAUTH_CLIENT_SECRET']
+          - secret_entries[0].value is not defined
+          - values.OAUTH_PROVIDER_NAME == 'Zitadel'
+          # Registered in Zitadel (applications.auto.tfvars) as is
+          - values.OPENID_REDIRECT_URI == 'https://assistant.anneraud.fr/oauth/oidc/callback'
+          # A Zitadel login reaches the account with the same email, never a new one
+          - values.ENABLE_OAUTH_SIGNUP == 'false'
+          - values.OAUTH_MERGE_ACCOUNTS_BY_EMAIL == 'true'
+          # TrueNAS's form takes strings
+          - assistant_login_variables | rejectattr('secret', 'defined') | map(attribute='value') | map('type_debug') | unique | list == ['str']
+      vars:
+        secret_entries: "{{ assistant_login_variables | selectattr('secret', 'defined') | list }}"
+        values: "{{ assistant_login_variables | rejectattr('secret', 'defined') | items2dict(key_name='name', value_name='value') }}"

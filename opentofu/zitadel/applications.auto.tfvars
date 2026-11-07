@@ -32,4 +32,12 @@ applications = {
     authentication = "client_secret"
     redirect_uris  = ["https://deploiement.anneraud.fr/api/auth/oidc/zitadel/redirect"]
   }
+
+  # Open WebUI (assistant.anneraud.fr), a TrueNAS app: services/assistant
+  # gives its variables. It reads no roles from Zitadel's map claim
+  open_webui = {
+    project        = "Assistant"
+    authentication = "client_secret"
+    redirect_uris  = ["https://assistant.anneraud.fr/oauth/oidc/callback"]
+  }
 }
