@@ -218,7 +218,7 @@
             "uid": "victoriametrics"
           },
           "editorMode": "code",
-          "expr": "sum(increase(traefik_router_requests_total{host=~\"$host\",router=~\".+-login@.+\",code=\"429\"}[$__range])) / sum(increase(traefik_router_requests_total{host=~\"$host\",router=~\".+-login@.+\"}[$__range]))",
+          "expr": "(sum(increase(traefik_router_requests_total{host=~\"$host\",router=~\".+-login@.+\",code=\"429\"}[$__range])) or vector(0)) / sum(increase(traefik_router_requests_total{host=~\"$host\",router=~\".+-login@.+\"}[$__range]))",
           "legendFormat": "Refused share",
           "refId": "A",
           "range": false,
