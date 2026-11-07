@@ -6,6 +6,25 @@
     - ../../vault/ansible/vault.yml
     - ../../vault/wakapi/vault.yml
     - ../../vault/cloudflare/vault.yml
+  pre_tasks:
+    # Without the Zitadel credentials the client is empty: Wakapi declares no
+    # provider and keeps only its local login
+    - name: Get Wakapi's Zitadel login
+      ansible.builtin.include_role:
+        name: zitadel
+        tasks_from: login
+      vars:
+        zitadel_login_application: wakapi
+        zitadel_login_environment_file: "{{ services_root }}/Wakapi/.env"
+        zitadel_login_client_id_variable: OIDC_CLIENT_ID
+        zitadel_login_client_secret_variable: OIDC_CLIENT_SECRET
+
+    - name: Build Wakapi's OpenID Connect variables
+      ansible.builtin.include_tasks: tasks/oidc_environment.yml
+      vars:
+        wakapi_oidc_client_id: "{{ zitadel_login_client_id }}"
+        wakapi_oidc_client_secret: "{{ zitadel_login_client_secret }}"
+
   roles:
     - role: compose_service
       vars:
@@ -22,6 +41,12 @@
           WAKAPI_MAIL_SMTP_HOST: "{{ wakapi_mail_smtp_host }}"
           WAKAPI_MAIL_SMTP_USER: "{{ wakapi_mail_smtp_user }}"
           WAKAPI_MAIL_SMTP_PASS: "{{ wakapi_mail_smtp_pass }}"
+          # Zitadel provider (tasks/oidc_environment.yml), all empty without a client
+          OIDC_NAME: "{{ wakapi_oidc_environment.OIDC_NAME }}"
+          OIDC_DISPLAY_NAME: "{{ wakapi_oidc_environment.OIDC_DISPLAY_NAME }}"
+          OIDC_ENDPOINT: "{{ wakapi_oidc_environment.OIDC_ENDPOINT }}"
+          OIDC_CLIENT_ID: "{{ wakapi_oidc_environment.OIDC_CLIENT_ID }}"
+          OIDC_CLIENT_SECRET: "{{ wakapi_oidc_environment.OIDC_CLIENT_SECRET }}"
         compose_service_external_networks:
           - name: databases   # shared with Databasus
             internal: true

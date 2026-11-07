@@ -31,6 +31,16 @@ services:
       WAKAPI_MAIL_SMTP_PASS: ${WAKAPI_MAIL_SMTP_PASS}
       WAKAPI_MAIL_SMTP_TLS: "false"
       WAKAPI_MAIL_SMTP_PORT: "587"
+      # Zitadel login (services/wakapi/tasks/oidc_environment.yml; all empty
+      # without a client). The local login stays, as the fallback.
+      # Wakapi finds a Zitadel login's account by its subject only, never by
+      # email: no account for logins that are not linked yet (readme, Wakapi)
+      WAKAPI_OIDC_ALLOW_SIGNUP: "false"
+      WAKAPI_OIDC_PROVIDERS_0_NAME: ${OIDC_NAME}
+      WAKAPI_OIDC_PROVIDERS_0_DISPLAY_NAME: ${OIDC_DISPLAY_NAME}
+      WAKAPI_OIDC_PROVIDERS_0_ENDPOINT: ${OIDC_ENDPOINT}
+      WAKAPI_OIDC_PROVIDERS_0_CLIENT_ID: ${OIDC_CLIENT_ID}
+      WAKAPI_OIDC_PROVIDERS_0_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
     networks:
       - internal
       - proxy
@@ -46,6 +56,19 @@ services:
       - traefik.http.routers.wakapi.tls.domains[0].main=dera.page
       - traefik.http.routers.wakapi.tls.domains[0].sans=*.dera.page
       - traefik.http.services.wakapi.loadbalancer.server.port=3000
+
+      # Wakapi's OpenID Connect callback is on its public URL (wakapi.dera.page):
+      # a Zitadel login started on wakapi.anneraud.fr would not find its state
+      # there, so it starts on wakapi.dera.page. The rule is longer than the
+      # main router's, so it takes precedence
+      # yamllint disable-line rule:line-length
+      - traefik.http.routers.wakapi-oidc.rule=Host(`wakapi.anneraud.fr`) && PathPrefix(`/oidc/zitadel/`)
+      - traefik.http.routers.wakapi-oidc.entrypoints=web-secure
+      - traefik.http.routers.wakapi-oidc.tls=true
+      - traefik.http.routers.wakapi-oidc.service=wakapi
+      - traefik.http.routers.wakapi-oidc.middlewares=wakapi-oidc-redirection
+      - traefik.http.middlewares.wakapi-oidc-redirection.redirectregex.regex=^https://wakapi\.anneraud\.fr(:[0-9]+)?/(.*)
+      - traefik.http.middlewares.wakapi-oidc-redirection.redirectregex.replacement=https://wakapi.dera.page/$$2
 
   database:
     image: postgres:18.6

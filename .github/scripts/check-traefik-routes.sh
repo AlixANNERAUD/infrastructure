@@ -236,6 +236,11 @@ expected = {
     "wakapi": {
         "stand_in": "wakapi-wakapi", "rule": "Host(`wakapi.anneraud.fr`) || Host(`wakapi.dera.page`)", "url": "http:3000", "zone": "dera.page",
     },
+    # Zitadel logins start on Wakapi's public URL, where its callback is
+    "wakapi-oidc": {
+        "stand_in": "wakapi-wakapi", "service": "wakapi", "rule": "Host(`wakapi.anneraud.fr`) && PathPrefix(`/oidc/zitadel/`)",
+        "middlewares": ["wakapi-oidc-redirection@docker"], "redirect": "https://wakapi.dera.page/oidc/zitadel/check",
+    },
     "zitadel": {"stand_in": "authentification-zitadel", "rule": "Host(`authentification.anneraud.fr`)", "url": "h2c:8080"},
     "zitadel-login": {
         "stand_in": "authentification-zitadel", "service": "zitadel", "tier": "login",
@@ -417,7 +422,7 @@ def request(host, path, method="GET"):
 
 
 for name, expectation in expected.items():
-    if "tier" in expectation:
+    if "tier" in expectation or "redirect" in expectation:
         continue
     rule = expectation["rule"]
     host = re.search(r"Host\(`([^`]+)`\)", rule).group(1)
@@ -433,6 +438,16 @@ for name, expectation in expected.items():
         check(status not in (403, 404, 429), f"https://{host}{path} answers {status}")
 status, _ = request("anneraud.fr", "/check")
 check(status == 301, f"https://anneraud.fr/check answers {status} instead of the redirect to www")
+for name, expectation in expected.items():
+    if "redirect" in expectation:
+        host = re.search(r"Host\(`([^`]+)`\)", expectation["rule"]).group(1)
+        path = re.search(r"PathPrefix\(`([^`]+)`\)", expectation["rule"]).group(1) + "check"
+        result = subprocess.run(
+            ["curl", "-sk", "--max-time", "10", "-o", "/dev/null", "--resolve", f"{host}:{port}:127.0.0.1",
+             "-w", "%{http_code} %{redirect_url}", f"https://{host}:{port}{path}"],
+            capture_output=True, text=True,
+        )
+        check(result.stdout == f"302 {expectation['redirect']}", f"https://{host}{path} answers {result.stdout} instead of the redirect")
 
 
 # Login POSTs (any case) are refused with 429 once the client's burst is spent, and only them. The burst and

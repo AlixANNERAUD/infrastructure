@@ -1,0 +1,21 @@
+---
+# Wakapi's Zitadel provider, as .env variables (WAKAPI_OIDC_PROVIDERS_0_* in
+# compose.yml). All empty without a client: Wakapi ignores a provider whose
+# variables are all empty, but refuses to start with one missing its client.
+# In: wakapi_oidc_client_id, wakapi_oidc_client_secret.
+# Out: wakapi_oidc_environment.
+- name: Build Wakapi's OpenID Connect variables
+  ansible.builtin.set_fact:
+    wakapi_oidc_environment: >-
+      {{ wakapi_oidc_provider if wakapi_oidc_client_id | length > 0
+         else dict(wakapi_oidc_provider.keys() | zip(wakapi_oidc_provider.keys() | map('regex_replace', '.*', ''))) }}
+  vars:
+    wakapi_oidc_provider:
+      # Lowercase, part of the callback URL registered in Zitadel
+      OIDC_NAME: zitadel
+      OIDC_DISPLAY_NAME: Zitadel
+      # Wakapi reads the endpoints from its discovery document
+      OIDC_ENDPOINT: https://authentification.anneraud.fr
+      OIDC_CLIENT_ID: "{{ wakapi_oidc_client_id }}"
+      OIDC_CLIENT_SECRET: "{{ wakapi_oidc_client_secret }}"
+  no_log: true   # holds the client secret

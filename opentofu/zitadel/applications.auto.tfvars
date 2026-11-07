@@ -32,4 +32,12 @@ applications = {
     authentication = "client_secret"
     redirect_uris  = ["https://deploiement.anneraud.fr/api/auth/oidc/zitadel/redirect"]
   }
+
+  # Wakapi: a confidential client. Its callback is built from its public URL
+  # (wakapi.dera.page); Traefik sends logins started on wakapi.anneraud.fr there
+  wakapi = {
+    project        = "Wakapi"
+    authentication = "client_secret"
+    redirect_uris  = ["https://wakapi.dera.page/oidc/zitadel/callback"]
+  }
 }

@@ -1,0 +1,37 @@
+---
+# Builds Wakapi's OpenID Connect variables on the controller: no host needed
+- name: Test Wakapi's OpenID Connect variables
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Build the variables with a Zitadel client
+      ansible.builtin.include_tasks: ../tasks/oidc_environment.yml
+      vars:
+        wakapi_oidc_client_id: client-id
+        wakapi_oidc_client_secret: client-secret
+
+    - name: Check the Zitadel provider
+      ansible.builtin.assert:
+        that:
+          - wakapi_oidc_environment.keys() | sort
+            == ['OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_DISPLAY_NAME', 'OIDC_ENDPOINT', 'OIDC_NAME']
+          # Lowercase: Wakapi's callback is /oidc/zitadel/callback, as registered in Zitadel
+          - wakapi_oidc_environment.OIDC_NAME == 'zitadel'
+          - wakapi_oidc_environment.OIDC_DISPLAY_NAME == 'Zitadel'
+          - wakapi_oidc_environment.OIDC_ENDPOINT == 'https://authentification.anneraud.fr'
+          - wakapi_oidc_environment.OIDC_CLIENT_ID == 'client-id'
+          - wakapi_oidc_environment.OIDC_CLIENT_SECRET == 'client-secret'
+
+    - name: Build the variables without a client
+      ansible.builtin.include_tasks: ../tasks/oidc_environment.yml
+      vars:
+        wakapi_oidc_client_id: ""
+        wakapi_oidc_client_secret: ""
+
+    # Wakapi refuses to start with a provider missing its client: every
+    # variable must be empty for it to declare none
+    - name: Check that no provider is declared
+      ansible.builtin.assert:
+        that:
+          - wakapi_oidc_environment | length == 5
+          - wakapi_oidc_environment.values() | select | list == []
