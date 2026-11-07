@@ -1,0 +1,25 @@
+---
+# Radarr's login through Zitadel, as environment variables of its TrueNAS app
+# (they override config.xml). In: films_client_id, films_client_secret,
+# films_user. Out: films_login_variables, [{name, value}].
+- name: Build Radarr's login variables
+  ansible.builtin.set_fact:
+    films_login_variables:
+      # Replaces the login form; removing this entry brings the form and its
+      # password back (config.xml keeps them)
+      - name: RADARR__AUTH__METHOD
+        value: Oidc
+      - name: RADARR__AUTH__OIDCAUTHORITY
+        value: https://authentification.anneraud.fr
+      - name: RADARR__AUTH__OIDCCLIENTID
+        value: "{{ films_client_id }}"
+      - name: RADARR__AUTH__OIDCCLIENTSECRET
+        value: "{{ films_client_secret }}"
+      # Radarr has a single user: only this Zitadel user (verified email) gets in
+      - name: RADARR__AUTH__OIDCUSERIDENTIFIER
+        value: "{{ films_user }}"
+      # Radarr trusts X-Forwarded-Proto from loopback only: from Traefik, on
+      # a Docker network, it would build an http redirect URI, which Zitadel refuses
+      - name: RADARR__SERVER__TRUSTEDNETWORKS
+        value: 172.16.0.0/12
+  no_log: true   # holds the client secret

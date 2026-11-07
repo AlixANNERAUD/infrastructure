@@ -41,4 +41,13 @@ applications = {
     redirect_uris    = ["https://parc.anneraud.fr/auth-oidc-callback"]
     post_logout_uris = ["https://parc.anneraud.fr/login"]
   }
+
+  # Radarr, a TrueNAS app: services/films passes the client to it. ASP.NET
+  # Core sends the secret in the request body
+  radarr = {
+    project          = "Films"
+    authentication   = "client_secret_post"
+    redirect_uris    = ["https://radarr.anneraud.fr/signin-oidc"]
+    post_logout_uris = ["https://radarr.anneraud.fr/signout-callback-oidc"]
+  }
 }

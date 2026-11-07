@@ -1,0 +1,29 @@
+---
+# Builds Radarr's login variables on the controller: no TrueNAS needed
+- name: Test Radarr's login variables
+  hosts: localhost
+  gather_facts: false
+  vars:
+    films_client_id: client-id
+    films_client_secret: client-secret
+    films_user: camille@anneraud.fr
+  tasks:
+    - name: Build the variables
+      ansible.builtin.include_tasks: ../tasks/login_variables.yml
+
+    - name: Check the variables
+      ansible.builtin.assert:
+        that:
+          - variables | list
+            == ['RADARR__AUTH__METHOD', 'RADARR__AUTH__OIDCAUTHORITY', 'RADARR__AUTH__OIDCCLIENTID',
+                'RADARR__AUTH__OIDCCLIENTSECRET', 'RADARR__AUTH__OIDCUSERIDENTIFIER', 'RADARR__SERVER__TRUSTEDNETWORKS']
+          - variables.RADARR__AUTH__METHOD == 'Oidc'
+          - variables.RADARR__AUTH__OIDCAUTHORITY == 'https://authentification.anneraud.fr'
+          - variables.RADARR__AUTH__OIDCCLIENTID == 'client-id'
+          - variables.RADARR__AUTH__OIDCCLIENTSECRET == 'client-secret'
+          # The only person let in, by their verified email
+          - variables.RADARR__AUTH__OIDCUSERIDENTIFIER == 'camille@anneraud.fr'
+          # Traefik's forwarded scheme, so the redirect URI is https
+          - variables.RADARR__SERVER__TRUSTEDNETWORKS == '172.16.0.0/12'
+      vars:
+        variables: "{{ films_login_variables | items2dict(key_name='name', value_name='value') }}"
