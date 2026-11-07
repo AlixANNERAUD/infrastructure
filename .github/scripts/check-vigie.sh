@@ -199,9 +199,16 @@ names = {tool["name"] for tool in (answer or {}).get("result", {}).get("tools", 
 for name in ("query_prometheus", "search_dashboards", "list_datasources"):
     if name not in names:
         failures.append(f"tool {name} is missing from {sorted(names)}")
-writes = sorted(name for name in names if name.startswith(("update_", "create_", "delete_", "add_")))
+writes = sorted(name for name in names if name.startswith(("update_", "create_", "delete_", "add_")) or name.endswith("_write"))
 if writes:
     failures.append(f"write tools are available: {writes}")
+unused = sorted(name for name in names if any(word in name for word in ("oncall", "incident", "loki", "tempo", "pyroscope")))
+if unused:
+    failures.append(f"tools for services Vigie lacks are available: {unused}")
+_, answer = call("tools/call", {"name": "alerting_rules_read", "arguments": {"operation": "list"}})
+text = json.dumps((answer or {}).get("result", {}))
+if "Traefik server errors" not in text:
+    failures.append(f"alerting_rules_read does not list Vigie's rules: {text[:300]}")
 _, answer = call("tools/call", {"name": "list_datasources", "arguments": {}})
 text = json.dumps((answer or {}).get("result", {}))
 if "victoriametrics" not in text:

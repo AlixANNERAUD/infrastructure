@@ -99,6 +99,9 @@ services:
       - "--transport=streamable-http"
       - "--address=0.0.0.0:8000"
       - "--disable-write"
+      # Only what Vigie has: Prometheus-type data source, dashboards, alert
+      # rules (no OnCall, Loki, Tempo, incidents, image rendering...)
+      - "--enabled-tools=search,datasource,prometheus,alerting,dashboard,folder,navigation,annotations"
       # Its DNS-rebinding protection only accepts loopback Host headers by
       # default; Traefik forwards the public name
       - "--allowed-hosts=vigie.anneraud.fr"
