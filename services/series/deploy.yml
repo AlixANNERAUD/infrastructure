@@ -1,0 +1,70 @@
+---
+# Sonarr (sonarr.anneraud.fr) is a TrueNAS app, configured in TrueNAS. This playbook
+# provisions its Zitadel application and gives the environment variables to
+# enter in the app (TrueNAS can only replace an app's settings section as a
+# whole, so it is not written from here). Run it with mise.
+- name: Prepare Sonarr's Zitadel login
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../../vault/authentification/vault.yml
+  vars:
+    # The client secret, written to a file, never printed (Semaphore keeps its logs)
+    series_secret_file: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/infrastructure/zitadel/sonarr.secret"
+    # Sonarr lets in a single Zitadel user: the organization's owner
+    series_user: >-
+      {{ zitadel_users | default({}) | dict2items | selectattr('value.owner', 'defined')
+         | selectattr('value.owner') | map(attribute='value.email') | first | default('') }}
+  roles:
+    - role: zitadel
+  tasks:
+    - name: Check that Sonarr's Zitadel application is provisioned
+      ansible.builtin.assert:
+        that:
+          - zitadel_provisioned
+          - zitadel_client_ids.sonarr | default('') | length > 0
+          - zitadel_client_secrets.sonarr | default('') | length > 0
+          - series_user | length > 0
+        fail_msg: >-
+          Zitadel is not provisioned (see the messages above), has no sonarr application with a secret,
+          or zitadel_users has no owner.
+        quiet: true
+
+    - name: Build the login variables
+      ansible.builtin.include_tasks: tasks/login_variables.yml
+      vars:
+        series_client_id: "{{ zitadel_client_ids.sonarr }}"
+        series_client_secret: "{{ zitadel_client_secrets.sonarr }}"
+
+    - name: Create the folder of the client secret
+      ansible.builtin.file:
+        path: "{{ series_secret_file | dirname }}"
+        state: directory
+        mode: "0700"
+
+    - name: Write the client secret
+      ansible.builtin.copy:
+        dest: "{{ series_secret_file }}"
+        content: "{{ zitadel_client_secrets.sonarr }}"
+        mode: "0600"
+      no_log: true
+
+    # TrueNAS's form: one entry per variable (Name, Value)
+    - name: Say where to enter them in TrueNAS
+      ansible.builtin.debug:
+        msg:
+          - "TrueNAS → Apps → sonarr → Edit → Additional Environment Variables"
+          - "Keep the existing entries, add or update the ones below, then save (Sonarr restarts)"
+
+    - name: Give the entries without a secret
+      ansible.builtin.debug:
+        msg: "Name: {{ item.name }} — Value: {{ item.value }}"
+      loop: "{{ series_login_variables | rejectattr('name', 'eq', 'SONARR__AUTH__OIDCCLIENTSECRET') }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Give the entry of the client secret
+      ansible.builtin.debug:
+        msg:
+          - "Name: SONARR__AUTH__OIDCCLIENTSECRET — Value: the content of {{ series_secret_file }}"
+          - "Copy it with: wl-copy < {{ series_secret_file }} (Wayland), xclip -selection clipboard < … (X11) or pbcopy < … (macOS)"

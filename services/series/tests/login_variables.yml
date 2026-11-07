@@ -1,0 +1,29 @@
+---
+# Builds Sonarr's login variables on the controller: no TrueNAS needed
+- name: Test Sonarr's login variables
+  hosts: localhost
+  gather_facts: false
+  vars:
+    series_client_id: client-id
+    series_client_secret: client-secret
+    series_user: camille@anneraud.fr
+  tasks:
+    - name: Build the variables
+      ansible.builtin.include_tasks: ../tasks/login_variables.yml
+
+    - name: Check the variables
+      ansible.builtin.assert:
+        that:
+          - variables | list
+            == ['SONARR__AUTH__METHOD', 'SONARR__AUTH__OIDCAUTHORITY', 'SONARR__AUTH__OIDCCLIENTID',
+                'SONARR__AUTH__OIDCCLIENTSECRET', 'SONARR__AUTH__OIDCUSERIDENTIFIER', 'SONARR__SERVER__TRUSTEDNETWORKS']
+          - variables.SONARR__AUTH__METHOD == 'Oidc'
+          - variables.SONARR__AUTH__OIDCAUTHORITY == 'https://authentification.anneraud.fr'
+          - variables.SONARR__AUTH__OIDCCLIENTID == 'client-id'
+          - variables.SONARR__AUTH__OIDCCLIENTSECRET == 'client-secret'
+          # The only person let in, by their verified email
+          - variables.SONARR__AUTH__OIDCUSERIDENTIFIER == 'camille@anneraud.fr'
+          # Traefik's forwarded scheme, so the redirect URI is https
+          - variables.SONARR__SERVER__TRUSTEDNETWORKS == '172.16.0.0/12'
+      vars:
+        variables: "{{ series_login_variables | items2dict(key_name='name', value_name='value') }}"

@@ -1,0 +1,25 @@
+---
+# Sonarr's login through Zitadel, as environment variables of its TrueNAS app
+# (they override config.xml). In: series_client_id, series_client_secret,
+# series_user. Out: series_login_variables, [{name, value}].
+- name: Build Sonarr's login variables
+  ansible.builtin.set_fact:
+    series_login_variables:
+      # Replaces the login form; removing this entry brings the form and its
+      # password back (config.xml keeps them)
+      - name: SONARR__AUTH__METHOD
+        value: Oidc
+      - name: SONARR__AUTH__OIDCAUTHORITY
+        value: https://authentification.anneraud.fr
+      - name: SONARR__AUTH__OIDCCLIENTID
+        value: "{{ series_client_id }}"
+      - name: SONARR__AUTH__OIDCCLIENTSECRET
+        value: "{{ series_client_secret }}"
+      # Sonarr has a single user: only this Zitadel user (verified email) gets in
+      - name: SONARR__AUTH__OIDCUSERIDENTIFIER
+        value: "{{ series_user }}"
+      # Sonarr trusts X-Forwarded-Proto from loopback only: from Traefik, on
+      # a Docker network, it would build an http redirect URI, which Zitadel refuses
+      - name: SONARR__SERVER__TRUSTEDNETWORKS
+        value: 172.16.0.0/12
+  no_log: true   # holds the client secret
