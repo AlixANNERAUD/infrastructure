@@ -40,4 +40,13 @@ applications = {
     authentication = "client_secret"
     redirect_uris  = ["https://assistant.anneraud.fr/oauth/oidc/callback"]
   }
+
+  # Mealie (recettes.anneraud.fr), a TrueNAS app: services/recettes gives its
+  # variables. recettes-admin makes a Mealie admin, at every login
+  mealie = {
+    project        = "Recettes"
+    authentication = "client_secret"
+    roles          = [{ key = "recettes-admin", display_name = "Recettes administrator" }]
+    redirect_uris  = ["https://recettes.anneraud.fr/login"]
+  }
 }

@@ -216,6 +216,15 @@ Paperless (`services/archive`): `mise deploy services/archive/deploy.yml` prints
 
 Open WebUI does not check whether the email is verified, so it trusts the email Zitadel sends. Once everyone has logged in through Zitadel once, `OAUTH_MERGE_ACCOUNTS_BY_EMAIL` can be set to `false`. Logins then find accounts by their Zitadel id only, and a new person can no longer link an account.
 
+### Mealie (Recettes)
+
+`services/recettes` (application `mealie`). Mealie links a Zitadel login to the account whose email (or username) is the login's email, only when Zitadel says it is verified. It refuses emails without an account rather than creating one. The project role `recettes-admin` makes a Mealie admin, and Mealie applies it at every Zitadel login, so an admin without the role is demoted. Password logins stay available.
+
+1. Check that the app's Base URL (TrueNAS → Apps → mealie → Edit) is `https://recettes.anneraud.fr`. Mealie builds its callback, `/login`, from it.
+2. Grant the role to each Mealie admin before their first Zitadel login: `roles: {Recettes: [recettes-admin]}` (next to their other projects) in `zitadel_users` (`mise vault vault/authentification/vault.yml`).
+3. In Mealie, Admin → Users: give every existing account the Zitadel email of its owner. For a new person, create their account with that email first. Keep the local admin on an email that is not in Zitadel: it stays the fallback admin.
+4. `mise deploy services/recettes/deploy.yml`: it provisions the application and the grants, then prints eight entries for TrueNAS → Apps → mealie → Edit → Additional Environment Variables, all with container `mealie`. The value of `OIDC_CLIENT_SECRET` is in `~/.config/infrastructure/zitadel/mealie.secret` (0600). Keep the other entries and save; Mealie restarts. Commit `vault/authentification/opentofu.tfstate` in the vault repository.
+
 ## Zitadel
 
 OpenTofu (`opentofu/zitadel/`) owns the whole Anneraud organization: the organization itself (the instance's default), its domain `anneraud.fr`, its login, password, lockout, domain and label policies, its users and their roles, and the projects and OIDC applications of `applications.auto.tfvars`. The instance defaults are not managed, so the ZITADEL organization's admin stays a working fallback whatever the code does. Apply it with `mise deploy services/authentification/applications.yml`; deploys that need an application (Vigie) apply it too. The state is encrypted in `vault/authentification/opentofu.tfstate`: commit it in the vault repository after each change.

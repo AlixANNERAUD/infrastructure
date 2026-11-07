@@ -1,0 +1,29 @@
+---
+# Mealie's login through Zitadel, as environment variables of its TrueNAS app.
+# In: recettes_client_id. Out: recettes_login_variables, [{name, value}]; the
+# client secret's entry has secret: true and no value.
+- name: Build Mealie's login variables
+  ansible.builtin.set_fact:
+    recettes_login_variables:
+      - name: OIDC_AUTH_ENABLED
+        value: "true"
+      - name: OIDC_CONFIGURATION_URL
+        value: https://authentification.anneraud.fr/.well-known/openid-configuration
+      - name: OIDC_CLIENT_ID
+        value: "{{ recettes_client_id }}"
+      # Sent with HTTP Basic, as the Zitadel application expects (client_secret)
+      - name: OIDC_CLIENT_SECRET
+        secret: true
+      - name: OIDC_PROVIDER_NAME
+        value: Zitadel
+      # Mealie finds the account by the verified email of the login; unknown
+      # emails are refused rather than given an account: the admin creates it
+      - name: OIDC_SIGNUP_ENABLED
+        value: "false"
+      # Zitadel's roles claim is a map keyed by role, and Mealie only checks
+      # that the admin group is in it. Mealie adds this scope by itself. The
+      # role is applied at every login: without it, an admin is demoted
+      - name: OIDC_GROUPS_CLAIM
+        value: urn:zitadel:iam:org:project:roles
+      - name: OIDC_ADMIN_GROUP
+        value: recettes-admin

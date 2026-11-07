@@ -1,0 +1,34 @@
+---
+# Builds Mealie's login variables on the controller: no TrueNAS needed
+- name: Test Mealie's login variables
+  hosts: localhost
+  gather_facts: false
+  vars:
+    recettes_client_id: client-id
+  tasks:
+    - name: Build the variables
+      ansible.builtin.include_tasks: ../tasks/login_variables.yml
+
+    - name: Check the variables
+      ansible.builtin.assert:
+        that:
+          - recettes_login_variables | map(attribute='name') | list
+            == ['OIDC_AUTH_ENABLED', 'OIDC_CONFIGURATION_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET',
+                'OIDC_PROVIDER_NAME', 'OIDC_SIGNUP_ENABLED', 'OIDC_GROUPS_CLAIM', 'OIDC_ADMIN_GROUP']
+          - values.OIDC_AUTH_ENABLED == 'true'
+          - values.OIDC_CONFIGURATION_URL == 'https://authentification.anneraud.fr/.well-known/openid-configuration'
+          - values.OIDC_CLIENT_ID == 'client-id'
+          # The secret is never printed: deploy.yml writes it to a file
+          - secret_entries | map(attribute='name') | list == ['OIDC_CLIENT_SECRET']
+          - secret_entries[0].value is not defined
+          - values.OIDC_PROVIDER_NAME == 'Zitadel'
+          # A Zitadel login reaches the account with the same verified email, never a new one
+          - values.OIDC_SIGNUP_ENABLED == 'false'
+          # Zitadel's project roles claim, a map keyed by role: Mealie checks the key
+          - values.OIDC_GROUPS_CLAIM == 'urn:zitadel:iam:org:project:roles'
+          - values.OIDC_ADMIN_GROUP == 'recettes-admin'
+          # TrueNAS's form takes strings
+          - recettes_login_variables | rejectattr('secret', 'defined') | map(attribute='value') | map('type_debug') | unique | list == ['str']
+      vars:
+        secret_entries: "{{ recettes_login_variables | selectattr('secret', 'defined') | list }}"
+        values: "{{ recettes_login_variables | rejectattr('secret', 'defined') | items2dict(key_name='name', value_name='value') }}"

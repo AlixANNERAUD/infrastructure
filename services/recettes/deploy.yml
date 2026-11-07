@@ -1,0 +1,62 @@
+---
+# Mealie (recettes.anneraud.fr) is a TrueNAS app, configured in TrueNAS. This playbook
+# provisions its Zitadel application and gives the environment variables to
+# enter in the app (TrueNAS can only replace an app's settings section as a
+# whole, so it is not written from here). Run it with mise.
+- name: Prepare Mealie's Zitadel login
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../../vault/authentification/vault.yml
+  vars:
+    # The client secret: written to a file, never printed (Semaphore keeps its
+    # logs); the same file services/authentification/applications.yml writes
+    recettes_secret_file: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/infrastructure/zitadel/mealie.secret"
+  roles:
+    - role: zitadel
+  tasks:
+    - name: Check that Mealie's Zitadel application is provisioned
+      ansible.builtin.assert:
+        that:
+          - zitadel_provisioned
+          - zitadel_client_ids.mealie | default('') | length > 0
+          - zitadel_client_secrets.mealie | default('') | length > 0
+        fail_msg: Zitadel is not provisioned (see the messages above) or has no mealie application with a secret.
+        quiet: true
+
+    - name: Build the login variables
+      ansible.builtin.include_tasks: tasks/login_variables.yml
+      vars:
+        recettes_client_id: "{{ zitadel_client_ids.mealie }}"
+
+    - name: Create the folder of the client secret
+      ansible.builtin.file:
+        path: "{{ recettes_secret_file | dirname }}"
+        state: directory
+        mode: "0700"
+
+    - name: Write the client secret
+      ansible.builtin.copy:
+        dest: "{{ recettes_secret_file }}"
+        content: "{{ zitadel_client_secrets.mealie }}"
+        mode: "0600"
+      no_log: true
+
+    # TrueNAS's form: one entry per variable (Container, Name, Value)
+    - name: Say where to enter the variables
+      ansible.builtin.debug:
+        msg: >-
+          TrueNAS → Apps → mealie → Edit → Additional Environment Variables: keep the existing entries,
+          add or update these {{ recettes_login_variables | length }}, all with container mealie; save, Mealie restarts.
+
+    - name: Say what to enter
+      ansible.builtin.debug:
+        msg:
+          - "Container: mealie"
+          - "Name: {{ item.name }}"
+          - "{{ ('Value: the content of ' ~ recettes_secret_file ~ ' (the client secret); copy it with: wl-copy < ' ~ recettes_secret_file
+               ~ ' (Wayland), xclip -selection clipboard < … (X11) or pbcopy < … (macOS)')
+               if item.secret | default(false) else 'Value: ' ~ item.value }}"
+      loop: "{{ recettes_login_variables }}"
+      loop_control:
+        label: "{{ item.name }}"
