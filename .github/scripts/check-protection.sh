@@ -10,6 +10,7 @@
 # - the LAN and the VPN get through even when banned (the bouncer trusts them),
 # - an unban lets the address back in,
 # - CrowdSec reads Traefik's access log and bans a scanning address by itself,
+#   but not a Matrix client whose link previews answer 404,
 # - an IPv6 client reaches Traefik's published port with its own address, not
 #   one of Docker's (its dual-stack ingress network),
 # - from Vigie's protection-metrics network, CrowdSec serves its metrics (with
@@ -35,6 +36,7 @@ docker_networks='["172.16.0.0/12", "10.0.0.0/8", "127.0.0.0/8"]'
 banned=203.0.113.10
 allowed=203.0.113.20
 scanner=203.0.113.30
+matrix_client=203.0.113.50
 lan=192.168.0.50
 # The trusted host names (protection_trusted_hosts), as CrowdSec resolves them
 # here, and clients they trust: the IPv6 one from elsewhere in its /64
@@ -293,7 +295,11 @@ echo "ok    the unbanned address gets 200 again"
 
 # A scan: more than 10 different missing pages (crowdsecurity/http-probing),
 # first from the trusted clients, then from the scanner: CrowdSec reads the
-# lines in order, so once the scanner is banned the trusted scans were judged
+# lines in order, so once the scanner is banned the trusted scans were judged.
+# Before them, a Matrix client whose link previews all answer 404
+for page in $(seq 20); do
+    request "$matrix_client" "/_matrix/client/v1/media/preview_url?url=https%3A%2F%2Fexample.org%2F$page" > /dev/null
+done
 for client in "$trusted_home" "$trusted_peer_client" "$scanner"; do
     for page in $(seq 20); do
         request "$client" "/check-scan-$page" > /dev/null
@@ -319,6 +325,21 @@ for client in "$trusted_home" "$trusted_peer_client"; do
     fi
 done
 echo "ok    the trusted host names' addresses (IPv6 by /64) are not banned for the same scan"
+if [ -n "$(cscli decisions list --ip "$matrix_client" -o raw | tail -n +2)" ]; then
+    echo "$matrix_client is banned for the 404s of Matrix link previews:"
+    cscli alerts list || true
+    exit 1
+fi
+echo "ok    a Matrix client is not banned for the 404s of its link previews"
+# The hub whitelists of the applications are installed
+for parser in crowdsecurity/nextcloud-whitelist crowdsecurity/jellyfin-whitelist crowdsecurity/jellyseerr-whitelist; do
+    if ! cscli parsers list -o raw | grep -q "^$parser,"; then
+        echo "CrowdSec lacks the parser $parser:"
+        cscli parsers list || true
+        exit 1
+    fi
+done
+echo "ok    the application whitelists are loaded"
 
 # What VictoriaMetrics sees from the protection-metrics network
 from_vigie() {
