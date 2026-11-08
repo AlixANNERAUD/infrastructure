@@ -1,17 +1,16 @@
 <h1 align="center">Infrastructure</h1>
 
 <p align="center">
-  <strong>A self-hosted homelab, entirely as code.</strong><br>
-  Ansible, Docker Compose and OpenTofu deploying about forty sovereign services on a TrueNAS home
-  server and a cloud VM: single sign-on, a mesh VPN, intrusion prevention, monitoring and alerts
-  included.
+  <strong>The infrastructure I designed, built and run for my family, entirely as code.</strong><br>
+  Two servers, about 45 self-hosted services, single sign-on, a mesh VPN, intrusion prevention and
+  full observability: deployed with Ansible, Docker Compose and OpenTofu, tested in CI.
 </p>
 
 <p align="center">
   <a href="https://github.com/AlixANNERAUD/Infrastructure/actions/workflows/lint.yml"><img alt="CI" src="https://github.com/AlixANNERAUD/Infrastructure/actions/workflows/lint.yml/badge.svg"></a>
-  <a href="https://www.anneraud.fr/documentation/"><img alt="Documentation" src="https://img.shields.io/badge/docs-anneraud.fr-blue"></a>
   <a href="https://etat.anneraud.fr/"><img alt="Status page" src="https://img.shields.io/badge/status-etat.anneraud.fr-brightgreen"></a>
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <a href="https://www.anneraud.fr/documentation/"><img alt="Documentation" src="https://img.shields.io/badge/docs-anneraud.fr-blue"></a>
+  <a href="https://alix.anneraud.fr/"><img alt="Author" src="https://img.shields.io/badge/author-Alix%20ANNERAUD-informational"></a>
 </p>
 
 <p align="center">
@@ -21,46 +20,71 @@
   <img alt="Traefik" src="https://img.shields.io/badge/Traefik-24A1C1?logo=traefikproxy&logoColor=white">
   <img alt="TrueNAS" src="https://img.shields.io/badge/TrueNAS%20SCALE-0095D5?logo=truenas&logoColor=white">
   <img alt="Grafana" src="https://img.shields.io/badge/Grafana-F46800?logo=grafana&logoColor=white">
+  <img alt="GitHub Actions" src="https://img.shields.io/badge/GitHub%20Actions-2088FF?logo=githubactions&logoColor=white">
 </p>
 
 ---
 
-Everything a family's digital life runs on, from passwords and photos to home automation and chat,
-hosted on hardware we own instead of someone else's cloud, and described in this repository: every
-service, route, DNS record, login and alert is a file reviewed in Git, linted and tested in CI,
-then applied with one command. Nothing is configured by hand that could be written down here.
+This repository is the production infrastructure of my family's digital life (passwords,
+documents, photos, home automation, chat), hosted on hardware we own rather than in someone
+else's cloud. I treat it like software: every service, route, DNS record, login, alert and
+dashboard is a reviewed file, linted and tested in CI, then applied with one command. It is also
+where I practise what I care about as an engineer: security by default, observability, and
+automation that is boring to operate.
 
-## What it runs
+## At a glance
 
-**Services people use**
-- Files, photos, calendars and office documents (Nextcloud, Collabora), passwords (Vaultwarden),
-  paperwork (Paperless-ngx), music and films (Jellyfin), recipes (Mealie), finances (Firefly III),
-  notes (Docmost), a Git forge (Gitea) and a private AI assistant (Open WebUI, SearXNG).
-- Home automation (Home Assistant), chat (Matrix Synapse) and a public status page (Gatus).
+| | |
+| --- | --- |
+| **Servers** | A TrueNAS SCALE home server (ZFS) and a cloud VM, joined by a NetBird mesh VPN |
+| **Services** | About 45: Nextcloud, Vaultwarden, Paperless-ngx, Jellyfin, Home Assistant, Matrix Synapse, Gitea, Open WebUI… ([full list](#services)) |
+| **Deployment** | 20 Compose stacks from this repository through one shared Ansible role; TrueNAS apps routed by it |
+| **Identity** | Zitadel single sign-on, its organization and OIDC applications provisioned with OpenTofu |
+| **Edge** | Traefik v3, wildcard Let's Encrypt certificates over Cloudflare DNS, CrowdSec, per-client rate limits |
+| **Observability** | VictoriaMetrics, VictoriaLogs and Grafana, alerts to phones, an MCP server for LLM queries |
+| **Quality** | 8 CI jobs, including ones that boot the real stacks; weekly Dependabot updates |
 
-**One identity, one network**
-- Single sign-on through **Zitadel** for the services that support it: organization, users,
-  policies and OIDC applications are provisioned with **OpenTofu**, the state encrypted.
-- A **NetBird** mesh VPN joins the sites and devices; private services only answer the LAN and the
-  VPN.
+## Architecture
 
-**A hardened edge**
-- **Traefik v3** in front of everything, with wildcard Let's Encrypt certificates over Cloudflare
-  DNS, HSTS and TLS 1.2+, and DNS records created by the same playbooks.
-- **CrowdSec** reads Traefik's access log and bans scanners and brute-forcers; login pages are rate
-  limited per client; IPv6 clients keep their own address through a dual-stack ingress network.
+```mermaid
+flowchart LR
+    user([Visitors and family]) -->|HTTPS| cloudflare[Cloudflare DNS]
+    cloudflare --> lux
+    cloudflare --> bxl
+    subgraph lux [Cloud VM]
+        traefik_lux[Traefik + CrowdSec] --> vpn[NetBird]
+        traefik_lux --> vigie[VictoriaMetrics, VictoriaLogs, Grafana]
+        traefik_lux --> gatus[Gatus status page]
+    end
+    subgraph bxl [TrueNAS home server]
+        traefik_bxl[Traefik] --> apps[Nextcloud, Vaultwarden, Paperless, Jellyfin, Home Assistant…]
+        traefik_bxl --> zitadel[Zitadel SSO]
+    end
+    vpn <-->|WireGuard mesh| bxl
+    vigie -.->|scrapes metrics, receives logs| bxl
+```
 
-**Watched around the clock**
-- **VictoriaMetrics, VictoriaLogs and Grafana** collect host, container, Traefik and CrowdSec
-  metrics and Traefik's access logs from both servers; alerts land on phones through Home Assistant.
-- Grafana's **MCP server** lets an LLM query those metrics and logs, read-only.
+## Engineering highlights
 
-**Operated like software**
-- One folder per service, deployed by one shared Ansible role; secrets in Ansible Vault, in a private
-  submodule; image updates from Dependabot every week.
-- CI lints every playbook and Compose file and boots the real stacks (Traefik routes, CrowdSec bans,
-  Grafana alerts) on every push; [Semaphore](https://semaphoreui.com/) runs the playbooks
-  from the server itself.
+- **Tested like application code.** CI does not stop at linting: it boots Traefik with its real
+  routes, CrowdSec and its bouncer (and checks that a scanner gets banned and an IPv6 client keeps
+  its own address), and VictoriaMetrics with Grafana, feeding synthetic metrics and checking that
+  every dashboard query is valid and every alert fires when it should. Ansible roles have Molecule
+  scenarios, OpenTofu configurations are validated and tested.
+- **Secure by default.** Private services only answer the LAN and the VPN; nothing internal is
+  published, metrics and APIs stay on internal Docker networks; containers drop the capabilities they do not need and
+  read the Docker socket through read-only proxies; secrets live in Ansible Vault in a private
+  submodule and the OpenTofu state is encrypted; SSH keys are restricted by source network and
+  forced commands.
+- **Identity as code.** The whole Zitadel organization (policies, users, OIDC clients for each
+  service) is OpenTofu, and services pick up their client credentials at deploy time.
+- **Observable.** Host, container, Traefik and CrowdSec metrics, Traefik's access logs, Grafana
+  dashboards and alert rules are all provisioned from this repository; Grafana's MCP server gives
+  an LLM read-only access to them for investigations.
+- **Small, repeatable building blocks.** Every service is a folder with a playbook and a Compose
+  file, deployed by one shared role that creates folders, writes secrets, starts the stack and
+  publishes its DNS records; toolchains are pinned with uv and mise; deployments also run from
+  Semaphore on the server itself.
 
 ## Documentation
 
@@ -73,21 +97,9 @@ How it all fits together is documented, in French, on **[www.anneraud.fr](https:
 | [Security](https://www.anneraud.fr/documentation/securite) | Which protections a request goes through, how access and secrets are managed |
 | [Deployment](https://www.anneraud.fr/documentation/deploiement) | How a change goes from this repository to the servers |
 | [Monitoring](https://www.anneraud.fr/documentation/supervision) and [backups](https://www.anneraud.fr/documentation/sauvegardes) | How failures are detected, where data is copied and how to restore it |
-| [Accessing the services](https://www.anneraud.fr/documentation/exploitation) | How to reach a public or private service, with which account |
 
-The rest of this file is the operator's reference: the service list, then how to deploy and run each
-part.
-
-## Quick start
-
-```bash
-mise install && mise run setup                      # pinned Ansible, OpenTofu and collections
-mise deploy services/<service>/deploy.yml           # deploy one service
-mise deploy site.yml --limit <host>                 # everything on one host
-mise lint && mise test                              # the CI checks that need no server
-```
-
-Details in [Deployment](#deployment); the vault (`vault/`) is private, so forks bring their own.
+The rest of this file is the operator's reference: the service list, then how to deploy and run
+each part.
 
 ## Inventory
 
