@@ -89,7 +89,8 @@
         msg:
           - "deploiement_vault_repository_token is missing from vault/deploiement/vault.yml: Semaphore can't clone the private vault submodule."
           - "Create a fine-grained GitHub token (Contents: read-only, only on AlixANNERAUD/Infrastructure_vault, with an expiry),"
-          - "add it to the vault as deploiement_vault_repository_token, then run this playbook again (the readme has the steps)."
+          - "add it to the vault as deploiement_vault_repository_token, then run this playbook again."
+          - "Steps: https://www.anneraud.fr/documentation/deploiement#semaphore-mise-en-place"
       when: deploiement_vault_repository_token | default('') | length == 0
 
     # Semaphore connects to the hosts with this key: it is created once, then
@@ -135,4 +136,4 @@
           - "2. TrueNAS: add it as a line of Credentials > Users > {{ automation_user }} > Authorized Keys (bootstrap prints the exact lines)."
           - "   Those lines include the current subnet of the proxy network: redo this step if that network is ever recreated."
           - "3. In Semaphore, store the private key {{ compose_service_path }}/keys/ansible as an SSH key with the user {{ automation_user }}."
-          - "The full one-time setup of the project is in the readme (Deployment with Semaphore)."
+          - "The full one-time setup of the project: https://www.anneraud.fr/documentation/deploiement#semaphore-mise-en-place"

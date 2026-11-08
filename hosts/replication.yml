@@ -93,7 +93,7 @@
   hosts: bruxelles
   become: true
   vars:
-    # Created in the TrueNAS interface, see the readme
+    # Created in the TrueNAS interface: https://www.anneraud.fr/documentation/sauvegardes
     replication_user: replication
     replication_directory: "{{ services_root }}/Replication"
   vars_files:
