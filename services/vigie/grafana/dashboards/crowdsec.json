@@ -100,7 +100,7 @@
             "uid": "victoriametrics"
           },
           "editorMode": "code",
-          "expr": "max by (host) (up{job=\"crowdsec\",host=~\"$host\"})",
+          "expr": "max by (host) (up{job=~\"crowdsec-.*\",host=~\"$host\"})",
           "legendFormat": "{{host}}",
           "refId": "A",
           "range": true,
@@ -1287,7 +1287,7 @@
             "uid": "victoriametrics"
           },
           "editorMode": "code",
-          "expr": "process_resident_memory_bytes{job=\"crowdsec\",host=~\"$host\"}",
+          "expr": "process_resident_memory_bytes{job=~\"crowdsec-.*\",host=~\"$host\"}",
           "legendFormat": "{{host}}",
           "refId": "A",
           "range": true,

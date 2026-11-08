@@ -24,8 +24,9 @@ http:
 {% for network in cloudflare_networks %}
             - {{ network | to_json }}
 {% endfor %}
-          # The LAN and the VPN are never refused (same networks as internal-allowlist)
+          # The LAN, the VPN (same networks as internal-allowlist) and Docker's
+          # private range are never refused
           clientTrustedIPs:
-{% for network in internal_networks %}
+{% for network in protection_trusted_networks %}
             - {{ network | to_json }}
 {% endfor %}

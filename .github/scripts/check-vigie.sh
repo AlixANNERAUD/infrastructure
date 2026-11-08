@@ -373,7 +373,7 @@ for step in range(17):
         service = router.replace("-login", "")
         labels = f'router="{router}",service="{service}",code="429",method="POST",protocol="http",host="bruxelles"'
         print(f"traefik_router_requests_total{{{labels}}} {count} {timestamp}")
-    labels = 'name="crowdsecurity/http-probing",job="crowdsec",host="luxembourg"'
+    labels = 'name="crowdsecurity/http-probing",job="crowdsec-luxembourg",host="luxembourg"'
     print(f"cs_bucket_overflowed_total{{{labels}}} {step * 3} {timestamp}")
 EOF
 curl -fsS --data-binary "@$directory/samples.prom" "$metrics/api/v1/import/prometheus"
@@ -442,7 +442,8 @@ check(
     urls == {
         "traefik-luxembourg": "http://traefik:8082/metrics",
         "traefik-bruxelles": "https://traefik.bruxelles.anneraud.fr/metrics",
-        "crowdsec": "http://crowdsec:6060/metrics",
+        "crowdsec-luxembourg": "http://crowdsec:6060/metrics",
+        "crowdsec-bruxelles": "https://metriques.bruxelles.anneraud.fr/crowdsec/metrics",
         "node-luxembourg": "http://node-exporter:9100/metrics",
         "containers-luxembourg": "http://cadvisor:8080/metrics",
         "node-bruxelles": "https://metriques.bruxelles.anneraud.fr/node/metrics",
@@ -450,7 +451,9 @@ check(
     },
     f"scrape targets are {urls}",
 )
-check(targets.get("crowdsec", (None, None, None))[2] == "luxembourg", f"crowdsec target is {targets.get('crowdsec')}")
+for host in ("luxembourg", "bruxelles"):
+    job = f"crowdsec-{host}"
+    check(targets.get(job, (None, None, None))[2] == host, f"{job} target is {targets.get(job)}")
 # Luxembourg's exporters are reached in the metrics network
 for job in ("node-luxembourg", "containers-luxembourg"):
     check(targets.get(job, (None, None, None))[1] == "up", f"target {job} is {targets.get(job, (None, None, None))[1]}")
@@ -482,7 +485,7 @@ def group_rules(name):
 rules = {rule["name"]: rule for group in groups if group.get("file") == "Vigie" for rule in group["rules"]}
 expected_groups = {
     "Traefik": {"Traefik server errors", "Traefik slow responses", "Traefik metrics missing"},
-    # Luxembourg, Vigie's host, runs CrowdSec: its rules are rendered
+    # Hosts of the protection group run CrowdSec: its rules are rendered
     "Protection": {
         "CrowdSec metrics missing", "CrowdSec bouncer silent", "CrowdSec reads no access log",
         "CrowdSec alert spike", "Login rate limit spike",
@@ -526,8 +529,8 @@ def alerting(name, label, values, words):
         )
 
 
-# Its target does not resolve here: up = 0
-alerting("CrowdSec metrics missing", "host", ["luxembourg"], ["luxembourg", "cannot be scraped"])
+# Neither target answers here: up = 0
+alerting("CrowdSec metrics missing", "host", ["bruxelles", "luxembourg"], ["cannot be scraped"])
 alerting("CrowdSec alert spike", "host", ["luxembourg"], ["luxembourg", "48 alerts"])
 alerting("Login rate limit spike", "router", ["vaultwarden-login@file"], ["vaultwarden-login@file", "bruxelles", "80 login"])
 # Both wait for CrowdSec to answer, which it does not here

@@ -20,18 +20,18 @@ scrape_configs:
       - targets: ["{{ hostvars['bruxelles'].traefik_dashboard_host }}"]
         labels:
           host: bruxelles
-{% if inventory_hostname in groups['protection'] %}
+{% for host in groups['protection'] | sort %}
+{%   set local = host == inventory_hostname %}
 
-  # CrowdSec on this host (services/protection), over the internal
-  # protection-metrics network
-  - job_name: crowdsec
-    metrics_path: /metrics
-    scheme: http
+  # CrowdSec on {{ host }} (services/protection): {{ 'over the internal protection-metrics network' if local else "through the host's Traefik (metriques_host), behind its internal allowlist" }}
+  - job_name: crowdsec-{{ host }}
+    metrics_path: {{ '/metrics' if local else '/crowdsec/metrics' }}
+    scheme: {{ 'http' if local else 'https' }}
     static_configs:
-      - targets: ["crowdsec:6060"]
+      - targets: ["{{ 'crowdsec:6060' if local else hostvars[host].metriques_host }}"]
         labels:
-          host: {{ inventory_hostname }}
-{% endif %}
+          host: {{ host }}
+{% endfor %}
 
   # Host and container metrics of every host of the metriques group
   # (services/metriques): inside the metriques network on Vigie's own host,

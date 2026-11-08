@@ -29,12 +29,24 @@ services:
       - ./data:/var/lib/crowdsec/data
     # The local API (8080) and metrics (6060) are never published: Traefik
     # reaches the API over the protection network, Vigie's VictoriaMetrics the
-    # metrics over protection-metrics
+    # metrics over protection-metrics on its own host. Elsewhere (Bruxelles,
+    # METRICS_ROUTED) Traefik routes the metrics alone, over the protection
+    # network, behind the internal allowlist: CrowdSec stays off the proxy one
     networks:
       - default     # hub and community blocklist
       - protection
       - docker
       - protection-metrics
+    labels:
+      - traefik.enable=${METRICS_ROUTED}
+      - traefik.docker.network=protection
+      - traefik.http.routers.protection-metrics.rule=Host(`${METRICS_HOST}`) && PathPrefix(`/crowdsec`)
+      - traefik.http.routers.protection-metrics.entrypoints=web-secure
+      - traefik.http.routers.protection-metrics.tls=true
+      - traefik.http.routers.protection-metrics.middlewares=internal-allowlist@file,protection-metrics-path
+      # Only the metrics: the port also serves Go's profiling pages
+      - traefik.http.middlewares.protection-metrics-path.replacepath.path=/metrics
+      - traefik.http.services.protection-metrics.loadbalancer.server.port=6060
     depends_on:
       - socket-proxy
     healthcheck:

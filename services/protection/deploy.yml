@@ -1,6 +1,9 @@
 ---
 # CrowdSec security engine. Deploy services/proxy/deploy.yml first: it turns
 # the bouncer on in this host's Traefik and writes the access log read here.
+# A host with metriques_host (Bruxelles) serves the engine's metrics to Vigie
+# through its Traefik, behind the internal allowlist; on Vigie's host,
+# VictoriaMetrics reads them over the internal protection-metrics network.
 - name: Deploy CrowdSec
   hosts: protection
   become: true
@@ -10,18 +13,25 @@
     - ../../vault/cloudflare/vault.yml
   vars:
     protection_allowlist: internal
+    protection_allowlist_description: Networks of the internal-allowlist middleware and Docker's private range
   roles:
     - role: compose_service
       vars:
         compose_service_name: protection
+        compose_service_directory: "{{ protection_directory }}"
         compose_service_directories:
           - config
           - data
         compose_service_files:
           - source: acquisition.yaml
             destination: config/acquis.d/traefik.yaml
+        compose_service_templates:
+          - source: trusted_hosts.yaml.j2
+            destination: config/postoverflows/s01-whitelist/trusted-hosts.yaml
         compose_service_environment:
           BOUNCER_KEY: "{{ protection_bouncer_key }}"
+          METRICS_ROUTED: "{{ (metriques_host is defined) | string | lower }}"
+          METRICS_HOST: "{{ metriques_host | default('') }}"
         compose_service_external_networks:
           - name: protection
             internal: true
@@ -30,10 +40,10 @@
 
   tasks:
     # The engine installs the hub collections before its local API answers
-    - name: Allow the LAN and the VPN
+    - name: Allow the LAN, the VPN and Docker's range
       community.docker.docker_container_exec:
         container: crowdsec
-        argv: "{{ ['sh', '-s', '--', protection_allowlist, 'Networks of the internal-allowlist middleware'] + internal_networks }}"
+        argv: "{{ ['sh', '-s', '--', protection_allowlist, protection_allowlist_description] + protection_trusted_networks }}"
         stdin: "{{ lookup('ansible.builtin.file', 'allowlist.sh') }}"
       register: protection_allowlist_result
       until: protection_allowlist_result.rc == 0

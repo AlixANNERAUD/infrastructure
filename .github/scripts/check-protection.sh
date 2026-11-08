@@ -2,7 +2,10 @@
 # Lay out CrowdSec (services/protection) and Traefik (services/proxy) as their
 # playbooks do on a host of the protection group, start both with their own
 # Compose files, and check that:
-# - the allowlist holds the internal-allowlist networks and refuses decisions on them,
+# - the allowlist holds the internal-allowlist networks and Docker's range, and
+#   refuses decisions on them,
+# - the addresses of the trusted host names, resolved by CrowdSec (an IPv6
+#   one with its /64), are never banned for a scan,
 # - a banned address gets 403 from Traefik while others get through,
 # - the LAN and the VPN get through even when banned (the bouncer trusts them),
 # - an unban lets the address back in,
@@ -33,6 +36,12 @@ banned=203.0.113.10
 allowed=203.0.113.20
 scanner=203.0.113.30
 lan=192.168.0.50
+# The trusted host names (protection_trusted_hosts), as CrowdSec resolves them
+# here, and clients they trust: the IPv6 one from elsewhere in its /64
+trusted_hosts='["home.check.test", "peer.check.test"]'
+trusted_home=203.0.113.40
+trusted_peer=2001:db8:5::1
+trusted_peer_client=2001:db8:5::99
 
 compose_proxy() {
     docker compose -p check-protection-proxy --project-directory "$proxy" \
@@ -71,18 +80,18 @@ render() {
     fi
 }
 
-# Same networks as deployed: internal-allowlist's, read by the inventory
-internal_networks=$(uv run ansible luxembourg -c local -e "ansible_python_interpreter=$(uv run which python)" \
-    -m ansible.builtin.debug -a "msg={{ internal_networks | join(' ') }}" | sed -n 's/^ *"msg": "\(.*\)"$/\1/p')
-if [ -z "$internal_networks" ]; then
-    echo "internal_networks is empty"
+# Same networks as deployed: internal-allowlist's and Docker's, read by the inventory
+trusted_networks=$(uv run ansible luxembourg -c local -e "ansible_python_interpreter=$(uv run which python)" \
+    -m ansible.builtin.debug -a "msg={{ protection_trusted_networks | join(' ') }}" | sed -n 's/^ *"msg": "\(.*\)"$/\1/p')
+if [ -z "$trusted_networks" ] || ! grep -qw 172.16.0.0/12 <<< "$trusted_networks"; then
+    echo "protection_trusted_networks is $trusted_networks"
     exit 1
 fi
 
 # CrowdSec, with the files deploy.yml copies
 mkdir -p "$protection/config" "$protection/data"
 cp services/protection/compose.yml "$protection/compose.yml"
-uv run python - "$protection" <<'EOF'
+uv run python - "$protection" > "$directory/templates" <<'EOF'
 import shutil
 import sys
 from pathlib import Path
@@ -95,14 +104,34 @@ for entry in role.get("compose_service_files", []):
     destination = Path(sys.argv[1]) / entry["destination"]
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(Path("services/protection") / entry["source"], destination)
+# Templates: "source destination" lines, rendered below
+for entry in role.get("compose_service_templates", []):
+    print(entry["source"], entry["destination"])
 EOF
-echo "BOUNCER_KEY=$key" > "$protection/.env"
-# Test alerts must not reach the community blocklist
-cat > "$protection/compose.check.yml" <<'EOF2'
+if [ "$(cut -d' ' -f1 "$directory/templates")" != trusted_hosts.yaml.j2 ]; then
+    echo "services/protection/deploy.yml renders $(cat "$directory/templates") instead of trusted_hosts.yaml.j2"
+    exit 1
+fi
+while read -r source destination; do
+    mkdir -p "$(dirname "$protection/$destination")"
+    render luxembourg "services/protection/$source" "$protection/$destination" \
+        -e "{\"protection_trusted_hosts\": $trusted_hosts}"
+done < "$directory/templates"
+cat > "$protection/.env" <<EOF
+BOUNCER_KEY=$key
+METRICS_ROUTED=false
+METRICS_HOST=
+EOF
+# Test alerts must not reach the community blocklist; the trusted names
+# resolve to the test clients
+cat > "$protection/compose.check.yml" <<EOF2
 services:
   crowdsec:
     environment:
       DISABLE_ONLINE_API: "true"
+    extra_hosts:
+      home.check.test: "$trusted_home"
+      peer.check.test: "$trusted_peer"
 EOF2
 
 # Traefik, with the files deploy.yml writes on a host of the protection group
@@ -217,17 +246,18 @@ echo "ok    an IPv6 client reaches Traefik with its own address"
 
 # The allowlist, as deploy.yml applies it (twice: the second run must change nothing)
 # shellcheck disable=SC2086
-docker exec -i crowdsec sh -s -- internal "Networks of the internal-allowlist middleware" $internal_networks \
+docker exec -i crowdsec sh -s -- internal "Networks of the internal-allowlist middleware" $trusted_networks \
     < services/protection/allowlist.sh
 # shellcheck disable=SC2086
-second=$(docker exec -i crowdsec sh -s -- internal "Networks of the internal-allowlist middleware" $internal_networks \
+second=$(docker exec -i crowdsec sh -s -- internal "Networks of the internal-allowlist middleware" $trusted_networks \
     < services/protection/allowlist.sh)
 if [ -n "$second" ]; then
     echo "The allowlist changed on its second run: $second"
     exit 1
 fi
 listed=$(cscli allowlists inspect internal -o raw | tail -n +2 | cut -d, -f3 | sort | tr '\n' ' ')
-expected=$(printf '%s\n' $internal_networks | sort | tr '\n' ' ')
+# shellcheck disable=SC2086
+expected=$(printf '%s\n' $trusted_networks | sort | tr '\n' ' ')
 if [ "$listed" != "$expected" ]; then
     echo "The allowlist holds $listed instead of $expected"
     exit 1
@@ -236,7 +266,7 @@ if cscli decisions add --ip "$lan" --duration 1h > /dev/null 2>&1; then
     echo "CrowdSec accepted a decision on $lan, which is allowlisted"
     exit 1
 fi
-echo "ok    the allowlist holds the internal networks and refuses decisions on them"
+echo "ok    the allowlist holds the internal networks and Docker's range, and refuses decisions on them"
 
 cscli decisions add --ip "$banned" --duration 1h --reason check
 cscli decisions add --ip "$lan" --duration 1h --reason check --bypass-allowlist
@@ -261,9 +291,13 @@ if ! wait_for 60 answers "$banned" 200; then
 fi
 echo "ok    the unbanned address gets 200 again"
 
-# A scan: more than 10 different missing pages (crowdsecurity/http-probing)
-for page in $(seq 20); do
-    request "$scanner" "/check-scan-$page" > /dev/null
+# A scan: more than 10 different missing pages (crowdsecurity/http-probing),
+# first from the trusted clients, then from the scanner: CrowdSec reads the
+# lines in order, so once the scanner is banned the trusted scans were judged
+for client in "$trusted_home" "$trusted_peer_client" "$scanner"; do
+    for page in $(seq 20); do
+        request "$client" "/check-scan-$page" > /dev/null
+    done
 done
 if ! wait_for 90 answers "$scanner" 403; then
     echo "CrowdSec did not ban $scanner after its scan; acquisition and alerts:"
@@ -272,6 +306,19 @@ if ! wait_for 90 answers "$scanner" 403; then
     exit 1
 fi
 echo "ok    CrowdSec read Traefik's access log and banned a scanning address"
+for client in "$trusted_home" "$trusted_peer_client"; do
+    if [ -n "$(cscli decisions list --ip "$client" -o raw | tail -n +2)" ]; then
+        echo "$client, a trusted host's address, is banned after its scan:"
+        cscli alerts list || true
+        exit 1
+    fi
+    status=$(request "$client")
+    if [ "$status" != 200 ]; then
+        echo "$client, a trusted host's address, gets $status after its scan"
+        exit 1
+    fi
+done
+echo "ok    the trusted host names' addresses (IPv6 by /64) are not banned for the same scan"
 
 # What VictoriaMetrics sees from the protection-metrics network
 from_vigie() {
