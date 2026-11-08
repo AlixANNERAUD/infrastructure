@@ -1,6 +1,93 @@
-# Infrastructure
+<h1 align="center">Infrastructure</h1>
 
-This repository contains the infrastructure code and documentation for deploying and managing my personnal services.
+<p align="center">
+  <strong>A self-hosted homelab, entirely as code.</strong><br>
+  Ansible, Docker Compose and OpenTofu deploying about forty sovereign services on a TrueNAS home
+  server and a cloud VM: single sign-on, a mesh VPN, intrusion prevention, monitoring and alerts
+  included.
+</p>
+
+<p align="center">
+  <a href="https://github.com/AlixANNERAUD/Infrastructure/actions/workflows/lint.yml"><img alt="CI" src="https://github.com/AlixANNERAUD/Infrastructure/actions/workflows/lint.yml/badge.svg"></a>
+  <a href="https://www.anneraud.fr/documentation/"><img alt="Documentation" src="https://img.shields.io/badge/docs-anneraud.fr-blue"></a>
+  <a href="https://etat.anneraud.fr/"><img alt="Status page" src="https://img.shields.io/badge/status-etat.anneraud.fr-brightgreen"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+</p>
+
+<p align="center">
+  <img alt="Ansible" src="https://img.shields.io/badge/Ansible-EE0000?logo=ansible&logoColor=white">
+  <img alt="Docker Compose" src="https://img.shields.io/badge/Docker%20Compose-2496ED?logo=docker&logoColor=white">
+  <img alt="OpenTofu" src="https://img.shields.io/badge/OpenTofu-FFDA18?logo=opentofu&logoColor=black">
+  <img alt="Traefik" src="https://img.shields.io/badge/Traefik-24A1C1?logo=traefikproxy&logoColor=white">
+  <img alt="TrueNAS" src="https://img.shields.io/badge/TrueNAS%20SCALE-0095D5?logo=truenas&logoColor=white">
+  <img alt="Grafana" src="https://img.shields.io/badge/Grafana-F46800?logo=grafana&logoColor=white">
+</p>
+
+---
+
+Everything a family's digital life runs on, from passwords and photos to home automation and chat,
+hosted on hardware we own instead of someone else's cloud, and described in this repository: every
+service, route, DNS record, login and alert is a file reviewed in Git, linted and tested in CI,
+then applied with one command. Nothing is configured by hand that could be written down here.
+
+## What it runs
+
+**Services people use**
+- Files, photos, calendars and office documents (Nextcloud, Collabora), passwords (Vaultwarden),
+  paperwork (Paperless-ngx), music and films (Jellyfin), recipes (Mealie), finances (Firefly III),
+  notes (Docmost), a Git forge (Gitea) and a private AI assistant (Open WebUI, SearXNG).
+- Home automation (Home Assistant), chat (Matrix Synapse) and a public status page (Gatus).
+
+**One identity, one network**
+- Single sign-on through **Zitadel** for the services that support it: organization, users,
+  policies and OIDC applications are provisioned with **OpenTofu**, the state encrypted.
+- A **NetBird** mesh VPN joins the sites and devices; private services only answer the LAN and the
+  VPN.
+
+**A hardened edge**
+- **Traefik v3** in front of everything, with wildcard Let's Encrypt certificates over Cloudflare
+  DNS, HSTS and TLS 1.2+, and DNS records created by the same playbooks.
+- **CrowdSec** reads Traefik's access log and bans scanners and brute-forcers; login pages are rate
+  limited per client; IPv6 clients keep their own address through a dual-stack ingress network.
+
+**Watched around the clock**
+- **VictoriaMetrics, VictoriaLogs and Grafana** collect host, container, Traefik and CrowdSec
+  metrics and Traefik's access logs from both servers; alerts land on phones through Home Assistant.
+- Grafana's **MCP server** lets an LLM query those metrics and logs, read-only.
+
+**Operated like software**
+- One folder per service, deployed by one shared Ansible role; secrets in Ansible Vault, in a private
+  submodule; image updates from Dependabot every week.
+- CI lints every playbook and Compose file and boots the real stacks (Traefik routes, CrowdSec bans,
+  Grafana alerts) on every push; [Semaphore](https://semaphoreui.com/) runs the playbooks
+  from the server itself.
+
+## Documentation
+
+How it all fits together is documented, in French, on **[www.anneraud.fr](https://www.anneraud.fr/documentation/)**:
+
+| Page | Answers |
+| --- | --- |
+| [Architecture](https://www.anneraud.fr/documentation/architecture) | Which server does what, how a request reaches a service, how single sign-on works |
+| [Network](https://www.anneraud.fr/documentation/reseau) and [DNS](https://www.anneraud.fr/documentation/dns) | How sites, the VPN and Docker networks are addressed and named |
+| [Security](https://www.anneraud.fr/documentation/securite) | Which protections a request goes through, how access and secrets are managed |
+| [Deployment](https://www.anneraud.fr/documentation/deploiement) | How a change goes from this repository to the servers |
+| [Monitoring](https://www.anneraud.fr/documentation/supervision) and [backups](https://www.anneraud.fr/documentation/sauvegardes) | How failures are detected, where data is copied and how to restore it |
+| [Accessing the services](https://www.anneraud.fr/documentation/exploitation) | How to reach a public or private service, with which account |
+
+The rest of this file is the operator's reference: the service list, then how to deploy and run each
+part.
+
+## Quick start
+
+```bash
+mise install && mise run setup                      # pinned Ansible, OpenTofu and collections
+mise deploy services/<service>/deploy.yml           # deploy one service
+mise deploy site.yml --limit <host>                 # everything on one host
+mise lint && mise test                              # the CI checks that need no server
+```
+
+Details in [Deployment](#deployment); the vault (`vault/`) is private, so forks bring their own.
 
 ## Inventory
 
