@@ -249,13 +249,12 @@ vault/                  # Private submodule with encrypted secrets
 
 ## Protection
 
-Every request to the `web-secure` entrypoint of a Traefik whose host is in the `protection` group (Luxembourg for now) goes through CrowdSec's bouncer, internal routes included. CrowdSec (`services/protection`) reads Traefik's JSON access log from its container output through a read-only Docker socket proxy, detects scans, brute force and known CVE probes with the hub's `crowdsecurity/traefik` collection (which includes `crowdsecurity/base-http-scenarios` and `crowdsecurity/http-cve`), and bans the address for 4 hours; it also receives the community blocklist. Its local API is only reachable by Traefik over the internal `protection` network. The bouncer ([crowdsec-bouncer-traefik-plugin](https://github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin), `crowdsec@file` from `services/proxy/protection.yml.j2`) refreshes the banned addresses every 15 s, answers 403 to them, and lets everything through while CrowdSec is down. Behind Cloudflare it checks the visitor's address (the rightmost `X-Forwarded-For` address that is not Cloudflare's).
+How a request goes through CrowdSec, the internal allowlist and the login rate limits, and why, is explained on the website: [Sécurité](https://www.anneraud.fr/documentation/securite#crowdsec). In this repository:
 
-The LAN and the VPN (the networks of `internal-allowlist` in `services/proxy/policy.yml`) are never banned: they are in CrowdSec's `internal` allowlist, which drops alerts and refuses decisions on them, and the bouncer lets them through whatever CrowdSec says.
-
-Public login pages are also rate limited per client address, on both hosts (POST requests to the login paths only, so app sync is not limited; Traefik answers 429 past the limit): `rate_limit` on a route in `inventory/host_vars/bruxelles/traefik.yml` for the TrueNAS Apps, and labels for the stacks of this repository: Zitadel on Bruxelles (with the limits of that same file, written to its `.env`), Tolgee and Netbird's login on Luxembourg.
-
-Both depend on Traefik seeing each client's own address, IPv6 included. Its published ports go through its own dual-stack network (`ingress` in `services/proxy/compose.yml`, its gateway network through `gw_priority`), so Docker forwards IPv6 connections natively. On an IPv4-only network Docker's userland proxy relays them instead, and every IPv6 client shows up as that network's gateway: one rate limit bucket for all of them, and a CrowdSec ban on that address would lock them all out. This needs Docker 28 or later with `ip6tables` on (the default); `services/proxy/deploy.yml` checks both before deploying and checks Traefik's gateway after. To see the addresses Traefik logs on a host:
+- CrowdSec is `services/protection`, on the hosts of the `protection` group (`protection_enabled`); Traefik's bouncer is the `crowdsec@file` middleware of `services/proxy/protection.yml.j2`, put on the `web-secure` entrypoint. It bans for 4 hours with the hub's `crowdsecurity/traefik` collection and receives the community blocklist.
+- The networks never banned are those of `internal-allowlist` in `services/proxy/policy.yml` (CrowdSec's `internal` allowlist and the bouncer's trusted clients).
+- Login rate limits are `rate_limit` on a route in `inventory/host_vars/bruxelles/traefik.yml` for the TrueNAS Apps, and labels on the stacks of this repository: Zitadel on Bruxelles (with the limits of that same file, written to its `.env`), Tolgee and Netbird's login on Luxembourg.
+- Traefik's published ports go through its dual-stack `ingress` network (`services/proxy/compose.yml`, `gw_priority`), so IPv6 clients keep their own address. This needs Docker 28 or later with `ip6tables` on (the default); `services/proxy/deploy.yml` checks both before deploying and checks Traefik's gateway after. To see the addresses Traefik logs on a host:
 
 ```bash
 sudo docker logs traefik --since 30m 2>&1 | grep -o '"ClientHost":"[^"]*"' | sort | uniq -c | sort -rn | head
@@ -283,19 +282,7 @@ Vigie monitors both protections (see [Vigie](#vigie)): the CrowdSec dashboard (a
 
 ## Vigie
 
-Vigie (`services/vigie`) runs on Luxembourg: VictoriaMetrics (3 months of retention, 30 s scrape interval), VictoriaLogs (Traefik's access logs, [below](#traefik-access-logs)) and Grafana at `https://vigie.anneraud.fr/`, reachable only through Traefik's internal allowlist. It scrapes the metrics of both Traefik instances (Luxembourg and Bruxelles), the host and container metrics of both hosts (`services/metriques`, below) and CrowdSec on Luxembourg (see [Protection](#protection)). Grafana alerts a Home Assistant webhook on 5xx errors, high latency and unreachable targets (group Traefik), on filesystems over 90 % full, ZFS pools not `ONLINE`, memory over 90 % for 15 minutes, CPU over 90 % for 30 minutes and missing host metrics (group Hosts), and on the protections (group Protection, below). Its dashboards are Traefik, Traefik logs, Hosts, CrowdSec and Rate limits (`services/vigie/grafana/dashboards/`); Hosts shows CPU, memory, filesystems, the free space of ZFS pools and the CPU and memory of every app (Compose project, TrueNAS Apps without their `ix-` prefix) and container.
-
-The Protection alert group (`services/vigie/grafana/protection_alerting.yml.j2`) sits above the background of scanners on a public address, so only what is out of the ordinary reaches the phone:
-
-| Alert | Fires when |
-|---|---|
-| CrowdSec metrics missing | CrowdSec cannot be scraped for 10 minutes |
-| CrowdSec bouncer silent | CrowdSec answers but Traefik's bouncer has not asked it for decisions for 20 minutes: bans are not applied |
-| CrowdSec reads no access log | Traefik serves requests but CrowdSec parsed none of its log lines in 30 minutes |
-| CrowdSec alert spike | More than 30 CrowdSec alerts (scenario overflows, each a 4-hour ban) in an hour |
-| Login rate limit spike | A login router (`*-login`) answers more than 50 requests with 429 in 15 minutes, on either host |
-
-The CrowdSec rules and scrape job only exist when Vigie's host is in the `protection` group: Vigie only reaches the CrowdSec of its own host. Grafana login goes through Zitadel (role `vigie-admin` maps to Grafana `Admin`, everyone else is `Viewer`); the local admin login stays available as a fallback.
+Vigie (`services/vigie`) runs on Luxembourg at `https://vigie.anneraud.fr/`, behind the internal allowlist: VictoriaMetrics (3 months, 30 s), VictoriaLogs (Traefik's access logs, [below](#traefik-access-logs)) and Grafana. What it collects, its dashboards and its alerts are described on the website: [Supervision](https://www.anneraud.fr/documentation/supervision#vigie). In this repository: scrape jobs in `services/vigie/scrape.yml.j2`, alert rules in `services/vigie/grafana/alerting.yml.j2` (groups Traefik and Hosts) and `protection_alerting.yml.j2` (group Protection, rendered when Vigie's host runs CrowdSec), dashboards in `services/vigie/grafana/dashboards/`. Alerts go to a Home Assistant webhook. Grafana login goes through Zitadel (role `vigie-admin` maps to Grafana `Admin`, everyone else is `Viewer`); the local admin login stays available as a fallback.
 
 Prerequisites:
 
