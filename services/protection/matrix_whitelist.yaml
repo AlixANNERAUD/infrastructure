@@ -1,0 +1,16 @@
+# Parser whitelist for the Matrix client API, which the hub has none for: a
+# client answers 400, 403 and 404 in normal use (link previews of missing
+# pages, media not cached yet, rooms it may not read), and a client opening a
+# room asks for many of them at once, which crowdsecurity/http-probing takes
+# for a scan. Login stays counted, should a scenario watch it.
+# Fields: https://github.com/crowdsecurity/hub/blob/master/parsers/s01-parse/crowdsecurity/traefik-logs.yaml
+name: anneraud/matrix-whitelist
+description: Expected client errors of the Matrix client API
+filter: "evt.Meta.service == 'http' && evt.Meta.log_type in ['http_access-log', 'http_error-log']"
+whitelist:
+  reason: Matrix client API
+  expression:
+    - >-
+      evt.Meta.http_status in ['400', '403', '404']
+      && evt.Meta.http_path startsWith '/_matrix/'
+      && !(evt.Meta.http_path matches '^/_matrix/client/[^/]+/login')

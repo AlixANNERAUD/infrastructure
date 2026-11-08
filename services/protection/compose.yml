@@ -20,8 +20,13 @@ services:
     environment:
       TZ: Europe/Paris
       # Traefik's parser and the generic HTTP scenarios (crowdsecurity/base-http-scenarios,
-      # which includes the log-based CVE scenarios of crowdsecurity/http-cve)
-      COLLECTIONS: crowdsecurity/traefik
+      # which includes the log-based CVE scenarios of crowdsecurity/http-cve), and
+      # the good actors CrowdSec never bans: search engine crawlers (Odoo's shop),
+      # Cloudflare's addresses and public DNS resolvers
+      COLLECTIONS: crowdsecurity/traefik crowdsecurity/whitelist-good-actors
+      # Requests these applications make in normal use but which look like a
+      # scan; Matrix's whitelist is in matrix_whitelist.yaml
+      PARSERS: crowdsecurity/nextcloud-whitelist crowdsecurity/jellyfin-whitelist crowdsecurity/jellyseerr-whitelist
       # Registers Traefik's bouncer with this key when it is not registered yet
       BOUNCER_KEY_traefik: ${BOUNCER_KEY}
     volumes:
