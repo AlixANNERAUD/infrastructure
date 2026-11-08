@@ -9,8 +9,6 @@
   vars_files:
     - ../../vault/ansible/vault.yml
     - ../../vault/cloudflare/vault.yml
-  vars:
-    journaux_next_to_vigie: "{{ inventory_hostname in groups['vigie'] }}"
   roles:
     - role: compose_service
       vars:
@@ -18,15 +16,13 @@
         compose_service_directory: "{{ journaux_directory }}"
         # Vector's user in the container (nobody), who reads vector.yaml
         compose_service_user: 65534
-        compose_service_files:
-          - source: vector.yaml
+        compose_service_templates:
+          - source: vector.yaml.j2
             destination: vector.yaml
         # Only Vigie's host needs the internal network; created by Vigie's deploy too
         compose_service_external_networks: >-
           {{ [{'name': 'journaux', 'internal': true}] if journaux_next_to_vigie else [] }}
         compose_service_environment:
-          LOGS_HOST: "{{ inventory_hostname }}"
-          LOGS_URL: "{{ 'http://victorialogs:9428' if journaux_next_to_vigie else 'https://vigie.anneraud.fr' }}"
           LOGS_NETWORK: "{{ 'journaux' if journaux_next_to_vigie else proxy_network }}"
 
   tasks:

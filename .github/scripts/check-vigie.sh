@@ -101,7 +101,12 @@ mkdir -p "$directory/metriques"
 cp services/metriques/compose.yml "$directory/metriques/"
 # The log shipper, with the files services/journaux/deploy.yml copies
 mkdir -p "$directory/journaux"
-cp services/journaux/compose.yml services/journaux/vector.yaml "$directory/journaux/"
+cp services/journaux/compose.yml "$directory/journaux/"
+if ! output=$(uv run ansible luxembourg -c local -e "ansible_python_interpreter=$(uv run which python)" \
+    -m ansible.builtin.template -a "src=services/journaux/vector.yaml.j2 dest=$directory/journaux/vector.yaml"); then
+    echo "$output"
+    exit 1
+fi
 chmod -R a+rX "$directory"
 
 # Containers run as the current user, who owns the data folders here
@@ -119,8 +124,6 @@ EOF
 cat > "$directory/journaux/.env" <<EOF
 USER_ID=65534
 GROUP_ID=65534
-LOGS_HOST=luxembourg
-LOGS_URL=http://victorialogs:9428
 LOGS_NETWORK=$logs_network
 EOF
 # As on Luxembourg: in the metrics network, not routed by Traefik

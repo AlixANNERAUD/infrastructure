@@ -22,9 +22,6 @@ services:
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
-    environment:
-      LOGS_HOST: ${LOGS_HOST}
-      LOGS_URL: ${LOGS_URL}
     volumes:
       - ./vector.yaml:/etc/vector/vector.yaml:ro
     # Its data folder; nothing in it needs to outlive the container
