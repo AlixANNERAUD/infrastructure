@@ -340,6 +340,12 @@ for parser in crowdsecurity/nextcloud-whitelist crowdsecurity/jellyfin-whitelist
     fi
 done
 echo "ok    the application whitelists are loaded"
+if ! cscli collections list -o raw | grep -q "^crowdsecurity/whitelist-good-actors,"; then
+    echo "CrowdSec lacks the collection crowdsecurity/whitelist-good-actors:"
+    cscli collections list || true
+    exit 1
+fi
+echo "ok    the good actors whitelist is installed"
 
 # What VictoriaMetrics sees from the protection-metrics network
 from_vigie() {
