@@ -200,8 +200,11 @@ echo "ok    Traefik answers through the CrowdSec bouncer"
 
 # Through Docker's IPv6 port forwarding, as a client of the host's public IPv6
 # address: Traefik must log the client's address. Without IPv6 on its gateway
-# network, Docker's userland proxy relays the connection from a Docker address
-docker network create --ipv6 --subnet "$client_subnet" "$client_network" > /dev/null
+# network, Docker's userland proxy relays the connection from a Docker address.
+# The client network is routed, not masqueraded, so its address reaches the
+# host like an outside client's would
+docker network create --ipv6 --subnet "$client_subnet" -o com.docker.network.bridge.gateway_mode_ipv6=routed \
+    "$client_network" > /dev/null
 docker pull --quiet "$curl_image" > /dev/null
 docker run --rm --network "$client_network" --ip6 "$client_address" "$curl_image" \
     -ks -o /dev/null --max-time 10 --resolve "check.test:443:[$client_gateway]" https://check.test/check-ipv6 || true
