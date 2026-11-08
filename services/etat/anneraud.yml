@@ -439,7 +439,7 @@ endpoints:
     conditions:
       - "[STATUS] == 200"
       - "[CERTIFICATE_EXPIRATION] > 336h"
-      - "[BODY].status == Application is healthy, internal DB working fine and disk usage is below 95%. You can connect downdetector to this endpoint"
+      - "[BODY].status == HEALTHY"
     alerts:
       - type: homeassistant
 
