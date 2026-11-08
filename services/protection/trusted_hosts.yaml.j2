@@ -1,0 +1,15 @@
+# Postoverflow whitelist, rendered by deploy.yml from protection_trusted_hosts:
+# an alert on the address of one of these names is dropped before it becomes a
+# decision. CrowdSec resolves the names each time a scenario triggers, so a
+# dynamic address (Bruxelles', kept up to date by its DDNS updater) is trusted
+# as soon as the DNS follows it, without a deploy. An IPv6 address trusts its
+# whole /64: devices of a network share its prefix, not one address. Helpers:
+# https://github.com/crowdsecurity/crowdsec/blob/v1.8.1/pkg/exprhelpers/expr_lib.go
+name: anneraud/trusted-hosts
+description: Public addresses of trusted hosts, resolved when a scenario triggers
+whitelist:
+  reason: public address of a trusted host
+  expression:
+{% for host in protection_trusted_hosts %}
+    - {{ ('any(LookupHost(' ~ (host | to_json) ~ '), {IpInRange(evt.Overflow.Alert.Source.IP, IpToRange(#, IsIPV4(#) ? "/32" : "/64"))})') | to_json }}
+{% endfor %}

@@ -5,8 +5,8 @@
 # so annotations use .Labels and .Values: no dollar sign here.
 # A public address is scanned all day long: the thresholds sit above that
 # background, so only what is out of the ordinary reaches the phone.
-# CrowdSec's rules only exist when it runs on Vigie's host, the only one whose
-# CrowdSec Vigie scrapes (scrape.yml.j2).
+# CrowdSec's rules only exist when a host runs it (the protection group); Vigie
+# scrapes each one as job crowdsec-<host> (scrape.yml.j2).
 apiVersion: 1
 
 groups:
@@ -15,7 +15,7 @@ groups:
     folder: Vigie
     interval: {{ vigie_alert_evaluation_interval }}
     rules:
-{% if inventory_hostname in groups['protection'] %}
+{% if groups['protection'] | length > 0 %}
       # up = 0 while CrowdSec is down or out of reach; no up series at all
       # means the scrape job is missing
       - uid: crowdsec-metrics-missing
@@ -32,7 +32,7 @@ groups:
               refId: query
               instant: true
               range: false
-              expr: up{job="crowdsec"}
+              expr: up{job=~"crowdsec-.*"}
           - refId: threshold
             datasourceUid: __expr__
             model:
@@ -63,7 +63,7 @@ groups:
               instant: true
               range: false
               expr: >-
-                max by (host) (up{job="crowdsec"}) == 1
+                max by (host) (up{job=~"crowdsec-.*"}) == 1
                 unless on (host)
                 sum by (host) (increase(cs_lapi_bouncer_requests_total[10m])) > 0
           - refId: threshold
@@ -96,7 +96,7 @@ groups:
               range: false
               expr: >-
                 (
-                  max by (host) (up{job="crowdsec"}) == 1
+                  max by (host) (up{job=~"crowdsec-.*"}) == 1
                   unless on (host)
                   sum by (host) (increase(cs_parser_hits_ok_total[30m])) > 0
                 )

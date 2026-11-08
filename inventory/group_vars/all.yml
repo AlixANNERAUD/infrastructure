@@ -37,6 +37,24 @@ internal_networks: >-
 # the hosts of the protection group: elsewhere there is no engine to ask
 protection_enabled: "{{ inventory_hostname in groups['protection'] }}"
 
+# Clients CrowdSec never bans and its bouncer never refuses, besides
+# internal_networks: Docker's private range. Containers that reach a host's
+# public names (Home Assistant on Bruxelles) come back through Traefik from
+# their network's gateway; the internet cannot use these addresses
+protection_trusted_networks: "{{ internal_networks + ['172.16.0.0/12'] }}"
+
+# Public names whose addresses CrowdSec never bans, resolved by CrowdSec itself
+# each time a scenario triggers (services/protection/trusted_hosts.yaml.j2), so
+# a new address is trusted as soon as the DNS follows it. An IPv6 address
+# trusts its whole /64. Bruxelles' is the home's (dynamic, kept up to date by
+# its DDNS updater): devices of the LAN reach Bruxelles' public names through
+# the router from it, and every Netbird client at home reaches Luxembourg's
+# Netbird server from it. Luxembourg's: Gatus checks Bruxelles' public routes
+# from it
+protection_trusted_hosts:
+  - global.bruxelles.anneraud.fr
+  - global.luxembourg.anneraud.fr
+
 # Ranges Cloudflare proxies from, https://www.cloudflare.com/ips/ (2026-10-30)
 cloudflare_networks:
   - 173.245.48.0/20

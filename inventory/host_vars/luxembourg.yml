@@ -17,3 +17,6 @@ traefik_federation_publish: "8448:8448"
 # Host and container metrics (services/metriques): Vigie runs here too and
 # reaches the exporters inside the internal metriques Docker network
 metriques_directory: metriques
+
+# CrowdSec (services/protection)
+protection_directory: protection

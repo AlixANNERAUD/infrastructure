@@ -16,3 +16,7 @@ proxy_network: proxy
 # *.bruxelles.anneraud.fr wildcard certificate covers the name
 metriques_directory: Metriques
 metriques_host: metriques.bruxelles.anneraud.fr
+
+# CrowdSec (services/protection); its metrics are served at
+# https://<metriques_host>/crowdsec/metrics, through Traefik
+protection_directory: Protection
