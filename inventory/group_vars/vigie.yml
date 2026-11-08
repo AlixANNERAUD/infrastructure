@@ -4,6 +4,11 @@
 # How often Grafana evaluates the alert rules
 vigie_alert_evaluation_interval: 1m
 
+# Traefik's access logs in VictoriaLogs (shipped by services/metriques): kept this long,
+# older days dropped first past this size
+vigie_logs_retention: 14d
+vigie_logs_max_disk_space: 2GiB
+
 # Prefixes of the Traefik services (nextcloud@file, matrix-dera-page@docker…)
 # left out of the latency alert: they hold long requests on purpose (VPN
 # streams, uploads, editors, event streams, Matrix /sync long polling, media

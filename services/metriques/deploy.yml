@@ -1,9 +1,12 @@
 ---
-# Host and container metrics exporters, scraped by Vigie (services/vigie).
-# A host with metriques_host (Bruxelles) serves them through its Traefik,
-# behind the internal allowlist; the host running Vigie (Luxembourg) keeps
-# them in the internal metriques network, shared with VictoriaMetrics.
-- name: Deploy the metrics exporters
+# Host and container metrics exporters, scraped by Vigie (services/vigie),
+# and Vector, shipping Traefik's access log to Vigie's VictoriaLogs.
+# A host with metriques_host (Bruxelles) serves the exporters through its
+# Traefik, behind the internal allowlist, and sends its log to
+# https://vigie.anneraud.fr/insert/jsonline, behind Luxembourg's; the host
+# running Vigie (Luxembourg) keeps both in the internal metriques network,
+# shared with VictoriaMetrics and VictoriaLogs.
+- name: Deploy the metrics exporters and the log shipper
   hosts: metriques
   become: true
   vars_files:
@@ -14,6 +17,9 @@
       vars:
         compose_service_name: metriques
         compose_service_directory: "{{ metriques_directory }}"
+        compose_service_templates:
+          - source: vector.yaml.j2
+            destination: vector.yaml
         # Only Vigie's host needs the internal network; created by Vigie's deploy too
         compose_service_external_networks: >-
           {{ [] if metriques_host is defined else [{'name': 'metriques', 'internal': true}] }}
@@ -23,3 +29,24 @@
           METRICS_NETWORK: "{{ proxy_network if metriques_host is defined else 'metriques' }}"
         compose_service_dns_records: >-
           {{ [{'record': metriques_host, 'visibility': 'private'}] if metriques_host is defined else [] }}
+
+  tasks:
+    # An empty batch: VictoriaLogs answers 200 once the route, the allowlist
+    # and the way to Luxembourg all work
+    - name: Check that Vigie accepts this host's logs
+      ansible.builtin.uri:
+        url: "{{ metriques_logs_url }}/insert/jsonline"
+        method: POST
+        body: ""
+        status_code: 200
+      register: metriques_logs_route
+      failed_when: false
+      when: metriques_host is defined
+
+    - name: Explain why Vigie refuses this host's logs
+      ansible.builtin.fail:
+        msg: >-
+          {{ metriques_logs_url }}/insert/jsonline answers {{ metriques_logs_route.status }} ({{ metriques_logs_route.msg | default('') }}):
+          403 means this host's address is outside Luxembourg's internal allowlist, -1 that it cannot reach
+          Luxembourg (Netbird route); 404 that Vigie is not deployed with VictoriaLogs yet.
+      when: metriques_host is defined and metriques_logs_route.status != 200

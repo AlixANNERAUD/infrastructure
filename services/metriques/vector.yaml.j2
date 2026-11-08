@@ -1,0 +1,56 @@
+# Traefik's access log (JSON lines on its container output, also read by
+# CrowdSec) to Vigie's VictoriaLogs (services/vigie), one record per request
+# with Traefik's fields: ClientHost, RequestHost, RequestPath, DownstreamStatus,
+# DownstreamContentSize, RouterName, ServiceName, request_User-Agent...
+data_dir: /var/lib/vector
+
+sources:
+  traefik:
+    type: docker_logs
+    docker_host: http://socket-proxy:2375
+    include_containers: [traefik]
+
+transforms:
+  access:
+    type: remap
+    inputs: [traefik]
+    source: |
+      # Only what is queried: not the container's labels (Traefik's routes)
+      del(.label)
+      del(.container_id)
+      del(.container_created_at)
+      del(.image)
+      del(.source_type)
+      .host = "{{ inventory_hostname }}"
+      # Access log lines become their fields, with a short message; Traefik's
+      # own log lines keep their text
+      parsed, error = parse_json(.message)
+      if error == null && is_object(parsed) {
+        access = object!(parsed)
+        . = merge(., access)
+        method = string(access.RequestMethod) ?? "-"
+        name = string(access.RequestHost) ?? "-"
+        path = string(access.RequestPath) ?? "-"
+        status = to_string(access.DownstreamStatus) ?? "-"
+        .message = method + " " + name + " " + path + " " + status
+      }
+
+sinks:
+  victorialogs:
+    type: http
+    inputs: [access]
+    # One stream per host and container; the message and time fields as Vector names them
+    uri: "{{ metriques_logs_url }}/insert/jsonline?_stream_fields=host,container_name&_msg_field=message&_time_field=timestamp"
+    encoding:
+      codec: json
+    framing:
+      method: newline_delimited
+    compression: gzip
+    healthcheck:
+      enabled: false
+    # While VictoriaLogs is unreachable, keep the latest lines in memory and
+    # drop the newest past that, rather than holding Traefik's log reading back
+    buffer:
+      type: memory
+      max_events: 10000
+      when_full: drop_newest

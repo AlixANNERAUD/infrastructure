@@ -16,7 +16,7 @@
   ansible.builtin.import_playbook: services/deploiement/deploy.yml
 - name: Gatus
   ansible.builtin.import_playbook: services/etat/deploy.yml
-- name: Metrics exporters
+- name: Metrics exporters and log shipper
   ansible.builtin.import_playbook: services/metriques/deploy.yml
 - name: Vigie
   ansible.builtin.import_playbook: services/vigie/deploy.yml

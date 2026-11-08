@@ -4,7 +4,10 @@
 # Luxembourg, in the metrics network), feed VictoriaMetrics sample Traefik
 # metrics and check what Grafana provisioned: datasource, dashboards and alert
 # rules, that the rules evaluate as expected and that the exporters' metrics
-# answer every query of the Hosts dashboard.
+# answer every query of the Hosts dashboard. Traefik's access log (a stand-in
+# container named traefik) goes through Vector (services/metriques, laid out as
+# on Luxembourg) into VictoriaLogs, and must read back with its fields from
+# VictoriaLogs, through Grafana's plugin and through the MCP server.
 # With CHECK_ZFS_POOL set to the name of a healthy ZFS pool on this machine,
 # node_exporter must read its state and free space, and no pool alert fires.
 set -euo pipefail
@@ -30,6 +33,7 @@ cleanup() {
     fi
     COMPOSE_PROFILES=mcp compose down --volumes --timeout 5 > /dev/null 2>&1 || true
     exporters down --volumes --timeout 5 > /dev/null 2>&1 || true
+    docker rm -f traefik > /dev/null 2>&1 || true
     docker network rm "$network" "$metrics_network" protection-metrics > /dev/null 2>&1 || true
     rm -rf "$directory"
     exit "$status"
@@ -71,9 +75,29 @@ while read -r kind source destination; do
             ;;
     esac
 done < "$directory/layout"
-# The exporters, with the files services/metriques/deploy.yml copies
+# Grafana's VictoriaLogs plugin, the version and checksum deploy.yml installs
+read -r plugin version checksum < <(uv run python - <<'EOF'
+from pathlib import Path
+
+import yaml
+
+play = yaml.safe_load(Path("services/vigie/deploy.yml").read_text())[0]["vars"]
+print(play["vigie_logs_plugin"], play["vigie_logs_plugin_version"], play["vigie_logs_plugin_checksum"].removeprefix("sha256:"))
+EOF
+)
+curl -fsSL -o "$directory/plugin.tar.gz" \
+    "https://github.com/VictoriaMetrics/victorialogs-datasource/releases/download/v$version/$plugin-v$version.tar.gz"
+echo "$checksum  $directory/plugin.tar.gz" | sha256sum --check --quiet
+tar -xzf "$directory/plugin.tar.gz" -C "$directory/grafana/plugins"
+rm "$directory/plugin.tar.gz"
+# The exporters and Vector, with the files services/metriques/deploy.yml writes
 mkdir -p "$directory/metriques"
 cp services/metriques/compose.yml "$directory/metriques/"
+if ! output=$(uv run ansible luxembourg -c local -e "ansible_python_interpreter=$(uv run which python)" \
+    -m ansible.builtin.template -a "src=services/metriques/vector.yaml.j2 dest=$directory/metriques/vector.yaml"); then
+    echo "$output"
+    exit 1
+fi
 chmod -R a+rX "$directory"
 
 # Containers run as the current user, who owns the data folders here
@@ -82,6 +106,8 @@ USER_ID=$(id -u)
 GROUP_ID=$(id -g)
 PROXY_NETWORK=$network
 METRICS_NETWORK=$metrics_network
+LOGS_RETENTION=1d
+LOGS_MAX_DISK_SPACE=1GiB
 GRAFANA_ADMIN_PASSWORD=$password
 EOF
 # As on Luxembourg: in the metrics network, not routed by Traefik
@@ -94,6 +120,8 @@ cat > "$directory/compose.check.yml" <<'EOF'
 services:
   victoriametrics:
     ports: ["127.0.0.1::8428"]
+  victorialogs:
+    ports: ["127.0.0.1::9428"]
   grafana:
     ports: ["127.0.0.1::3000"]
   mcp:
@@ -111,20 +139,107 @@ compose run --rm --no-deps victoriametrics \
 
 compose up -d --wait --quiet-pull
 metrics="http://$(compose port victoriametrics 8428)"
+logs="http://$(compose port victorialogs 9428)"
 grafana="http://admin:$password@$(compose port grafana 3000)"
 
 ready=false
 for _ in $(seq 60); do
-    if curl -fs "$metrics/health" > /dev/null && curl -fs "$grafana/api/health" > /dev/null; then
+    if curl -fs "$metrics/health" > /dev/null && curl -fs "$logs/health" > /dev/null \
+        && curl -fs "$grafana/api/health" > /dev/null; then
         ready=true
         break
     fi
     sleep 2
 done
 if [ "$ready" != true ]; then
-    echo "VictoriaMetrics or Grafana did not become healthy within 2 minutes"
+    echo "VictoriaMetrics, VictoriaLogs or Grafana did not become healthy within 2 minutes"
     exit 1
 fi
+
+# Traefik's access log, as a stand-in container named traefik writes it: a
+# probe answered with the home page, a 404, and one of Traefik's own lines.
+# Vector (started with the exporters) reads what containers write once it
+# runs, so the lines repeat
+docker run -d --name traefik busybox:1.37.0 sh -c 'while true; do
+    echo "{\"ClientHost\":\"203.0.113.7\",\"RequestHost\":\"simrepo.check.test\",\"RequestMethod\":\"GET\",\"RequestPath\":\"/.git/index\",\"DownstreamStatus\":200,\"DownstreamContentSize\":3973,\"RouterName\":\"star-repo@docker\",\"ServiceName\":\"star-repo@docker\",\"request_User-Agent\":\"check-vigie\"}"
+    echo "{\"ClientHost\":\"198.51.100.9\",\"RequestHost\":\"vigie.check.test\",\"RequestMethod\":\"GET\",\"RequestPath\":\"/missing\",\"DownstreamStatus\":404,\"DownstreamContentSize\":19,\"RouterName\":\"vigie@docker\",\"ServiceName\":\"vigie@docker\",\"request_User-Agent\":\"check-vigie\"}"
+    echo "time=\"2026-11-08T12:00:00Z\" level=info msg=\"check-vigie plain line\""
+    sleep 2
+done' > /dev/null
+uv run python - "$logs" <<'EOF'
+import json
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+logs = sys.argv[1]
+
+
+def records(query):
+    data = urllib.parse.urlencode({"query": query, "limit": "5"}).encode()
+    with urllib.request.urlopen(f"{logs}/select/logsql/query", data, timeout=10) as response:
+        return [json.loads(line) for line in response.read().decode().splitlines() if line.strip()]
+
+
+probe = 'ClientHost:="203.0.113.7" RequestHost:="simrepo.check.test" DownstreamStatus:=200'
+for _ in range(45):
+    try:
+        found, plain = records(probe), records('"check-vigie plain line"')
+    except OSError:
+        found, plain = [], []
+    if found and plain:
+        break
+    time.sleep(2)
+else:
+    sys.exit("Traefik's access log did not reach VictoriaLogs within 90 seconds")
+failures = []
+record = found[0]
+expected = {
+    "_msg": "GET simrepo.check.test /.git/index 200", "RequestPath": "/.git/index", "DownstreamContentSize": "3973",
+    "RouterName": "star-repo@docker", "ServiceName": "star-repo@docker", "request_User-Agent": "check-vigie",
+    "host": "luxembourg", "container_name": "traefik",
+}
+for field, value in expected.items():
+    if str(record.get(field)) != value:
+        failures.append(f"field {field} is {record.get(field)!r} instead of {value!r}")
+stream = record.get("_stream", "")
+if not ('container_name="traefik"' in stream and 'host="luxembourg"' in stream):
+    failures.append(f"stream is {stream!r}")
+if "label" in record or any(field.startswith("label.") for field in record):
+    failures.append(f"the container's labels are stored: {sorted(record)}")
+if "level=info" not in plain[0].get("_msg", ""):
+    failures.append(f"Traefik's own line lost its text: {plain[0]}")
+if records('ClientHost:="198.51.100.9" DownstreamStatus:=200'):
+    failures.append("the 404 matches a filter on status 200")
+# Every query of the Traefik logs dashboard, with its text boxes at * and
+# with the 404's values (every panel, errors included, then has data),
+# answers on the endpoint its query type uses
+endpoints = {"instant": "query", "stats": "stats_query", "statsRange": "stats_query_range"}
+dashboard = json.loads(open("services/vigie/grafana/dashboards/traefik_logs.json").read())
+now = int(time.time())
+for values in ({}, {"client": "198.51.100.9", "domain": "vigie.check.test", "status": "404", "host": "luxembourg"}):
+    for panel in dashboard["panels"]:
+        for target in panel["targets"]:
+            query = target["expr"]
+            for name in ("host", "client", "domain", "status"):
+                query = query.replace("$" + name, values.get(name, "*"))
+            arguments = {"query": query, "limit": "5", "time": str(now), "start": str(now - 3600), "end": str(now), "step": "60s"}
+            url = f"{logs}/select/logsql/{endpoints[target['queryType']]}"
+            try:
+                with urllib.request.urlopen(url, urllib.parse.urlencode(arguments).encode(), timeout=10) as response:
+                    body = response.read().decode()
+            except urllib.error.HTTPError as error:
+                failures.append(f"panel {panel['title']} ({values or 'any'}): {error.code} {error.read().decode()[:200]}")
+                continue
+            if values and target["queryType"] == "instant" and ("/missing" not in body or "/.git/index" in body):
+                failures.append(f"panel {panel['title']} does not find only the 404: {body[:200]}")
+            if values and target["queryType"] != "instant" and '"result":[]' in body.replace(" ", ""):
+                failures.append(f"panel {panel['title']} has no data for the 404: {body[:200]}")
+print("\n".join(failures) or "Vector ships Traefik's access log to VictoriaLogs with its fields")
+sys.exit(1 if failures else 0)
+EOF
 
 # Grafana's MCP server (the mcp profile), with a Viewer service account's
 # token as deployed: it refuses callers without its own token, has no write
@@ -196,13 +311,13 @@ if status != 200 or "result" not in (answer or {}):
 call("notifications/initialized", notification=True)
 _, answer = call("tools/list")
 names = {tool["name"] for tool in (answer or {}).get("result", {}).get("tools", [])}
-for name in ("query_prometheus", "search_dashboards", "list_datasources"):
+for name in ("query_prometheus", "search_dashboards", "list_datasources", "query_loki_logs"):
     if name not in names:
         failures.append(f"tool {name} is missing from {sorted(names)}")
 writes = sorted(name for name in names if name.startswith(("update_", "create_", "delete_", "add_")) or name.endswith("_write"))
 if writes:
     failures.append(f"write tools are available: {writes}")
-unused = sorted(name for name in names if any(word in name for word in ("oncall", "incident", "loki", "tempo", "pyroscope")))
+unused = sorted(name for name in names if any(word in name for word in ("oncall", "incident", "tempo", "pyroscope")))
 if unused:
     failures.append(f"tools for services Vigie lacks are available: {unused}")
 _, answer = call("tools/call", {"name": "alerting_rules_read", "arguments": {"operation": "list"}})
@@ -213,7 +328,16 @@ _, answer = call("tools/call", {"name": "list_datasources", "arguments": {}})
 text = json.dumps((answer or {}).get("result", {}))
 if "victoriametrics" not in text:
     failures.append(f"list_datasources does not reach Grafana: {text[:300]}")
-print("\n".join(failures) or "Grafana's MCP server: token required, read-only, reads Grafana")
+# Traefik's access log, filtered in LogsQL through Grafana's VictoriaLogs data source
+_, answer = call("tools/call", {"name": "query_loki_logs", "arguments": {
+    "datasourceUid": "victorialogs", "logql": 'ClientHost:="203.0.113.7" DownstreamStatus:=200', "limit": 3}})
+text = json.dumps((answer or {}).get("result", {}))
+for word in ("/.git/index", "simrepo.check.test", "3973", "star-repo@docker", "check-vigie"):
+    if word not in text:
+        failures.append(f"query_loki_logs does not return {word}: {text[:400]}")
+if "/missing" in text:
+    failures.append(f"query_loki_logs ignores its filters: {text[:400]}")
+print("\n".join(failures) or "Grafana's MCP server: token required, read-only, reads Grafana's metrics and logs")
 sys.exit(1 if failures else 0)
 PYTHON
 
@@ -333,6 +457,10 @@ for job in ("node-luxembourg", "containers-luxembourg"):
 
 datasource = load("datasource.json")
 check(datasource.get("status") == "OK", f"datasource health is {datasource}")
+logs_datasource = load("datasource-logs.json")
+check(logs_datasource.get("status") == "OK", f"VictoriaLogs datasource health is {logs_datasource}")
+plugin = load("plugin-logs.json")
+check(plugin.get("signature") == "valid", f"VictoriaLogs plugin is {plugin.get('signature')}: {str(plugin)[:200]}")
 
 for uid in ("traefik", "crowdsec", "rate-limits"):
     dashboard = load(f"dashboard-{uid}.json").get("dashboard", {})
@@ -341,6 +469,8 @@ for uid in ("traefik", "crowdsec", "rate-limits"):
     check("host" in variables, f"dashboard {uid} variables are {variables}")
 hosts_dashboard = load("dashboard-hosts.json").get("dashboard", {})
 check(hosts_dashboard.get("uid") == "hosts", "dashboard hosts is missing")
+logs_dashboard = load("dashboard-traefik-logs.json").get("dashboard", {})
+check(logs_dashboard.get("uid") == "traefik-logs", "dashboard traefik-logs is missing")
 
 groups = load("rules.json").get("data", {}).get("groups", [])
 
@@ -463,7 +593,9 @@ for _ in $(seq 48); do
     # A failed request leaves an unreadable file: the checks fail and the next round retries
     curl -fsS "$metrics/api/v1/targets" > "$directory/targets.json" || true
     curl -sS "$grafana/api/datasources/uid/victoriametrics/health" > "$directory/datasource.json" || true
-    for uid in traefik crowdsec rate-limits hosts; do
+    curl -sS "$grafana/api/datasources/uid/victorialogs/health" > "$directory/datasource-logs.json" || true
+    curl -sS "$grafana/api/plugins/victoriametrics-logs-datasource/settings" > "$directory/plugin-logs.json" || true
+    for uid in traefik crowdsec rate-limits hosts traefik-logs; do
         curl -sS "$grafana/api/dashboards/uid/$uid" > "$directory/dashboard-$uid.json" || true
     done
     curl -fsS "$grafana/api/prometheus/grafana/api/v1/rules" > "$directory/rules.json" || true

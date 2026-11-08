@@ -51,7 +51,7 @@ Hosts and the service-to-host mapping are in [inventory/hosts.yml](inventory/hos
 | [Databasus](https://databasus.anneraud.fr/)                            | Database management (Adminer)                | Private | Bruxelles  | TrueNAS Apps | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/administration_databasus/uptimes/30d/badge.svg>)                    |
 | [Cockpit (Luxembourg)](https://cockpit.luxembourg.anneraud.fr/)        | Server management (Cockpit)                  | Private | Luxembourg | Ansible      | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/administration_cockpit-(luxembourg)/uptimes/30d/badge.svg>)                      |
 | [Vigie](https://vigie.anneraud.fr/)                                    | Monitoring (VictoriaMetrics, Grafana)        | Private | Luxembourg | Ansible      | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/administration_vigie-(grafana)/uptimes/30d/badge.svg>)                           |
-| Métriques                                                              | Host and container metrics (node_exporter, cAdvisor) | Private | Luxembourg, Bruxelles | Ansible      | -                                                                                                                                     |
+| Métriques                                                              | Host and container metrics (node_exporter, cAdvisor), Traefik access log shipper (Vector) | Private | Luxembourg, Bruxelles | Ansible      | -                                                                                                                                     |
 | Protection (Luxembourg)                                                | Intrusion prevention (CrowdSec)              | Private | Luxembourg | Ansible      | -                                                                                                                                  |
 | [État](https://etat.anneraud.fr/)                                      | Service status page                          | Public  | Luxembourg | Ansible      | -                                                                                                                                  |
 | [VPN](https://netbird.anneraud.fr/)                                    | Virtual private network (Netbird)            | Public  | Luxembourg | Ansible      | ![Status](<https://etat.anneraud.fr/api/v1/endpoints/administration_vpn-(netbird)/uptimes/30d/badge.svg>)                          |
@@ -184,7 +184,7 @@ Vigie monitors both protections (see [Vigie](#vigie)): the CrowdSec dashboard (a
 
 ## Vigie
 
-Vigie (`services/vigie`) runs on Luxembourg: VictoriaMetrics (3 months of retention, 30 s scrape interval) and Grafana at `https://vigie.anneraud.fr/`, reachable only through Traefik's internal allowlist. It scrapes the metrics of both Traefik instances (Luxembourg and Bruxelles), the host and container metrics of both hosts (`services/metriques`, below) and CrowdSec on Luxembourg (see [Protection](#protection)). Grafana alerts a Home Assistant webhook on 5xx errors, high latency and unreachable targets (group Traefik), on filesystems over 90 % full, ZFS pools not `ONLINE`, memory over 90 % for 15 minutes, CPU over 90 % for 30 minutes and missing host metrics (group Hosts), and on the protections (group Protection, below). Its dashboards are Traefik, Hosts, CrowdSec and Rate limits (`services/vigie/grafana/dashboards/`); Hosts shows CPU, memory, filesystems, the free space of ZFS pools and the CPU and memory of every app (Compose project, TrueNAS Apps without their `ix-` prefix) and container.
+Vigie (`services/vigie`) runs on Luxembourg: VictoriaMetrics (3 months of retention, 30 s scrape interval), VictoriaLogs (Traefik's access logs, [below](#traefik-access-logs)) and Grafana at `https://vigie.anneraud.fr/`, reachable only through Traefik's internal allowlist. It scrapes the metrics of both Traefik instances (Luxembourg and Bruxelles), the host and container metrics of both hosts (`services/metriques`, below) and CrowdSec on Luxembourg (see [Protection](#protection)). Grafana alerts a Home Assistant webhook on 5xx errors, high latency and unreachable targets (group Traefik), on filesystems over 90 % full, ZFS pools not `ONLINE`, memory over 90 % for 15 minutes, CPU over 90 % for 30 minutes and missing host metrics (group Hosts), and on the protections (group Protection, below). Its dashboards are Traefik, Traefik logs, Hosts, CrowdSec and Rate limits (`services/vigie/grafana/dashboards/`); Hosts shows CPU, memory, filesystems, the free space of ZFS pools and the CPU and memory of every app (Compose project, TrueNAS Apps without their `ix-` prefix) and container.
 
 The Protection alert group (`services/vigie/grafana/protection_alerting.yml.j2`) sits above the background of scanners on a public address, so only what is out of the ordinary reaches the phone:
 
@@ -210,12 +210,27 @@ Prerequisites:
 
 ### Grafana in MCPHub
 
-Vigie also runs Grafana's official MCP server (`grafana/mcp-grafana`, service `mcp`) at `https://vigie.anneraud.fr/mcp`, behind the internal allowlist: from MCPHub, an assistant can query VictoriaMetrics (PromQL), read the dashboards and the alert rules with their state. It has no write tools (`--disable-write`), reads Grafana with a Viewer service account, and refuses any request without its own bearer token. It only starts once both tokens are in `vault/vigie/vault.yml`, in order:
+Vigie also runs Grafana's official MCP server (`grafana/mcp-grafana`, service `mcp`) at `https://vigie.anneraud.fr/mcp`, behind the internal allowlist: from MCPHub, an assistant can query VictoriaMetrics (PromQL) and Traefik's access logs in VictoriaLogs (LogsQL), read the dashboards and the alert rules with their state. It has no write tools (`--disable-write`), reads Grafana with a Viewer service account, and refuses any request without its own bearer token. It only starts once both tokens are in `vault/vigie/vault.yml`, in order:
 
 1. In Grafana, as an admin: Administration → Users and access → Service accounts → Add service account `mcp`, role **Viewer** → Add service account token (no expiration, or note when it expires).
 2. `mise vault vault/vigie/vault.yml`: `vigie_mcp_grafana_token` (that token) and `vigie_mcp_server_token` (`openssl rand -hex 32`), then commit the vault and its pointer.
 3. `mise deploy services/vigie/deploy.yml`: the `mcp` container starts (Compose profile `mcp`).
 4. In MCPHub (Servers → Add): type Streamable HTTP, URL `https://vigie.anneraud.fr/mcp`, header `Authorization` = `Bearer <vigie_mcp_server_token>`. Every MCPHub user given this server sees all of Vigie's metrics: keep it in the owner's group.
+
+### Traefik access logs
+
+Vigie also keeps the access log of both Traefik instances for 14 days (at most 2 GiB, `vigie_logs_retention` and `vigie_logs_max_disk_space` in `inventory/group_vars/vigie.yml`) in VictoriaLogs, one record per request with Traefik's fields: `ClientHost`, `RequestHost`, `RequestMethod`, `RequestPath`, `DownstreamStatus`, `DownstreamContentSize`, `RouterName`, `ServiceName`, `request_User-Agent`, `Duration`… The Traefik logs dashboard filters them by host, client address, domain and status (text boxes, `*` for any) and shows requests by status over time, the top clients, errors by domain, the top paths with their answer size, and the matching requests. In Grafana, Explore → VictoriaLogs takes any LogsQL query, for instance:
+
+```
+ClientHost:="34.38.220.175" DownstreamStatus:=200 | fields _time, RequestHost, RequestPath, DownstreamContentSize, RouterName, request_User-Agent
+RequestHost:="simrepo.dera.page" DownstreamStatus:>=400 | stats by (DownstreamStatus) count()
+```
+
+Through MCPHub, the same queries go through the MCP server's `query_loki_logs` tool (its Loki tools also query VictoriaLogs data sources, in LogsQL), with the data source `victorialogs`.
+
+Vector (`services/metriques`, on both hosts) ships them: it reads the `traefik` container's output through a read-only Docker socket proxy, as CrowdSec does, and sends each line with its JSON fields (Traefik's own log lines keep their text). Nothing is published. On Luxembourg it reaches VictoriaLogs in the internal `metriques` Docker network; Bruxelles sends to `https://vigie.anneraud.fr/insert/jsonline` (POST only, VictoriaLogs' other endpoints are not routed), behind Luxembourg's internal allowlist, over Netbird. While VictoriaLogs is unreachable, Vector keeps up to 10,000 lines in memory and drops newer ones past that.
+
+Deploy Vigie first (it downloads Grafana's VictoriaLogs data source plugin, checked against its release checksum, and restarts Grafana when it changes), then `mise deploy services/metriques/deploy.yml`. On Bruxelles the deploy posts an empty batch to Vigie and stops with the reason when it is refused: 403 means Bruxelles' address is outside Luxembourg's internal allowlist, no answer that Bruxelles cannot reach Luxembourg over Netbird.
 
 ### Host metrics
 
@@ -223,6 +238,7 @@ Vigie also runs Grafana's official MCP server (`grafana/mcp-grafana`, service `m
 
 - node_exporter: CPU, memory, load, filesystems, ZFS' ARC and the state of each ZFS pool (from the kernel) of the host, read from its `/proc` and its root filesystem mounted read-only (`pid: host`, root without privileges except reading through closed folders).
 - cAdvisor: CPU and memory of every container, labelled with its Compose project (`app`) and name (`container`); Vigie keeps only these series.
+- Vector: ships Traefik's access log to Vigie's VictoriaLogs (see [Traefik access logs](#traefik-access-logs)).
 
 The free space of a ZFS pool comes from its datasets' mounts; its capacity does not (node_exporter cannot read it), so TrueNAS' own alerts cover pools filling up, along with failing disks and scrubs: keep an alert service set in TrueNAS → System → Alert Settings.
 

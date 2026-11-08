@@ -32,6 +32,40 @@ services:
       - protection-metrics
       - metrics
 
+  # Traefik's access logs of both hosts, shipped by Vector (services/metriques):
+  # on this host over the internal metriques network, from the others through
+  # Traefik (the /insert/jsonline route below, behind the internal allowlist).
+  # Grafana reads them through its VictoriaLogs data source; the port is never
+  # published
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.53.0
+    logging: *logging
+    restart: unless-stopped
+    user: "${USER_ID}:${GROUP_ID}"
+    mem_limit: 256m
+    command:
+      - "-storageDataPath=/victoria-logs-data"
+      - "-httpListenAddr=:9428"
+      - "-retentionPeriod=${LOGS_RETENTION}"
+      # Older days are dropped first once the logs reach this size
+      - "-retention.maxDiskSpaceUsageBytes=${LOGS_MAX_DISK_SPACE}"
+    volumes:
+      - ./victorialogs:/victoria-logs-data
+    networks:
+      - vigie
+      - proxy
+      - metrics
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
+      # Ingestion only: queries go through Grafana
+      - traefik.http.routers.vigie-logs.rule=Host(`vigie.anneraud.fr`) && Path(`/insert/jsonline`) && Method(`POST`)
+      - traefik.http.routers.vigie-logs.entrypoints=web-secure
+      - traefik.http.routers.vigie-logs.tls=true
+      - traefik.http.routers.vigie-logs.tls.certresolver=letsencrypt
+      - traefik.http.routers.vigie-logs.middlewares=internal-allowlist@file
+      - traefik.http.services.vigie-logs.loadbalancer.server.port=9428
+
   grafana:
     image: grafana/grafana:13.3.0
     logging: *logging
@@ -42,8 +76,9 @@ services:
     mem_limit: 768m
     environment:
       GF_SERVER_ROOT_URL: https://vigie.anneraud.fr/
-      # Only the built-in Prometheus data source is used: no plugin downloads
-      # (Grafana installs some, such as jaeger, on its first start)
+      # No plugin downloads (Grafana installs some, such as jaeger, on its
+      # first start): the VictoriaLogs data source plugin is downloaded and
+      # checked by deploy.yml, into grafana/plugins
       GF_PLUGINS_PREINSTALL_DISABLED: "true"
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
       GF_AUTH_ANONYMOUS_ENABLED: "false"
@@ -67,11 +102,13 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/etc/grafana/dashboards:ro
       - ./grafana/data:/var/lib/grafana
+      - ./grafana/plugins:/var/lib/grafana/plugins:ro
     networks:
       - vigie
       - proxy
     depends_on:
       - victoriametrics
+      - victorialogs
     labels:
       - traefik.enable=true
       - traefik.http.routers.vigie.rule=Host(`vigie.anneraud.fr`)
@@ -100,8 +137,10 @@ services:
       - "--address=0.0.0.0:8000"
       - "--disable-write"
       # Only what Vigie has: Prometheus-type data source, dashboards, alert
-      # rules (no OnCall, Loki, Tempo, incidents, image rendering...)
-      - "--enabled-tools=search,datasource,prometheus,alerting,dashboard,folder,navigation,annotations"
+      # rules, and the Loki tools, which also query VictoriaLogs data sources
+      # (LogsQL) for Traefik's access logs (no OnCall, Tempo, incidents, image
+      # rendering...)
+      - "--enabled-tools=search,datasource,prometheus,loki,alerting,dashboard,folder,navigation,annotations"
       # Its DNS-rebinding protection only accepts loopback Host headers by
       # default; Traefik forwards the public name
       - "--allowed-hosts=vigie.anneraud.fr"
@@ -135,7 +174,7 @@ networks:
   protection-metrics:
     name: protection-metrics
     external: true
-  # VictoriaMetrics and the exporters of services/metriques only
+  # VictoriaMetrics, VictoriaLogs and services/metriques (exporters, Vector) only
   metrics:
     name: "${METRICS_NETWORK}"
     external: true

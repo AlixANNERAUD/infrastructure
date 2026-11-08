@@ -1,0 +1,7 @@
+---
+# Host and container metrics, and Traefik's access log shipper (services/metriques)
+
+# Where Vector sends Traefik's access log: next to Vigie, VictoriaLogs in the
+# internal metriques network; from a host serving its exporters through
+# Traefik (metriques_host), Luxembourg's Traefik, behind its internal allowlist
+metriques_logs_url: "{{ 'https://vigie.anneraud.fr' if metriques_host is defined else 'http://victorialogs:9428' }}"
