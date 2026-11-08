@@ -1,0 +1,51 @@
+---
+# Ships Traefik's access log to Vigie's VictoriaLogs (services/vigie). On the
+# host running Vigie it reaches VictoriaLogs in the internal journaux network;
+# elsewhere (Bruxelles) through https://vigie.anneraud.fr/insert/jsonline,
+# behind Luxembourg's internal allowlist, over Netbird.
+- name: Deploy the log shipper
+  hosts: journaux
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+    - ../../vault/cloudflare/vault.yml
+  vars:
+    journaux_next_to_vigie: "{{ inventory_hostname in groups['vigie'] }}"
+  roles:
+    - role: compose_service
+      vars:
+        compose_service_name: journaux
+        compose_service_directory: "{{ journaux_directory }}"
+        # Vector's user in the container (nobody), who reads vector.yaml
+        compose_service_user: 65534
+        compose_service_files:
+          - source: vector.yaml
+            destination: vector.yaml
+        # Only Vigie's host needs the internal network; created by Vigie's deploy too
+        compose_service_external_networks: >-
+          {{ [{'name': 'journaux', 'internal': true}] if journaux_next_to_vigie else [] }}
+        compose_service_environment:
+          LOGS_HOST: "{{ inventory_hostname }}"
+          LOGS_URL: "{{ 'http://victorialogs:9428' if journaux_next_to_vigie else 'https://vigie.anneraud.fr' }}"
+          LOGS_NETWORK: "{{ 'journaux' if journaux_next_to_vigie else proxy_network }}"
+
+  tasks:
+    # An empty batch: VictoriaLogs answers 200 once the route, the allowlist
+    # and the way to Luxembourg all work
+    - name: Check that Vigie accepts this host's logs
+      ansible.builtin.uri:
+        url: https://vigie.anneraud.fr/insert/jsonline
+        method: POST
+        body: ""
+        status_code: 200
+      register: journaux_route
+      failed_when: false
+      when: not journaux_next_to_vigie
+
+    - name: Explain why Vigie refuses this host's logs
+      ansible.builtin.fail:
+        msg: >-
+          https://vigie.anneraud.fr/insert/jsonline answers {{ journaux_route.status }} ({{ journaux_route.msg | default('') }}):
+          403 means this host's address is outside Luxembourg's internal allowlist, -1 that it cannot reach
+          Luxembourg (Netbird route); 404 that Vigie is not deployed with VictoriaLogs yet.
+      when: not journaux_next_to_vigie and journaux_route.status != 200

@@ -20,6 +20,8 @@
   ansible.builtin.import_playbook: services/metriques/deploy.yml
 - name: Vigie
   ansible.builtin.import_playbook: services/vigie/deploy.yml
+- name: Log shipper
+  ansible.builtin.import_playbook: services/journaux/deploy.yml
 - name: HA-Linky
   ansible.builtin.import_playbook: services/linky/deploy.yml
 - name: Matrix (anneraud.fr)
