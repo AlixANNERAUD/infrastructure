@@ -277,3 +277,67 @@ groups:
                 - evaluator: {type: lt, params: [1]}
         annotations:
           summary: "{% raw %}{{ if .Labels.host }}Traefik on {{ .Labels.host }} cannot be scraped{{ else }}No Traefik metrics at all: VictoriaMetrics scrapes nothing{{ end }}{% endraw %}"
+{% if groups['sauvegarde'] | default([]) | length > 0 %}
+
+  # Backup to Google Drive (services/sauvegarde): its script writes its result
+  # for node_exporter's textfile collector after each run. Without any result
+  # yet (before the first run ends, the first upload takes days) nothing fires
+  - orgId: 1
+    name: Backups
+    folder: Vigie
+    interval: {{ vigie_alert_evaluation_interval }}
+    rules:
+      - uid: backups-failed
+        title: Backup failed
+        condition: threshold
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: query
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model:
+              refId: query
+              instant: true
+              range: false
+              expr: sauvegarde_last_run_success
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: query
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+        annotations:
+          summary: "{% raw %}The last backup of {{ .Labels.host }} to Google Drive failed: see logs/ in its Sauvegarde folder{% endraw %}"
+
+      # A day and a half: one missed night, whatever the reason (failed runs,
+      # no run at all, a run that never ends)
+      - uid: backups-stale
+        title: Backup stale
+        condition: threshold
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: query
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model:
+              refId: query
+              instant: true
+              range: false
+              expr: time() - sauvegarde_last_success_timestamp_seconds
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: query
+              conditions:
+                - evaluator: {type: gt, params: [129600]}
+        annotations:
+          summary: "{% raw %}The last successful backup of {{ .Labels.host }} to Google Drive is {{ humanizeDuration .Values.query.Value }} old{% endraw %}"
+{% endif %}

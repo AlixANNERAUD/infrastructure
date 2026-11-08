@@ -115,6 +115,14 @@ cat > "$directory/metriques/.env" <<EOF
 METRICS_ROUTED=false
 METRICS_HOST=
 METRICS_NETWORK=$metrics_network
+METRICS_TEXTFILE_DIRECTORY=$directory/metriques/textfile
+EOF
+# A failed backup whose last success is two days old, as services/sauvegarde's
+# script writes it for node_exporter's textfile collector
+mkdir -p "$directory/metriques/textfile"
+cat > "$directory/metriques/textfile/sauvegarde.prom" <<EOF
+sauvegarde_last_run_success 0
+sauvegarde_last_success_timestamp_seconds $(($(date +%s) - 172800))
 EOF
 cat > "$directory/compose.check.yml" <<'EOF'
 services:
@@ -491,6 +499,8 @@ expected_groups = {
         "CrowdSec alert spike", "Login rate limit spike",
     },
     "Hosts": {"Host disk space low", "ZFS pool unhealthy", "Host memory high", "Host CPU high", "Host metrics missing"},
+    # Bruxelles is in the sauvegarde group: its rules are rendered
+    "Backups": {"Backup failed", "Backup stale"},
 }
 for name, expected in expected_groups.items():
     found = set(group_rules(name))
@@ -533,6 +543,9 @@ def alerting(name, label, values, words):
 alerting("CrowdSec metrics missing", "host", ["bruxelles", "luxembourg"], ["cannot be scraped"])
 alerting("CrowdSec alert spike", "host", ["luxembourg"], ["luxembourg", "48 alerts"])
 alerting("Login rate limit spike", "router", ["vaultwarden-login@file"], ["vaultwarden-login@file", "bruxelles", "80 login"])
+# The backup result above, read by node_exporter on Luxembourg here
+alerting("Backup failed", "host", ["luxembourg"], ["luxembourg", "failed"])
+alerting("Backup stale", "host", ["luxembourg"], ["luxembourg", "2d"])
 # Both wait for CrowdSec to answer, which it does not here
 for name in ("CrowdSec bouncer silent", "CrowdSec reads no access log"):
     state = rules.get(name, {}).get("state")

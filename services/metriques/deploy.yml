@@ -17,6 +17,8 @@
       vars:
         compose_service_name: metriques
         compose_service_directory: "{{ metriques_directory }}"
+        compose_service_directories:
+          - textfile
         compose_service_templates:
           - source: vector.yaml.j2
             destination: vector.yaml
@@ -27,6 +29,7 @@
           METRICS_ROUTED: "{{ (metriques_host is defined) | string | lower }}"
           METRICS_HOST: "{{ metriques_host | default('') }}"
           METRICS_NETWORK: "{{ proxy_network if metriques_host is defined else 'metriques' }}"
+          METRICS_TEXTFILE_DIRECTORY: "{{ services_root }}/{{ metriques_directory }}/textfile"
         compose_service_dns_records: >-
           {{ [{'record': metriques_host, 'visibility': 'private'}] if metriques_host is defined else [] }}
 

@@ -38,6 +38,9 @@ services:
       - "--no-collector.netdev"
       - "--no-collector.netstat"
       - "--no-collector.sockstat"
+      # *.prom files other services write about themselves (the backup's
+      # result, services/sauvegarde), in this service's textfile folder
+      - "--collector.textfile.directory=/host${METRICS_TEXTFILE_DIRECTORY}"
     volumes:
       - /:/host:ro,rslave
     networks:

@@ -1,0 +1,72 @@
+name: sauvegarde
+
+# Container logs are unbounded by default and would fill the disk
+x-logging: &logging
+  driver: local
+  options:
+    max-size: "20m"
+    max-file: "3"
+
+# Encrypted backup to Google Drive. sauvegarde.sh (a TrueNAS cron job) mounts
+# a ZFS snapshot of the datasets to back up and runs restic on it; restic
+# stores its repository through rclone, which serves the Google Drive folder
+# as a restic REST server. Nothing is published: only restic, in this stack's
+# own network, reaches rclone.
+services:
+  rclone:
+    image: rclone/rclone:1.75.2
+    logging: *logging
+    restart: unless-stopped
+    mem_limit: 512m
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - serve
+      - restic
+      - "drive:${REMOTE_PATH}"
+      - --addr=:8080
+      # Google refuses uploads past 750 GB a day per account
+      - --bwlimit=${BANDWIDTH_LIMIT}
+      # Fails at once instead of retrying all day once the daily quota is used
+      - --drive-stop-on-upload-limit
+    environment:
+      # The remote, defined here rather than in a config file: rclone only
+      # sees the files it created itself (drive.file), with the account's
+      # own OAuth client (Google throttles rclone's shared one)
+      RCLONE_CONFIG_DRIVE_TYPE: drive
+      RCLONE_CONFIG_DRIVE_SCOPE: drive.file
+      RCLONE_CONFIG_DRIVE_CLIENT_ID: ${DRIVE_CLIENT_ID}
+      RCLONE_CONFIG_DRIVE_CLIENT_SECRET: ${DRIVE_CLIENT_SECRET}
+      RCLONE_CONFIG_DRIVE_TOKEN: ${DRIVE_TOKEN}
+      # Where rclone writes the access tokens it renews: lost on restart, the
+      # refresh token above gets new ones
+      RCLONE_CONFIG: /tmp/rclone.conf
+      RCLONE_CACHE_DIR: /tmp/cache
+    tmpfs:
+      - /tmp
+
+  # Run by sauvegarde.sh with the snapshot mounted on /source (docker compose
+  # run), never started on its own. Root reads every file, through the one
+  # capability that bypasses read permissions
+  restic:
+    image: restic/restic:0.19.1
+    logging: *logging
+    profiles: [run]
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [DAC_READ_SEARCH]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      RESTIC_REPOSITORY: rest:http://rclone:8080/
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD}
+      RESTIC_CACHE_DIR: /cache
+    volumes:
+      - ./cache:/cache
+    tmpfs:
+      - /tmp
+    depends_on:
+      - rclone
