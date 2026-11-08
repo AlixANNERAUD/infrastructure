@@ -61,6 +61,9 @@
           - source: grafana/dashboards/hosts.json
             destination: grafana/dashboards/hosts.json
             restart: false
+          - source: grafana/dashboards/traefik_logs.json
+            destination: grafana/dashboards/traefik_logs.json
+            restart: false
         compose_service_environment:
           GRAFANA_ADMIN_PASSWORD: "{{ vigie_grafana_admin_password }}"
           PROXY_NETWORK: "{{ proxy_network }}"

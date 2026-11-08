@@ -170,6 +170,7 @@ uv run python - "$logs" <<'EOF'
 import json
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -212,6 +213,29 @@ if "level=info" not in plain[0].get("_msg", ""):
     failures.append(f"Traefik's own line lost its text: {plain[0]}")
 if records('ClientHost:="198.51.100.9" DownstreamStatus:=200'):
     failures.append("the 404 matches a filter on status 200")
+# Every query of the Traefik logs dashboard, with its text boxes at * and
+# with the probe's values, answers on the endpoint its query type uses
+endpoints = {"instant": "query", "stats": "stats_query", "statsRange": "stats_query_range"}
+dashboard = json.loads(open("services/vigie/grafana/dashboards/traefik_logs.json").read())
+now = int(time.time())
+for values in ({}, {"client": "203.0.113.7", "domain": "simrepo.check.test", "status": "200", "host": "luxembourg"}):
+    for panel in dashboard["panels"]:
+        for target in panel["targets"]:
+            query = target["expr"]
+            for name in ("host", "client", "domain", "status"):
+                query = query.replace("$" + name, values.get(name, "*"))
+            arguments = {"query": query, "limit": "5", "time": str(now), "start": str(now - 3600), "end": str(now), "step": "60s"}
+            url = f"{logs}/select/logsql/{endpoints[target['queryType']]}"
+            try:
+                with urllib.request.urlopen(url, urllib.parse.urlencode(arguments).encode(), timeout=10) as response:
+                    body = response.read().decode()
+            except urllib.error.HTTPError as error:
+                failures.append(f"panel {panel['title']} ({values or 'any'}): {error.code} {error.read().decode()[:200]}")
+                continue
+            if values and "/.git/index" not in body and target["queryType"] == "instant":
+                failures.append(f"panel {panel['title']} does not find the probe: {body[:200]}")
+            if values and target["queryType"] != "instant" and '"result":[]' in body.replace(" ", ""):
+                failures.append(f"panel {panel['title']} has no data for the probe: {body[:200]}")
 print("\n".join(failures) or "Vector ships Traefik's access log to VictoriaLogs with its fields")
 sys.exit(1 if failures else 0)
 EOF
@@ -444,6 +468,8 @@ for uid in ("traefik", "crowdsec", "rate-limits"):
     check("host" in variables, f"dashboard {uid} variables are {variables}")
 hosts_dashboard = load("dashboard-hosts.json").get("dashboard", {})
 check(hosts_dashboard.get("uid") == "hosts", "dashboard hosts is missing")
+logs_dashboard = load("dashboard-traefik-logs.json").get("dashboard", {})
+check(logs_dashboard.get("uid") == "traefik-logs", "dashboard traefik-logs is missing")
 
 groups = load("rules.json").get("data", {}).get("groups", [])
 
@@ -568,7 +594,7 @@ for _ in $(seq 48); do
     curl -sS "$grafana/api/datasources/uid/victoriametrics/health" > "$directory/datasource.json" || true
     curl -sS "$grafana/api/datasources/uid/victorialogs/health" > "$directory/datasource-logs.json" || true
     curl -sS "$grafana/api/plugins/victoriametrics-logs-datasource/settings" > "$directory/plugin-logs.json" || true
-    for uid in traefik crowdsec rate-limits hosts; do
+    for uid in traefik crowdsec rate-limits hosts traefik-logs; do
         curl -sS "$grafana/api/dashboards/uid/$uid" > "$directory/dashboard-$uid.json" || true
     done
     curl -fsS "$grafana/api/prometheus/grafana/api/v1/rules" > "$directory/rules.json" || true
