@@ -214,11 +214,12 @@ if "level=info" not in plain[0].get("_msg", ""):
 if records('ClientHost:="198.51.100.9" DownstreamStatus:=200'):
     failures.append("the 404 matches a filter on status 200")
 # Every query of the Traefik logs dashboard, with its text boxes at * and
-# with the probe's values, answers on the endpoint its query type uses
+# with the 404's values (every panel, errors included, then has data),
+# answers on the endpoint its query type uses
 endpoints = {"instant": "query", "stats": "stats_query", "statsRange": "stats_query_range"}
 dashboard = json.loads(open("services/vigie/grafana/dashboards/traefik_logs.json").read())
 now = int(time.time())
-for values in ({}, {"client": "203.0.113.7", "domain": "simrepo.check.test", "status": "200", "host": "luxembourg"}):
+for values in ({}, {"client": "198.51.100.9", "domain": "vigie.check.test", "status": "404", "host": "luxembourg"}):
     for panel in dashboard["panels"]:
         for target in panel["targets"]:
             query = target["expr"]
@@ -232,10 +233,10 @@ for values in ({}, {"client": "203.0.113.7", "domain": "simrepo.check.test", "st
             except urllib.error.HTTPError as error:
                 failures.append(f"panel {panel['title']} ({values or 'any'}): {error.code} {error.read().decode()[:200]}")
                 continue
-            if values and "/.git/index" not in body and target["queryType"] == "instant":
-                failures.append(f"panel {panel['title']} does not find the probe: {body[:200]}")
+            if values and target["queryType"] == "instant" and ("/missing" not in body or "/.git/index" in body):
+                failures.append(f"panel {panel['title']} does not find only the 404: {body[:200]}")
             if values and target["queryType"] != "instant" and '"result":[]' in body.replace(" ", ""):
-                failures.append(f"panel {panel['title']} has no data for the probe: {body[:200]}")
+                failures.append(f"panel {panel['title']} has no data for the 404: {body[:200]}")
 print("\n".join(failures) or "Vector ships Traefik's access log to VictoriaLogs with its fields")
 sys.exit(1 if failures else 0)
 EOF
