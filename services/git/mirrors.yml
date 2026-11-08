@@ -1,0 +1,79 @@
+---
+# Mirrors every GitHub repository (forks excepted) of the owners listed in
+# mirrors.auto.tfvars into Gitea (git.anneraud.fr), new ones included, with the
+# OpenTofu configuration next to this playbook. Existing mirrors are adopted,
+# never recreated; a repository gone from GitHub keeps its mirror, archived.
+# Runs from the owner's computer with mise (mise deploy services/git/mirrors.yml):
+# Semaphore has no OpenTofu, and Gitea is only reachable over the VPN.
+- name: Mirror the GitHub repositories into Gitea
+  hosts: localhost
+  gather_facts: false
+  vars:
+    git_vault_path: "{{ playbook_dir }}/../../vault/git/vault.yml"
+    git_state_path: "{{ playbook_dir }}/../../vault/git/opentofu.tfstate"
+    git_gitea_url: https://git.anneraud.fr
+  tasks:
+    # Optional, so a first run explains what to create instead of failing on a
+    # missing file (CI lints against an empty vault/git/vault.yml)
+    - name: Look for the vault
+      ansible.builtin.stat:
+        path: "{{ git_vault_path }}"
+      register: git_vault
+
+    - name: Load the vault
+      ansible.builtin.include_vars:
+        file: "{{ git_vault_path }}"
+      when: git_vault.stat.exists
+
+    - name: Explain how to create the credentials
+      when: >-
+        git_gitea_token | default('') | length == 0
+        or git_github_tokens | default({}) | length == 0
+        or git_state_passphrase | default('') | length == 0
+      block:
+        - name: Say what to add to the vault
+          ansible.builtin.debug:
+            msg:
+              - "Gitea mirrors are not managed: the Gitea token, the GitHub tokens or the state passphrase is missing. Once:"
+              - "1. Gitea ({{ git_gitea_url }}/user/settings/applications), as alix_anneraud: Generate a new token named OpenTofu,
+                with repository Read and Write, organization Read and Write and user Read"
+              - "2. GitHub (https://github.com/settings/personal-access-tokens/new): one fine-grained token per owner in
+                mirrors.auto.tfvars, each with that owner as Resource owner, All repositories, and Repository permissions
+                Contents Read-only (Metadata Read-only comes with it). The xila-project organization may have to approve its token.
+                Gitea keeps the token in each private mirror: when it expires, those mirrors stop pulling until it is updated
+                in their Gitea settings"
+              - "3. mkdir -p vault/git, then mise vault:create vault/git/vault.yml (mise vault vault/git/vault.yml when it exists), with:
+                git_gitea_token (the Gitea token), git_github_tokens (a map: GitHub owner → its token, e.g.
+                {AlixANNERAUD: github_pat_…, xila-project: github_pat_…}) and git_state_passphrase
+                (a new random passphrase of at least 16 characters: openssl rand -base64 32)"
+              - "4. Commit vault/git/vault.yml in the vault repository and push it, then point the submodule at that commit"
+
+        - name: Stop here
+          ansible.builtin.meta: end_play
+
+    # The laptop reaches Gitea through NetBird only (internal allowlist)
+    - name: Check that Gitea answers
+      ansible.builtin.uri:
+        url: "{{ git_gitea_url }}/api/v1/version"
+        timeout: 10
+      register: git_gitea_version
+      failed_when: false
+
+    - name: Fail when Gitea does not answer
+      ansible.builtin.fail:
+        msg: "{{ git_gitea_url }} does not answer ({{ git_gitea_version.msg | default('') }}): is the VPN connected?"
+      when: git_gitea_version.status | default(0) != 200
+
+    - name: Apply the OpenTofu configuration
+      ansible.builtin.include_role:
+        name: opentofu
+      vars:
+        opentofu_project_path: "{{ playbook_dir }}"
+        opentofu_state_path: "{{ git_state_path }}"
+        opentofu_variables:
+          gitea_url: "{{ git_gitea_url }}"
+        # OpenTofu reads the map from the environment as JSON
+        opentofu_secret_variables:
+          gitea_token: "{{ git_gitea_token }}"
+          github_tokens: "{{ git_github_tokens | to_json }}"
+          state_passphrase: "{{ git_state_passphrase }}"
