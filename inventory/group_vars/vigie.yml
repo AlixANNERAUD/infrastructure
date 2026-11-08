@@ -4,7 +4,7 @@
 # How often Grafana evaluates the alert rules
 vigie_alert_evaluation_interval: 1m
 
-# Traefik's access logs in VictoriaLogs (services/journaux): kept this long,
+# Traefik's access logs in VictoriaLogs (shipped by services/metriques): kept this long,
 # older days dropped first past this size
 vigie_logs_retention: 14d
 vigie_logs_max_disk_space: 2GiB

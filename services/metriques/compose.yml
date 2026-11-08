@@ -10,7 +10,9 @@ x-logging: &logging
 # Exporters scraped by Vigie (services/vigie), never published: on the host
 # running Vigie they sit in the internal metriques network with
 # VictoriaMetrics; elsewhere (Bruxelles) in the proxy network, routed by
-# Traefik behind the internal allowlist (METRICS_ROUTED)
+# Traefik behind the internal allowlist (METRICS_ROUTED). Vector ships
+# Traefik's access log the other way, to Vigie's VictoriaLogs: through the
+# same metriques network next to Vigie, through Luxembourg's Traefik elsewhere
 services:
   # Host CPU, memory, load, filesystems, ZFS ARC and pool states, read from
   # the host's /proc and mounts (pid host, root filesystem read-only)
@@ -87,7 +89,49 @@ services:
       - traefik.http.middlewares.metriques-containers-path.replacepath.path=/metrics
       - traefik.http.services.metriques-containers.loadbalancer.server.port=8080
 
+  # Traefik's access log (its container output, also read by CrowdSec) to
+  # VictoriaLogs, as vector.yaml (rendered by deploy.yml) sends it. Root
+  # without any capability, as it reads the root-owned vector.yaml
+  vector:
+    image: timberio/vector:0.60.0-distroless-static
+    logging: *logging
+    restart: unless-stopped
+    mem_limit: 128m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./vector.yaml:/etc/vector/vector.yaml:ro
+    # Its data folder; nothing in it needs to outlive the container
+    tmpfs:
+      - /var/lib/vector
+    networks:
+      - docker
+      - metrics
+    depends_on:
+      - socket-proxy
+
+  # Read-only view of the Docker API for Vector's docker_logs source: listing
+  # containers, following their events and reading their logs, nothing else
+  # (no POST, no exec)
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    logging: *logging
+    restart: unless-stopped
+    mem_limit: 64m
+    environment:
+      CONTAINERS: 1
+      EVENTS: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker
+
 networks:
   metrics:
     name: "${METRICS_NETWORK}"
     external: true
+  # Vector to the socket proxy: no route out of the Docker network
+  docker:
+    internal: true

@@ -65,7 +65,6 @@
           GRAFANA_ADMIN_PASSWORD: "{{ vigie_grafana_admin_password }}"
           PROXY_NETWORK: "{{ proxy_network }}"
           METRICS_NETWORK: metriques
-          LOGS_NETWORK: journaux
           LOGS_RETENTION: "{{ vigie_logs_retention }}"
           LOGS_MAX_DISK_SPACE: "{{ vigie_logs_max_disk_space }}"
           GRAFANA_OAUTH_ENABLED: "{{ (zitadel_login_client_id | length > 0) | string | lower }}"
@@ -82,15 +81,12 @@
             {{ ('https://authentification.anneraud.fr/oidc/v1/end_session?client_id=' ~ zitadel_login_client_id
                 ~ '&post_logout_redirect_uri=https%3A%2F%2Fvigie.anneraud.fr%2Flogin')
                if zitadel_login_client_id | length > 0 else '' }}
-        # Shared with CrowdSec (services/protection), the exporters of
-        # services/metriques and the log shipper of services/journaux, whose
-        # playbooks create them too
+        # Shared with CrowdSec (services/protection) and with the exporters and
+        # log shipper of services/metriques, whose playbooks create them too
         compose_service_external_networks:
           - name: protection-metrics
             internal: true
           - name: metriques
-            internal: true
-          - name: journaux
             internal: true
         compose_service_dns_records:
           - record: vigie.anneraud.fr

@@ -1,7 +1,0 @@
----
-# Traefik's access log shipper (services/journaux)
-
-# Next to Vigie, VictoriaLogs is reached in the internal journaux network;
-# elsewhere through Luxembourg's Traefik, behind its internal allowlist
-journaux_next_to_vigie: "{{ inventory_hostname in groups['vigie'] }}"
-journaux_url: "{{ 'http://victorialogs:9428' if journaux_next_to_vigie else 'https://vigie.anneraud.fr' }}"

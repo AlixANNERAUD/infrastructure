@@ -5,7 +5,7 @@
 # metrics and check what Grafana provisioned: datasource, dashboards and alert
 # rules, that the rules evaluate as expected and that the exporters' metrics
 # answer every query of the Hosts dashboard. Traefik's access log (a stand-in
-# container named traefik) goes through services/journaux (Vector, laid out as
+# container named traefik) goes through Vector (services/metriques, laid out as
 # on Luxembourg) into VictoriaLogs, and must read back with its fields from
 # VictoriaLogs, through Grafana's plugin and through the MCP server.
 # With CHECK_ZFS_POOL set to the name of a healthy ZFS pool on this machine,
@@ -16,7 +16,6 @@ directory=$(mktemp -d)
 project=check-vigie-$$
 network=$project-proxy
 metrics_network=$project-metrics
-logs_network=$project-logs
 password=check-vigie-password
 zfs_pool=${CHECK_ZFS_POOL:-}
 compose() {
@@ -26,21 +25,16 @@ compose() {
 exporters() {
     docker compose -p "$project-metriques" --project-directory "$directory/metriques" "$@"
 }
-shipper() {
-    docker compose -p "$project-journaux" --project-directory "$directory/journaux" "$@"
-}
 cleanup() {
     status=$?
     if [ "$status" -ne 0 ] && [ -f "$directory/compose.yml" ]; then
         COMPOSE_PROFILES=mcp compose logs --no-color --tail 50 || true
         exporters logs --no-color --tail 30 || true
-        shipper logs --no-color --tail 30 || true
     fi
     COMPOSE_PROFILES=mcp compose down --volumes --timeout 5 > /dev/null 2>&1 || true
     exporters down --volumes --timeout 5 > /dev/null 2>&1 || true
-    shipper down --volumes --timeout 5 > /dev/null 2>&1 || true
     docker rm -f traefik > /dev/null 2>&1 || true
-    docker network rm "$network" "$metrics_network" "$logs_network" protection-metrics > /dev/null 2>&1 || true
+    docker network rm "$network" "$metrics_network" protection-metrics > /dev/null 2>&1 || true
     rm -rf "$directory"
     exit "$status"
 }
@@ -96,14 +90,11 @@ curl -fsSL -o "$directory/plugin.tar.gz" \
 echo "$checksum  $directory/plugin.tar.gz" | sha256sum --check --quiet
 tar -xzf "$directory/plugin.tar.gz" -C "$directory/grafana/plugins"
 rm "$directory/plugin.tar.gz"
-# The exporters, with the files services/metriques/deploy.yml copies
+# The exporters and Vector, with the files services/metriques/deploy.yml writes
 mkdir -p "$directory/metriques"
 cp services/metriques/compose.yml "$directory/metriques/"
-# The log shipper, with the files services/journaux/deploy.yml copies
-mkdir -p "$directory/journaux"
-cp services/journaux/compose.yml "$directory/journaux/"
 if ! output=$(uv run ansible luxembourg -c local -e "ansible_python_interpreter=$(uv run which python)" \
-    -m ansible.builtin.template -a "src=services/journaux/vector.yaml.j2 dest=$directory/journaux/vector.yaml"); then
+    -m ansible.builtin.template -a "src=services/metriques/vector.yaml.j2 dest=$directory/metriques/vector.yaml"); then
     echo "$output"
     exit 1
 fi
@@ -115,16 +106,9 @@ USER_ID=$(id -u)
 GROUP_ID=$(id -g)
 PROXY_NETWORK=$network
 METRICS_NETWORK=$metrics_network
-LOGS_NETWORK=$logs_network
 LOGS_RETENTION=1d
 LOGS_MAX_DISK_SPACE=1GiB
 GRAFANA_ADMIN_PASSWORD=$password
-EOF
-# As on Luxembourg: next to VictoriaLogs, in the logs network
-cat > "$directory/journaux/.env" <<EOF
-USER_ID=65534
-GROUP_ID=65534
-LOGS_NETWORK=$logs_network
 EOF
 # As on Luxembourg: in the metrics network, not routed by Traefik
 cat > "$directory/metriques/.env" <<EOF
@@ -147,7 +131,6 @@ docker network create "$network" > /dev/null
 # Shared with CrowdSec, which does not run here: its target is down
 docker network create --internal protection-metrics > /dev/null
 docker network create --internal "$metrics_network" > /dev/null
-docker network create --internal "$logs_network" > /dev/null
 exporters up -d --wait --quiet-pull
 
 # VictoriaMetrics must accept the scrape configuration as it is
@@ -175,8 +158,8 @@ fi
 
 # Traefik's access log, as a stand-in container named traefik writes it: a
 # probe answered with the home page, a 404, and one of Traefik's own lines.
-# Vector reads what containers write once it runs, so the lines repeat
-shipper up -d --wait --quiet-pull
+# Vector (started with the exporters) reads what containers write once it
+# runs, so the lines repeat
 docker run -d --name traefik busybox:1.37.0 sh -c 'while true; do
     echo "{\"ClientHost\":\"203.0.113.7\",\"RequestHost\":\"simrepo.check.test\",\"RequestMethod\":\"GET\",\"RequestPath\":\"/.git/index\",\"DownstreamStatus\":200,\"DownstreamContentSize\":3973,\"RouterName\":\"star-repo@docker\",\"ServiceName\":\"star-repo@docker\",\"request_User-Agent\":\"check-vigie\"}"
     echo "{\"ClientHost\":\"198.51.100.9\",\"RequestHost\":\"vigie.check.test\",\"RequestMethod\":\"GET\",\"RequestPath\":\"/missing\",\"DownstreamStatus\":404,\"DownstreamContentSize\":19,\"RouterName\":\"vigie@docker\",\"ServiceName\":\"vigie@docker\",\"request_User-Agent\":\"check-vigie\"}"

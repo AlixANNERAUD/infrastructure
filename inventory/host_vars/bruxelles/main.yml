@@ -16,7 +16,3 @@ proxy_network: proxy
 # *.bruxelles.anneraud.fr wildcard certificate covers the name
 metriques_directory: Metriques
 metriques_host: metriques.bruxelles.anneraud.fr
-
-# Traefik's access log shipper (services/journaux), sending to Vigie on
-# Luxembourg over Netbird through Traefik, behind the internal allowlist
-journaux_directory: Journaux

@@ -32,8 +32,8 @@ services:
       - protection-metrics
       - metrics
 
-  # Traefik's access logs of both hosts, shipped by services/journaux (Vector):
-  # on this host over the internal journaux network, from the others through
+  # Traefik's access logs of both hosts, shipped by Vector (services/metriques):
+  # on this host over the internal metriques network, from the others through
   # Traefik (the /insert/jsonline route below, behind the internal allowlist).
   # Grafana reads them through its VictoriaLogs data source; the port is never
   # published
@@ -54,7 +54,7 @@ services:
     networks:
       - vigie
       - proxy
-      - logs
+      - metrics
     labels:
       - traefik.enable=true
       - traefik.docker.network=${PROXY_NETWORK}
@@ -174,11 +174,7 @@ networks:
   protection-metrics:
     name: protection-metrics
     external: true
-  # VictoriaMetrics and the exporters of services/metriques only
+  # VictoriaMetrics, VictoriaLogs and services/metriques (exporters, Vector) only
   metrics:
     name: "${METRICS_NETWORK}"
-    external: true
-  # VictoriaLogs and this host's log shipper (services/journaux) only
-  logs:
-    name: "${LOGS_NETWORK}"
     external: true

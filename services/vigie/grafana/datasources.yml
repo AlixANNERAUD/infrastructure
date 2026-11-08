@@ -11,7 +11,7 @@ datasources:
     jsonData:
       timeInterval: 30s
 
-  # Traefik's access logs (services/journaux), queried in LogsQL; the plugin
+  # Traefik's access logs (Vector, services/metriques), queried in LogsQL; the plugin
   # is installed by deploy.yml
   - name: VictoriaLogs
     uid: victorialogs
