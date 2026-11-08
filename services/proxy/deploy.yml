@@ -27,6 +27,36 @@
       no_log: true
       when: protection_enabled | bool
 
+    # Traefik's published ports must reach it through its dual-stack ingress
+    # network (compose.yml): that takes gw_priority (Docker 28) and ip6tables
+    # (on by default since Docker 27), or IPv6 clients are relayed by Docker's
+    # userland proxy, from an address of the internal allowlist (fd00::/8)
+    - name: Read the Docker version
+      ansible.builtin.command:
+        argv: [docker, version, --format, "{{ '{{.Server.Version}}' }}"]
+      register: traefik_docker_version
+      changed_when: false
+
+    - name: Read the Docker daemon settings
+      ansible.builtin.slurp:
+        src: /etc/docker/daemon.json
+      register: traefik_docker_daemon
+      failed_when: false
+
+    - name: Check that Docker forwards IPv6 clients with their address
+      ansible.builtin.assert:
+        that:
+          - traefik_docker_version.stdout is version('28.0', '>=')
+          - traefik_docker_settings.ip6tables | default(true) | bool
+        fail_msg: >-
+          Docker {{ traefik_docker_version.stdout }} with ip6tables
+          {{ 'on' if traefik_docker_settings.ip6tables | default(true) | bool else 'off' }}:
+          Traefik needs Docker 28 or later with ip6tables on (/etc/docker/daemon.json)
+        quiet: true
+      vars:
+        traefik_docker_settings: >-
+          {{ (traefik_docker_daemon.content | b64decode | from_json) if traefik_docker_daemon.content is defined else {} }}
+
     - name: Look up the proxy network
       community.docker.docker_network_info:
         name: "{{ proxy_network }}"
@@ -71,6 +101,27 @@
             visibility: private
 
   tasks:
+    - name: Read Traefik's networks
+      ansible.builtin.command:
+        argv: [docker, inspect, --format, "{{ '{{json .NetworkSettings.Networks}}' }}", traefik]
+      register: traefik_networks
+      changed_when: false
+
+    # Published ports follow the gateway network: it must be the ingress one,
+    # with an IPv6 address
+    - name: Check that Traefik's ports go through its dual-stack network
+      ansible.builtin.assert:
+        that:
+          - traefik_ingress | length == 1
+          - traefik_ingress[0].value.GlobalIPv6Address | default('') | length > 0
+          - traefik_ingress[0].value.GwPriority | default(0) | int
+            > traefik_networks.stdout | from_json | dict2items | rejectattr('key', 'match', '.*_ingress$')
+              | map(attribute='value.GwPriority', default=0) | map('int') | max
+        fail_msg: "Traefik's gateway is not its dual-stack ingress network: {{ traefik_networks.stdout }}"
+        quiet: true
+      vars:
+        traefik_ingress: "{{ traefik_networks.stdout | from_json | dict2items | selectattr('key', 'match', '.*_ingress$') | list }}"
+
     # On a host that left the protection group, once Traefik no longer uses them
     - name: Remove the CrowdSec middleware and bouncer key
       ansible.builtin.file:

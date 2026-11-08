@@ -7,6 +7,8 @@
 # - the LAN and the VPN get through even when banned (the bouncer trusts them),
 # - an unban lets the address back in,
 # - CrowdSec reads Traefik's access log and bans a scanning address by itself,
+# - an IPv6 client reaches Traefik's published port with its own address, not
+#   one of Docker's (its dual-stack ingress network),
 # - from Vigie's protection-metrics network, CrowdSec serves its metrics (with
 #   the series Vigie's dashboards and alerts read), and its local API asks for
 #   credentials.
@@ -18,6 +20,12 @@ directory=$(mktemp -d)
 proxy=$directory/proxy
 protection=$directory/protection
 proxy_network=check-protection-proxy-$$
+# An IPv6 client on its own Docker network, coming in through the published port
+client_network=check-protection-client-$$
+client_subnet=fd7e:57::/64
+client_gateway=fd7e:57::1
+client_address=fd7e:57::10
+curl_image=curlimages/curl:8.22.0
 key=checkprotectionbouncerkey0123456789
 # Addresses the requests to Traefik come from, through Docker's port forwarding
 docker_networks='["172.16.0.0/12", "10.0.0.0/8", "127.0.0.0/8"]'
@@ -45,7 +53,7 @@ cleanup() {
     fi
     compose_proxy down --volumes --timeout 5 > /dev/null 2>&1 || true
     compose_protection down --volumes --timeout 5 > /dev/null 2>&1 || true
-    docker network rm "$proxy_network" protection protection-metrics > /dev/null 2>&1 || true
+    docker network rm "$proxy_network" "$client_network" protection protection-metrics > /dev/null 2>&1 || true
     # CrowdSec's files belong to root
     sudo -n rm -rf "$directory" 2> /dev/null || rm -rf "$directory"
     exit "$status"
@@ -190,6 +198,20 @@ if ! wait_for 90 answers "$allowed" 200; then
 fi
 echo "ok    Traefik answers through the CrowdSec bouncer"
 
+# Through Docker's IPv6 port forwarding, as a client of the host's public IPv6
+# address: Traefik must log the client's address. Without IPv6 on its gateway
+# network, Docker's userland proxy relays the connection from a Docker address
+docker network create --ipv6 --subnet "$client_subnet" "$client_network" > /dev/null
+docker pull --quiet "$curl_image" > /dev/null
+docker run --rm --network "$client_network" --ip6 "$client_address" "$curl_image" \
+    -ks -o /dev/null --max-time 10 --resolve "check.test:443:[$client_gateway]" https://check.test/check-ipv6 || true
+seen=$(docker logs traefik 2>&1 | jq -Rr 'fromjson? | select(.RequestPath? == "/check-ipv6") | .ClientHost' | tail -1)
+if [ "$seen" != "$client_address" ]; then
+    echo "Traefik sees the IPv6 client $client_address as ${seen:-nothing}"
+    exit 1
+fi
+echo "ok    an IPv6 client reaches Traefik with its own address"
+
 # The allowlist, as deploy.yml applies it (twice: the second run must change nothing)
 # shellcheck disable=SC2086
 docker exec -i crowdsec sh -s -- internal "Networks of the internal-allowlist middleware" $internal_networks \
@@ -249,8 +271,6 @@ fi
 echo "ok    CrowdSec read Traefik's access log and banned a scanning address"
 
 # What VictoriaMetrics sees from the protection-metrics network
-curl_image=curlimages/curl:8.22.0
-docker pull --quiet "$curl_image" > /dev/null
 from_vigie() {
     docker run --rm --network protection-metrics "$curl_image" -s --max-time 5 "$@"
 }

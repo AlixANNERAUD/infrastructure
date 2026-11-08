@@ -156,6 +156,12 @@ The LAN and the VPN (the networks of `internal-allowlist` in `services/proxy/pol
 
 Public login pages are also rate limited per client address, on both hosts (POST requests to the login paths only, so app sync is not limited; Traefik answers 429 past the limit): `rate_limit` on a route in `inventory/host_vars/bruxelles/traefik.yml` for the TrueNAS Apps, and labels for the stacks of this repository: Zitadel on Bruxelles (with the limits of that same file, written to its `.env`), Tolgee and Netbird's login on Luxembourg.
 
+Both depend on Traefik seeing each client's own address, IPv6 included. Its published ports go through its own dual-stack network (`ingress` in `services/proxy/compose.yml`, its gateway network through `gw_priority`), so Docker forwards IPv6 connections natively. On an IPv4-only network Docker's userland proxy relays them instead, and every IPv6 client shows up as that network's gateway: one rate limit bucket for all of them, and a CrowdSec ban on that address would lock them all out. This needs Docker 28 or later with `ip6tables` on (the default); `services/proxy/deploy.yml` checks both before deploying and checks Traefik's gateway after. To see the addresses Traefik logs on a host:
+
+```bash
+sudo docker logs traefik --since 30m 2>&1 | grep -o '"ClientHost":"[^"]*"' | sort | uniq -c | sort -rn | head
+```
+
 Prerequisites, once:
 
 - `vault/protection/vault.yml` holds `protection_bouncer_key`, the key Traefik's bouncer authenticates with (`openssl rand -hex 32`), and optionally `protection_enrollment_key` to enroll the engine in the [CrowdSec console](https://app.crowdsec.net) (then accept it there and run `docker restart crowdsec`). `services/proxy/deploy.yml` loads this vault on every host, so it must exist.

@@ -16,8 +16,15 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - proxy
-      - protection   # reaches CrowdSec's local API (services/protection)
+      # Docker publishes the ports on the gateway network, the one with the
+      # highest gw_priority. It is dual-stack, so IPv6 clients are forwarded
+      # with their own address: on an IPv4-only network Docker's userland
+      # proxy relays them and Traefik sees the network's gateway instead
+      # (one address for every IPv6 client: shared rate limits, CrowdSec bans)
+      ingress:
+        gw_priority: 1
+      proxy: {}
+      protection: {}   # reaches CrowdSec's local API (services/protection)
     environment:
       - TZ=Europe/Paris
       - CLOUDFLARE_EMAIL=${CLOUDFLARE_EMAIL}
@@ -113,6 +120,9 @@ services:
       - "traefik.http.routers.metrics-internal.service=prometheus@internal"
 
 networks:
+  # Traefik only, created by Compose: published ports and outgoing traffic
+  ingress:
+    enable_ipv6: true
   proxy:
     name: "${PROXY_NETWORK}"
     external: true
