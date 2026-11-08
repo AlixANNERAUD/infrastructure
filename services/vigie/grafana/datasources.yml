@@ -10,3 +10,12 @@ datasources:
     editable: false
     jsonData:
       timeInterval: 30s
+
+  # Traefik's access logs (services/journaux), queried in LogsQL; the plugin
+  # is installed by deploy.yml
+  - name: VictoriaLogs
+    uid: victorialogs
+    type: victoriametrics-logs-datasource
+    access: proxy
+    url: http://victorialogs:9428
+    editable: false

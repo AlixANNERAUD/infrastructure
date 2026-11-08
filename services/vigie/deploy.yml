@@ -6,6 +6,13 @@
     - ../../vault/ansible/vault.yml
     - ../../vault/vigie/vault.yml
     - ../../vault/cloudflare/vault.yml
+  vars:
+    # Grafana's VictoriaLogs data source plugin, signed by Grafana Labs; the
+    # checksum is the one GitHub lists for the release asset
+    # https://github.com/VictoriaMetrics/victorialogs-datasource/releases
+    vigie_logs_plugin: victoriametrics-logs-datasource
+    vigie_logs_plugin_version: 0.33.1
+    vigie_logs_plugin_checksum: sha256:849edf4d86a6555bbf3fdbe1c53ed719a6c51c3d69965dcc0384e2c129ad991a
   pre_tasks:
     # Without the Zitadel credentials the client id is empty: OAuth stays off
     # and Grafana keeps only its break-glass admin login
@@ -26,8 +33,10 @@
         compose_service_user: 472
         compose_service_directories:
           - victoriametrics
+          - victorialogs
           - grafana
           - grafana/data
+          - grafana/plugins
         compose_service_templates:
           - source: scrape.yml.j2
             destination: scrape.yml
@@ -56,6 +65,9 @@
           GRAFANA_ADMIN_PASSWORD: "{{ vigie_grafana_admin_password }}"
           PROXY_NETWORK: "{{ proxy_network }}"
           METRICS_NETWORK: metriques
+          LOGS_NETWORK: journaux
+          LOGS_RETENTION: "{{ vigie_logs_retention }}"
+          LOGS_MAX_DISK_SPACE: "{{ vigie_logs_max_disk_space }}"
           GRAFANA_OAUTH_ENABLED: "{{ (zitadel_login_client_id | length > 0) | string | lower }}"
           # Grafana's MCP server (the mcp profile) starts only with both tokens
           GRAFANA_MCP_GRAFANA_TOKEN: "{{ vigie_mcp_grafana_token | default('') }}"
@@ -70,13 +82,66 @@
             {{ ('https://authentification.anneraud.fr/oidc/v1/end_session?client_id=' ~ zitadel_login_client_id
                 ~ '&post_logout_redirect_uri=https%3A%2F%2Fvigie.anneraud.fr%2Flogin')
                if zitadel_login_client_id | length > 0 else '' }}
-        # Shared with CrowdSec (services/protection) and with the exporters of
-        # services/metriques, whose playbooks create them too
+        # Shared with CrowdSec (services/protection), the exporters of
+        # services/metriques and the log shipper of services/journaux, whose
+        # playbooks create them too
         compose_service_external_networks:
           - name: protection-metrics
             internal: true
           - name: metriques
             internal: true
+          - name: journaux
+            internal: true
         compose_service_dns_records:
           - record: vigie.anneraud.fr
             visibility: private
+
+  tasks:
+    - name: Read the installed VictoriaLogs plugin
+      ansible.builtin.slurp:
+        src: "{{ services_root }}/vigie/grafana/plugins/{{ vigie_logs_plugin }}/plugin.json"
+      register: vigie_logs_plugin_manifest
+      failed_when: false
+
+    - name: Install the VictoriaLogs plugin
+      when: >-
+        vigie_logs_plugin_manifest.content is not defined
+        or (vigie_logs_plugin_manifest.content | b64decode | from_json).info.version != vigie_logs_plugin_version
+      block:
+        - name: Download the VictoriaLogs plugin
+          ansible.builtin.get_url:
+            url: >-
+              https://github.com/VictoriaMetrics/victorialogs-datasource/releases/download/v{{ vigie_logs_plugin_version
+              }}/{{ vigie_logs_plugin }}-v{{ vigie_logs_plugin_version }}.tar.gz
+            dest: "{{ services_root }}/vigie/grafana/plugin.tar.gz"
+            checksum: "{{ vigie_logs_plugin_checksum }}"
+            mode: "0640"
+
+        # A former version's files must not stay next to the new ones
+        - name: Remove the former VictoriaLogs plugin
+          ansible.builtin.file:
+            path: "{{ services_root }}/vigie/grafana/plugins/{{ vigie_logs_plugin }}"
+            state: absent
+
+        # Owned by root, readable by Grafana: it loads the plugin, never changes it
+        - name: Unpack the VictoriaLogs plugin
+          ansible.builtin.unarchive:
+            src: "{{ services_root }}/vigie/grafana/plugin.tar.gz"
+            dest: "{{ services_root }}/vigie/grafana/plugins"
+            remote_src: true
+            owner: root
+            group: "472"   # Grafana's group, as compose_service_user
+            mode: "u=rwX,g=rX,o="
+          notify: Restart Grafana
+
+        - name: Remove the VictoriaLogs plugin archive
+          ansible.builtin.file:
+            path: "{{ services_root }}/vigie/grafana/plugin.tar.gz"
+            state: absent
+
+  handlers:
+    - name: Restart Grafana
+      community.docker.docker_compose_v2:
+        project_src: "{{ services_root }}/vigie"
+        services: [grafana]
+        state: restarted
