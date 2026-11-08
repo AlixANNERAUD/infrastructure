@@ -178,7 +178,7 @@ jobs:
           sudo modprobe zfs
           truncate -s 1G "$RUNNER_TEMP/vigie-check.img"
           sudo zpool create vigie-check "$RUNNER_TEMP/vigie-check.img"
-          zpool list vigie-check
+          sudo zpool list vigie-check
 
       - name: Provision VictoriaMetrics and Grafana and evaluate the alerts
         env:
