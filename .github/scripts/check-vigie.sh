@@ -387,7 +387,7 @@ EOF
 curl -fsS --data-binary "@$directory/samples.prom" "$metrics/api/v1/import/prometheus"
 curl -fsS "$metrics/internal/force_flush" > /dev/null
 
-# Every query of the protection dashboards must be valid MetricsQL
+# Every query of the protection and backup dashboards must be valid MetricsQL
 uv run python - "$metrics" <<'EOF'
 import json
 import sys
@@ -397,7 +397,7 @@ import urllib.request
 from pathlib import Path
 
 failures = []
-for name in ("crowdsec.json", "rate_limits.json"):
+for name in ("crowdsec.json", "rate_limits.json", "backups.json"):
     panels = json.loads(Path("services/vigie/grafana/dashboards", name).read_text())["panels"]
     for panel in panels:
         for target in panel.get("targets", []):
@@ -411,7 +411,7 @@ for name in ("crowdsec.json", "rate_limits.json"):
                 status = error.read().decode()
             if status != "success":
                 failures.append(f"{name}, {panel['title']}: {status}")
-print("\n".join(failures) or "The protection dashboards' queries are valid")
+print("\n".join(failures) or "The protection and backup dashboards' queries are valid")
 sys.exit(1 if failures else 0)
 EOF
 
@@ -482,6 +482,8 @@ hosts_dashboard = load("dashboard-hosts.json").get("dashboard", {})
 check(hosts_dashboard.get("uid") == "hosts", "dashboard hosts is missing")
 logs_dashboard = load("dashboard-traefik-logs.json").get("dashboard", {})
 check(logs_dashboard.get("uid") == "traefik-logs", "dashboard traefik-logs is missing")
+backups_dashboard = load("dashboard-backups.json").get("dashboard", {})
+check(backups_dashboard.get("uid") == "backups", "dashboard backups is missing")
 
 groups = load("rules.json").get("data", {}).get("groups", [])
 
@@ -611,7 +613,7 @@ for _ in $(seq 48); do
     curl -sS "$grafana/api/datasources/uid/victoriametrics/health" > "$directory/datasource.json" || true
     curl -sS "$grafana/api/datasources/uid/victorialogs/health" > "$directory/datasource-logs.json" || true
     curl -sS "$grafana/api/plugins/victoriametrics-logs-datasource/settings" > "$directory/plugin-logs.json" || true
-    for uid in traefik crowdsec rate-limits hosts traefik-logs; do
+    for uid in traefik crowdsec rate-limits hosts traefik-logs backups; do
         curl -sS "$grafana/api/dashboards/uid/$uid" > "$directory/dashboard-$uid.json" || true
     done
     curl -fsS "$grafana/api/prometheus/grafana/api/v1/rules" > "$directory/rules.json" || true

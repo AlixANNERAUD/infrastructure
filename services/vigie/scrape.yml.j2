@@ -56,8 +56,13 @@ scrape_configs:
     metric_relabel_configs:
       # Only what the Hosts dashboard and alerts read
       - source_labels: [__name__]
-        regex: container_(cpu_usage_seconds_total|memory_working_set_bytes|memory_rss|spec_memory_limit_bytes)|machine_(cpu_cores|memory_bytes)
+        regex: container_(cpu_usage_seconds_total|memory_working_set_bytes|memory_rss|spec_memory_limit_bytes|network_(receive|transmit)_bytes_total|fs_(reads|writes)_bytes_total)|machine_(cpu_cores|memory_bytes)
         action: keep
+      # scope="host": the root container, whose network is the host's
+      - source_labels: [id]
+        regex: /
+        target_label: scope
+        replacement: host
       # app: the Compose project without TrueNAS' ix- prefix, or the container
       # name for containers started outside Compose
       - source_labels: [name]

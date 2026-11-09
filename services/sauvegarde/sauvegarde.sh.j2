@@ -144,3 +144,29 @@ if [ "$(date +%u)" = 7 ]; then
     restic forget --host "$host" "${retention[@]}" --prune
     restic check --read-data-subset 2%
 fi
+
+# The repository's size in Google Drive and its snapshot count, for Vigie's
+# Backups dashboard: after the weekly prune, and when they were never read
+# (restic stats reads the whole index). In their own file, kept between runs;
+# failing to read them does not fail the backup
+if [ "$(date +%u)" = 7 ] || [ ! -e "$textfile/sauvegarde_repository.prom" ]; then
+    mkdir -p "$textfile"
+    if restic stats --mode raw-data --json > "$directory/stats.json" \
+        && python3 -c '
+import json
+import sys
+
+stats = json.load(sys.stdin)
+print("# HELP sauvegarde_repository_size_bytes Size of the restic repository in Google Drive, compressed and encrypted.")
+print("# TYPE sauvegarde_repository_size_bytes gauge")
+print("sauvegarde_repository_size_bytes", int(stats["total_size"]))
+print("# HELP sauvegarde_repository_snapshots Snapshots kept in the restic repository.")
+print("# TYPE sauvegarde_repository_snapshots gauge")
+print("sauvegarde_repository_snapshots", int(stats["snapshots_count"]))
+' < "$directory/stats.json" > "$textfile/sauvegarde_repository.prom.$$"; then
+        mv "$textfile/sauvegarde_repository.prom.$$" "$textfile/sauvegarde_repository.prom"
+    else
+        rm -f "$textfile/sauvegarde_repository.prom.$$"
+        echo "Could not read the repository's size"
+    fi
+fi

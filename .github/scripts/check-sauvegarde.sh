@@ -8,7 +8,7 @@
 # - excluded datasets, their children and unselected datasets are not,
 # - the next run only adds what changed,
 # - no snapshot or mount is left behind, and the result is written for
-#   node_exporter,
+#   node_exporter, with the repository's size and snapshot count,
 # - a dataset whose key is not loaded fails the run, which still cleans up
 #   and reports the failure,
 # - a run that finds another one running leaves it alone.
@@ -162,6 +162,14 @@ if [ "$(metric sauvegarde_last_run_success)" != 1 ] || [ "$(metric sauvegarde_la
     exit 1
 fi
 echo "ok    the selected datasets and their children are backed up, the others are not"
+# The repository's size and snapshot count, read on the first run
+repository_size=$(sudo sed -n 's/^sauvegarde_repository_size_bytes //p' "$textfile/sauvegarde_repository.prom" 2> /dev/null)
+repository_snapshots=$(sudo sed -n 's/^sauvegarde_repository_snapshots //p' "$textfile/sauvegarde_repository.prom" 2> /dev/null)
+if [ "${repository_size:-0}" -le 0 ] || [ "$repository_snapshots" != 1 ]; then
+    echo "the first run reports the repository as: $(sudo cat "$textfile/sauvegarde_repository.prom" 2> /dev/null)"
+    exit 1
+fi
+echo "ok    the first run reports the repository's size and snapshot count"
 
 first_success=$(metric sauvegarde_last_success_timestamp_seconds)
 sleep 1
