@@ -3,38 +3,38 @@
 # (nanobom-action) and it checks them against OSV every night. Its database
 # is PostgreSQL, so backups dump it like the other stacks. Create the first
 # administrator once deployed:
-#   docker exec vulnerabilites /app/nanobom create-administrator --username <name>
+#   docker exec vulnerabilities /app/nanobom create-administrator --username <name>
 - name: Deploy nanobom
-  hosts: vulnerabilites
+  hosts: vulnerabilities
   become: true
   vars_files:
     - ../../vault/ansible/vault.yml
-    - ../../vault/vulnerabilites/vault.yml
+    - ../../vault/vulnerabilities/vault.yml
     - ../../vault/cloudflare/vault.yml
   vars:
-    vulnerabilites_host: nanobom.anneraud.fr
+    vulnerabilities_host: nanobom.anneraud.fr
   pre_tasks:
     # It goes into nanobom's database URL as it is
     - name: Check the database password
       ansible.builtin.assert:
         that:
-          - vulnerabilites_database_password | default('') is match('^[A-Za-z0-9._~-]{32,}$')
+          - vulnerabilities_database_password | default('') is match('^[A-Za-z0-9._~-]{32,}$')
         fail_msg: >-
-          vault/vulnerabilites/vault.yml needs vulnerabilites_database_password, at least 32 characters
+          vault/vulnerabilities/vault.yml needs vulnerabilities_database_password, at least 32 characters
           among letters, digits and -._~ (openssl rand -hex 32).
         quiet: true
 
   roles:
     - role: compose_service
       vars:
-        compose_service_name: vulnerabilites
+        compose_service_name: vulnerabilities
         compose_service_directories:
           - path: postgres   # Postgres (Alpine) runs as 70 and refuses a folder others can read
             owner: "70"
             group: "70"
             mode: "0700"
         compose_service_environment:
-          HOST: "{{ vulnerabilites_host }}"
-          DATABASE_PASSWORD: "{{ vulnerabilites_database_password }}"
+          HOST: "{{ vulnerabilities_host }}"
+          DATABASE_PASSWORD: "{{ vulnerabilities_database_password }}"
         compose_service_dns_records:
-          - record: "{{ vulnerabilites_host }}"
+          - record: "{{ vulnerabilities_host }}"

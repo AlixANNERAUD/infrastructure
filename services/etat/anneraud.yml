@@ -432,7 +432,7 @@ endpoints:
     alerts:
       - type: homeassistant
 
-  - name: Vulnérabilités (nanobom)
+  - name: Vulnerabilities (nanobom)
     group: Services
     url: "https://nanobom.anneraud.fr/healthz"
     interval: 10m
