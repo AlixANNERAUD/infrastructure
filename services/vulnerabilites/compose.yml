@@ -13,7 +13,12 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    # nanobom migrates the database at startup
+    depends_on:
+      database:
+        condition: service_healthy
     environment:
+      NANOBOM_DATABASE_URL: postgres://nanobom:${DATABASE_PASSWORD}@database:5432/nanobom?sslmode=disable
       # Links, cookies, sign-in redirects and the cross-site check use it
       NANOBOM_PUBLIC_URL: https://${HOST}
       # Every project checked again each night (UTC), and after each upload
@@ -22,9 +27,8 @@ services:
       # Only Traefik reaches it: client addresses come from its headers, for
       # the sign-in rate limit
       NANOBOM_TRUST_FORWARDED_HEADERS: "true"
-    volumes:
-      - ./data:/data
     networks:
+      - internal
       - traefik
     labels:
       - traefik.enable=true
@@ -55,6 +59,29 @@ services:
       - traefik.http.routers.vulnerabilites-metrics.service=vulnerabilites
       - traefik.http.routers.vulnerabilites-metrics.middlewares=internal-allowlist@file
 
+  database:
+    image: postgres:18.6-alpine
+    logging: *logging
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_DB: nanobom
+      POSTGRES_USER: nanobom
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+    volumes:
+      - ./postgres:/var/lib/postgresql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "pg_isready", "--username", "nanobom", "--dbname", "nanobom"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 networks:
+  # Database side only: no route out of the Docker network
+  internal:
+    internal: true
   traefik:
     external: true
