@@ -39,8 +39,8 @@ variable "oidc_client_secret" {
   sensitive   = true
 }
 
-variable "administrator_email" {
-  description = "Verified Zitadel email allowed to log in (trousseau_administrator_email)."
+variable "administrator_user_id" {
+  description = "Id of the Zitadel user allowed to log in, its sub claim (trousseau_administrator_user_id)."
   type        = string
   sensitive   = true
 }

@@ -11,8 +11,10 @@ ANSIBLE_VAULT_PASSWORD_FILE = "{{ config_root }}/vault-password-client.py"
 # Shortcuts: `mise run <task> [arguments]`, or `mise <task>` when no mise command has that name.
 # Tasks run with the tools above on PATH, so OpenTofu is there for the Zitadel role.
 EDITOR = "zed --wait"
-# Trousseau (services/trousseau), for bao and mise ssh:login; over the VPN
-BAO_ADDR = "https://trousseau.anneraud.fr"
+# Trousseau (services/trousseau), for bao and mise ssh:login; over the VPN.
+# With its port: bao login builds its redirect from it, and Zitadel compares
+# redirects as plain strings (opentofu/zitadel/applications.auto.tfvars)
+BAO_ADDR = "https://trousseau.anneraud.fr:443"
 
 [tasks.setup]
 description = "Install the pinned tools and Ansible collections"
@@ -57,7 +59,7 @@ description = "Log in to Trousseau through Zitadel and get SSH certificates for 
 run = """
 set -eu
 # A browser window for Zitadel, unless the token of an earlier login still works
-bao token lookup > /dev/null 2>&1 || bao login -no-print -method=oidc callbackmode=direct
+bao token lookup > /dev/null 2>&1 || bao login -no-print -method=oidc role=terminal callbackmode=direct
 key=${SSH_KEY:-$HOME/.ssh/id_ed25519}
 bao write -field=signed_key ssh-utilisateurs/sign/alix public_key=@"$key.pub" > "$key-cert.pub"
 ssh-keygen -L -f "$key-cert.pub" | grep -E 'Principals|Valid' -A1

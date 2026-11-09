@@ -20,6 +20,10 @@
     trousseau_seal_key_id: "{{ (trousseau_seal_key | default('') | hash('sha256'))[:12] }}"
     # Docker's range, where Traefik connects from: its X-Forwarded-For is trusted
     trousseau_proxy_networks: [172.16.0.0/12]
+    # config.hcl is bind-mounted: Compose recreates the container when this
+    # label changes, so OpenBao runs the new configuration before OpenTofu
+    # configures it (and is never restarted while it initializes)
+    trousseau_configuration_checksum: "{{ lookup('ansible.builtin.template', playbook_dir ~ '/config.hcl.j2') | hash('sha256') }}"
     trousseau_opentofu_path: "{{ playbook_dir }}/../../opentofu/trousseau"
     trousseau_state_path: "{{ playbook_dir }}/../../vault/trousseau/opentofu.tfstate"
   pre_tasks:
@@ -29,12 +33,12 @@
           - trousseau_seal_key | default('') is match('^[0-9a-f]{64}$')
           - trousseau_automation_secret_id | default('') | length >= 32
           - trousseau_state_passphrase | default('') | length >= 16
-          - trousseau_administrator_email | default('') is search('@')
+          - trousseau_administrator_user_id | default('') | string is match('^[0-9]{6,}$')
         fail_msg: >-
           vault/trousseau/vault.yml needs trousseau_seal_key (openssl rand -hex 32),
           trousseau_automation_secret_id (openssl rand -hex 32), trousseau_state_passphrase
-          (openssl rand -base64 32) and trousseau_administrator_email (the Zitadel email allowed to administer it):
-          see the documentation's Trousseau page.
+          (openssl rand -base64 32) and trousseau_administrator_user_id (the id of the Zitadel user allowed to
+          administer it, in quotes): see the documentation's Trousseau page.
         quiet: true
 
     # Without the Zitadel credentials the client id is empty: OpenTofu then
@@ -62,8 +66,10 @@
         compose_service_templates:
           - source: config.hcl.j2
             destination: config.hcl
+            restart: false   # recreated through CONFIGURATION_CHECKSUM instead
         compose_service_environment:
           HOST: "{{ trousseau_host }}"
+          CONFIGURATION_CHECKSUM: "{{ trousseau_configuration_checksum }}"
           PROXY_NETWORK: "{{ proxy_network }}"
           SEAL_KEY: "{{ trousseau_seal_key }}"
           AUTOMATION_SECRET_ID: "{{ trousseau_automation_secret_id }}"
@@ -87,10 +93,28 @@
       delay: 5
       changed_when: false
 
+    # Semaphore's runs have no OpenTofu, and nowhere to keep its state
+    - name: Look for OpenTofu on the controller
+      ansible.builtin.command:
+        argv: [which, tofu]
+      register: trousseau_opentofu
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      failed_when: false
+
+    - name: Report that OpenBao's configuration is left as it is
+      ansible.builtin.debug:
+        msg: >-
+          OpenTofu is not on the controller's PATH: OpenBao keeps the configuration of its last deploy with
+          mise (mise deploy services/trousseau/deploy.yml), which applies opentofu/trousseau.
+      when: trousseau_opentofu.rc != 0
+
     # From the controller, over the VPN, with the AppRole of the first start
     - name: Configure OpenBao
       ansible.builtin.include_role:
         name: opentofu
+      when: trousseau_opentofu.rc == 0
       vars:
         opentofu_project_path: "{{ trousseau_opentofu_path }}"
         opentofu_state_path: "{{ trousseau_state_path }}"
@@ -101,7 +125,7 @@
         opentofu_secret_variables:
           automation_secret_id: "{{ trousseau_automation_secret_id }}"
           oidc_client_secret: "{{ zitadel_login_client_secret }}"
-          administrator_email: "{{ trousseau_administrator_email }}"
+          administrator_user_id: "{{ trousseau_administrator_user_id | string }}"
           state_passphrase: "{{ trousseau_state_passphrase }}"
 
     - name: Show the certificate authorities
@@ -109,3 +133,4 @@
         msg:
           - "Users: {{ opentofu_apply.outputs.user_certificate_authority.value }}"
           - "Hosts: {{ opentofu_apply.outputs.host_certificate_authority.value }}"
+      when: trousseau_opentofu.rc == 0

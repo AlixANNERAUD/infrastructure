@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Start Trousseau as services/trousseau/deploy.yml lays it out: its first
 # start must initialize it and its static key unseal it. Apply
-# opentofu/trousseau with the AppRole that first start creates (without the
-# Zitadel login: no Zitadel here), twice, the second time with nothing to
-# change. Then sign keys and log in with their certificates to an SSH server
+# opentofu/trousseau with the AppRole that first start creates, twice, the
+# second time with nothing to change. There is no Zitadel here: an issuer that
+# only serves its discovery document stands in for it, enough to check that
+# the web interface and bao login each get their login address from their own
+# role. Then sign keys and log in with their certificates to an SSH server
 # that trusts the users' authority and presents a host certificate: the
 # owner's certificate logs in as alix_anneraud only, a bare key does not, and
 # Ansible's certificate only works from its networks. Finally, a restart must
@@ -14,6 +16,7 @@ directory=$(mktemp -d)
 project=check-trousseau-$$
 network=$project-proxy
 server=$project-ssh
+issuer=$project-issuer
 seal_key=$(openssl rand -hex 32)
 secret_id=$(openssl rand -hex 32)
 compose() {
@@ -27,7 +30,7 @@ cleanup() {
         docker logs --tail 30 "$server" 2> /dev/null || true
     fi
     compose down --volumes --timeout 5 > /dev/null 2>&1 || true
-    docker rm -f "$server" > /dev/null 2>&1 || true
+    docker rm -f "$server" "$issuer" > /dev/null 2>&1 || true
     docker network rm "$network" > /dev/null 2>&1 || true
     rm -rf "$directory" opentofu/trousseau/.terraform
     exit "$status"
@@ -50,6 +53,7 @@ USER_ID=$(id -u)
 GROUP_ID=$(id -g)
 HOST=trousseau.test
 PROXY_NETWORK=$network
+CONFIGURATION_CHECKSUM=check
 SEAL_KEY=$seal_key
 AUTOMATION_SECRET_ID=$secret_id
 EOF
@@ -64,12 +68,35 @@ docker network create "$network" > /dev/null
 compose up -d --wait --quiet-pull
 echo "ok    the first start initializes OpenBao and its static key unseals it"
 
+# Zitadel's stand-in: OpenBao reads the discovery document when its login is configured
+mkdir -p "$directory/issuer/.well-known"
+cat > "$directory/issuer/.well-known/openid-configuration" <<EOF
+{"issuer": "http://$issuer", "authorization_endpoint": "http://$issuer/authorize", "token_endpoint": "http://$issuer/token",
+ "jwks_uri": "http://$issuer/keys", "userinfo_endpoint": "http://$issuer/userinfo", "response_types_supported": ["code"],
+ "subject_types_supported": ["public"], "id_token_signing_alg_values_supported": ["RS256"]}
+EOF
+echo '{"keys": []}' > "$directory/issuer/keys"
+chmod -R a+rX "$directory/issuer"
+docker run -d --name "$issuer" --network "$network" -v "$directory/issuer:/issuer:ro" alpine:3.22 sh -c '
+    set -e
+    apk add --no-cache busybox-extras > /dev/null
+    exec busybox-extras httpd -f -p 80 -h /issuer' > /dev/null
+for _ in $(seq 30); do
+    if docker exec trousseau wget -q -O /dev/null "http://$issuer/.well-known/openid-configuration" 2> /dev/null; then
+        break
+    fi
+    sleep 2
+done
+
 # opentofu/trousseau, as deploy.yml applies it
 export TF_VAR_state_path=$directory/opentofu.tfstate
 export TF_VAR_state_passphrase=check-trousseau-state-passphrase
 export TF_VAR_address=http://127.0.0.1:8200
 export TF_VAR_automation_secret_id=$secret_id
-export TF_VAR_administrator_email=check@example.org
+export TF_VAR_administrator_user_id=123456789012345678
+export TF_VAR_zitadel_issuer=http://$issuer
+export TF_VAR_oidc_client_id=check
+export TF_VAR_oidc_client_secret=check-client-secret
 export TF_VAR_automation_ssh_sources='["192.168.0.0/24", "100.64.0.0/16"]'
 export TF_REGISTRY_CLIENT_TIMEOUT=120
 tofu -chdir=opentofu/trousseau init -input=false -reconfigure > /dev/null
@@ -89,6 +116,32 @@ bao() {
     docker exec -i -e BAO_ADDR=http://127.0.0.1:8200 -e "BAO_TOKEN=${token:-}" trousseau bao "$@"
 }
 token=$(bao write -field=token auth/approle/login role_id=deploiement secret_id="$secret_id")
+
+# The web interface's role sends the browser back to the interface
+interface=$(bao write -field=auth_url auth/oidc/oidc/auth_url role=administration client_nonce=check \
+    redirect_uri=http://127.0.0.1:8200/ui/vault/auth/oidc/oidc/callback)
+if [[ "$interface" != "http://$issuer/authorize?"* ]]; then
+    echo "the web interface gets no login address from the administration role: $interface"
+    exit 1
+fi
+# bao login (as mise ssh:login runs it) needs the role that sends the browser
+# back to OpenBao itself: it then prints the login address and waits
+login=$(docker exec -e BAO_ADDR=http://127.0.0.1:8200 trousseau timeout 10 \
+    bao login -no-print -method=oidc role=terminal callbackmode=direct skip_browser=true 2>&1 || true)
+if ! grep -q "http://$issuer/authorize?.*redirect_uri=http%3A%2F%2F127.0.0.1%3A8200%2Fv1%2Fauth%2Foidc%2Foidc%2Fcallback" <<< "$login" \
+    || ! grep -q "Waiting for OIDC authentication" <<< "$login"; then
+    echo "bao login gets no login address from the terminal role:"
+    echo "$login"
+    exit 1
+fi
+login=$(docker exec -e BAO_ADDR=http://127.0.0.1:8200 trousseau timeout 10 \
+    bao login -no-print -method=oidc role=administration callbackmode=direct skip_browser=true 2>&1 || true)
+if grep -q "Waiting for OIDC authentication" <<< "$login"; then
+    echo "bao login also gets a login address from the web interface's role:"
+    echo "$login"
+    exit 1
+fi
+echo "ok    the Zitadel login gives the web interface and bao login their address, each from its own role"
 
 # The keys: the owner's, Ansible's and the SSH server's host key
 mkdir -p "$directory/ssh"

@@ -9,8 +9,10 @@ x-logging: &logging
 
 services:
   # OpenBao: signs SSH certificates after a Zitadel login (opentofu/trousseau
-  # configures it). Reached only through Traefik, behind the internal
-  # allowlist; the API port is never published
+  # configures it). The API port is never published: clients reach it through
+  # Traefik, behind the internal allowlist. The other containers of the proxy
+  # network reach it directly, in plain HTTP, until every application has its
+  # own proxy network (the documentation's Réseau page)
   openbao:
     image: openbao/openbao:2.7.2
     logging: *logging
@@ -41,6 +43,8 @@ services:
         aliases:
           - trousseau
     labels:
+      # Changes with config.hcl, so that Compose recreates the container
+      - trousseau.configuration=${CONFIGURATION_CHECKSUM}
       - traefik.enable=true
       - traefik.docker.network=${PROXY_NETWORK}
       - traefik.http.routers.trousseau.rule=Host(`${HOST}`)

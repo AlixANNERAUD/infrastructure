@@ -27,13 +27,14 @@ applications = {
   }
 
   # Trousseau (OpenBao, trousseau.anneraud.fr): its web interface and
-  # bao login (callbackmode=direct) both come back to its own address
+  # bao login (callbackmode=direct) both come back to its own address; bao
+  # login always writes the port in its redirect
   trousseau = {
     project        = "Trousseau"
     authentication = "client_secret"
     redirect_uris = [
       "https://trousseau.anneraud.fr/ui/vault/auth/oidc/oidc/callback",
-      "https://trousseau.anneraud.fr/v1/auth/oidc/oidc/callback",
+      "https://trousseau.anneraud.fr:443/v1/auth/oidc/oidc/callback",
     ]
   }
 
