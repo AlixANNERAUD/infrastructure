@@ -203,11 +203,40 @@ jobs:
       - name: Ban through CrowdSec and Traefik's bouncer
         run: .github/scripts/check-protection.sh
 
+  sauvegarde:
+    name: Sauvegarde
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+
+      - name: Install tools
+        run: |
+          uv sync --locked
+          uv run ansible-galaxy collection install -r requirements.yml
+
+      # A small pool on a file, for the datasets the script snapshots and mounts
+      - name: Create a ZFS pool
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q zfsutils-linux
+          sudo modprobe zfs
+          truncate -s 1G "$RUNNER_TEMP/sauvegarde-check.img"
+          sudo zpool create sauvegarde-check "$RUNNER_TEMP/sauvegarde-check.img"
+
+      - name: Back up ZFS snapshots with restic
+        env:
+          CHECK_ZFS_POOL: sauvegarde-check
+        run: .github/scripts/check-sauvegarde.sh
+
   # Single check required by the branch ruleset: add new jobs to `needs`
   required:
     name: required
     if: always()
-    needs: [ansible, compose, molecule, molecule-zitadel, opentofu, protection, traefik-routes, vigie]
+    needs: [ansible, compose, molecule, molecule-zitadel, opentofu, protection, sauvegarde, traefik-routes, vigie]
     runs-on: ubuntu-latest
     steps:
       - name: Check that all required jobs succeeded

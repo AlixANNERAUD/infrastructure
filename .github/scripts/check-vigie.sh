@@ -115,6 +115,14 @@ cat > "$directory/metriques/.env" <<EOF
 METRICS_ROUTED=false
 METRICS_HOST=
 METRICS_NETWORK=$metrics_network
+METRICS_TEXTFILE_DIRECTORY=$directory/metriques/textfile
+EOF
+# A failed backup whose last success is two days old, as services/sauvegarde's
+# script writes it for node_exporter's textfile collector
+mkdir -p "$directory/metriques/textfile"
+cat > "$directory/metriques/textfile/sauvegarde.prom" <<EOF
+sauvegarde_last_run_success 0
+sauvegarde_last_success_timestamp_seconds $(($(date +%s) - 172800))
 EOF
 cat > "$directory/compose.check.yml" <<'EOF'
 services:
@@ -379,7 +387,7 @@ EOF
 curl -fsS --data-binary "@$directory/samples.prom" "$metrics/api/v1/import/prometheus"
 curl -fsS "$metrics/internal/force_flush" > /dev/null
 
-# Every query of the protection dashboards must be valid MetricsQL
+# Every query of the protection and backup dashboards must be valid MetricsQL
 uv run python - "$metrics" <<'EOF'
 import json
 import sys
@@ -389,7 +397,7 @@ import urllib.request
 from pathlib import Path
 
 failures = []
-for name in ("crowdsec.json", "rate_limits.json"):
+for name in ("crowdsec.json", "rate_limits.json", "backups.json"):
     panels = json.loads(Path("services/vigie/grafana/dashboards", name).read_text())["panels"]
     for panel in panels:
         for target in panel.get("targets", []):
@@ -403,7 +411,7 @@ for name in ("crowdsec.json", "rate_limits.json"):
                 status = error.read().decode()
             if status != "success":
                 failures.append(f"{name}, {panel['title']}: {status}")
-print("\n".join(failures) or "The protection dashboards' queries are valid")
+print("\n".join(failures) or "The protection and backup dashboards' queries are valid")
 sys.exit(1 if failures else 0)
 EOF
 
@@ -474,6 +482,8 @@ hosts_dashboard = load("dashboard-hosts.json").get("dashboard", {})
 check(hosts_dashboard.get("uid") == "hosts", "dashboard hosts is missing")
 logs_dashboard = load("dashboard-traefik-logs.json").get("dashboard", {})
 check(logs_dashboard.get("uid") == "traefik-logs", "dashboard traefik-logs is missing")
+backups_dashboard = load("dashboard-backups.json").get("dashboard", {})
+check(backups_dashboard.get("uid") == "backups", "dashboard backups is missing")
 
 groups = load("rules.json").get("data", {}).get("groups", [])
 
@@ -491,6 +501,8 @@ expected_groups = {
         "CrowdSec alert spike", "Login rate limit spike",
     },
     "Hosts": {"Host disk space low", "ZFS pool unhealthy", "Host memory high", "Host CPU high", "Host metrics missing"},
+    # Bruxelles is in the sauvegarde group: its rules are rendered
+    "Backups": {"Backup failed", "Backup stale"},
 }
 for name, expected in expected_groups.items():
     found = set(group_rules(name))
@@ -533,6 +545,9 @@ def alerting(name, label, values, words):
 alerting("CrowdSec metrics missing", "host", ["bruxelles", "luxembourg"], ["cannot be scraped"])
 alerting("CrowdSec alert spike", "host", ["luxembourg"], ["luxembourg", "48 alerts"])
 alerting("Login rate limit spike", "router", ["vaultwarden-login@file"], ["vaultwarden-login@file", "bruxelles", "80 login"])
+# The backup result above, read by node_exporter on Luxembourg here
+alerting("Backup failed", "host", ["luxembourg"], ["luxembourg", "failed"])
+alerting("Backup stale", "host", ["luxembourg"], ["luxembourg", "2d"])
 # Both wait for CrowdSec to answer, which it does not here
 for name in ("CrowdSec bouncer silent", "CrowdSec reads no access log"):
     state = rules.get(name, {}).get("state")
@@ -598,7 +613,7 @@ for _ in $(seq 48); do
     curl -sS "$grafana/api/datasources/uid/victoriametrics/health" > "$directory/datasource.json" || true
     curl -sS "$grafana/api/datasources/uid/victorialogs/health" > "$directory/datasource-logs.json" || true
     curl -sS "$grafana/api/plugins/victoriametrics-logs-datasource/settings" > "$directory/plugin-logs.json" || true
-    for uid in traefik crowdsec rate-limits hosts traefik-logs; do
+    for uid in traefik crowdsec rate-limits hosts traefik-logs backups; do
         curl -sS "$grafana/api/dashboards/uid/$uid" > "$directory/dashboard-$uid.json" || true
     done
     curl -fsS "$grafana/api/prometheus/grafana/api/v1/rules" > "$directory/rules.json" || true

@@ -38,6 +38,9 @@ services:
       - "--no-collector.netdev"
       - "--no-collector.netstat"
       - "--no-collector.sockstat"
+      # *.prom files other services write about themselves (the backup's
+      # result, services/sauvegarde), in this service's textfile folder
+      - "--collector.textfile.directory=/host${METRICS_TEXTFILE_DIRECTORY}"
     volumes:
       - /:/host:ro,rslave
     networks:
@@ -53,8 +56,10 @@ services:
       - traefik.http.middlewares.metriques-node-path.replacepath.path=/metrics
       - traefik.http.services.metriques-node.loadbalancer.server.port=9100
 
-  # CPU and memory of every container, labelled with its Compose project
-  # (the app: TrueNAS Apps are ix-<app> projects)
+  # CPU, memory, network and disk I/O of every container, labelled with its
+  # Compose project (the app: TrueNAS Apps are ix-<app> projects), and the
+  # host's own network traffic (its root container, id /, read from
+  # /rootfs/proc/1/net/dev: node_exporter only sees its own network namespace)
   cadvisor:
     image: ghcr.io/google/cadvisor:v0.60.6
     logging: *logging
@@ -65,7 +70,7 @@ services:
       - no-new-privileges:true
     command:
       - "--docker_only=true"
-      - "--enable_metrics=cpu,memory"
+      - "--enable_metrics=cpu,memory,network,diskIO"
       - "--housekeeping_interval=30s"
       - "--store_container_labels=false"
       - "--whitelisted_container_labels=com.docker.compose.project,com.docker.compose.service"

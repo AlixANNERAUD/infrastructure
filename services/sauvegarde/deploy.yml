@@ -1,0 +1,98 @@
+---
+# Encrypted backup of chosen datasets to Google Drive: rclone serves the
+# Drive folder to restic, sauvegarde.sh (a TrueNAS cron job) backs up a ZFS
+# snapshot of the datasets of inventory/host_vars/<host>/sauvegarde.yml.
+# The Google OAuth client, its token and restic's password are in
+# vault/sauvegarde/vault.yml; see the documentation's Sauvegardes page.
+- name: Deploy the backup to Google Drive
+  hosts: sauvegarde
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+    - ../../vault/sauvegarde/vault.yml
+    - ../../vault/cloudflare/vault.yml
+  vars:
+    sauvegarde_path: "{{ services_root }}/{{ sauvegarde_directory }}"
+    # node_exporter's textfile collector (services/metriques)
+    sauvegarde_textfile_directory: "{{ services_root }}/{{ metriques_directory }}/textfile"
+    sauvegarde_cron_job:
+      description: Backup to Google Drive (services/sauvegarde)
+      user: root
+      command: "bash {{ sauvegarde_path }}/sauvegarde.sh"
+      schedule: "{{ sauvegarde_schedule }}"
+      enabled: true
+      # Hide the output (the script logs to logs/), not the errors
+      stdout: true
+      stderr: false
+  pre_tasks:
+    - name: Check the Google Drive and restic secrets
+      ansible.builtin.assert:
+        that:
+          - sauvegarde_drive_client_id | default('') | length > 0
+          - sauvegarde_drive_client_secret | default('') | length > 0
+          - sauvegarde_drive_token | default('') | length > 0
+          - sauvegarde_restic_password | default('') | length > 0
+        fail_msg: >-
+          vault/sauvegarde/vault.yml needs sauvegarde_drive_client_id, sauvegarde_drive_client_secret,
+          sauvegarde_drive_token and sauvegarde_restic_password: see the documentation's Sauvegardes page.
+        quiet: true
+
+  roles:
+    - role: compose_service
+      vars:
+        compose_service_name: sauvegarde
+        compose_service_directory: "{{ sauvegarde_directory }}"
+        compose_service_directories:
+          - cache
+          - logs
+        compose_service_templates:
+          - source: sauvegarde.sh.j2
+            destination: sauvegarde.sh
+            restart: false   # read by each run
+        compose_service_environment:
+          REMOTE_PATH: "{{ sauvegarde_remote_path }}"
+          BANDWIDTH_LIMIT: "{{ sauvegarde_bandwidth_limit }}"
+          DRIVE_CLIENT_ID: "{{ sauvegarde_drive_client_id }}"
+          DRIVE_CLIENT_SECRET: "{{ sauvegarde_drive_client_secret }}"
+          # The JSON line of the token, on one line
+          DRIVE_TOKEN: "{{ sauvegarde_drive_token | to_json if sauvegarde_drive_token is mapping else sauvegarde_drive_token }}"
+          RESTIC_PASSWORD: "{{ sauvegarde_restic_password }}"
+
+  tasks:
+    # restic exits with 10 when the repository does not exist
+    - name: Look for the restic repository
+      ansible.builtin.command:
+        argv: [docker, compose, run, --rm, --no-TTY, restic, cat, config]
+        chdir: "{{ sauvegarde_path }}"
+      register: sauvegarde_repository
+      changed_when: false
+      failed_when: sauvegarde_repository.rc not in [0, 10]
+
+    - name: Create the restic repository
+      ansible.builtin.command:
+        argv: [docker, compose, run, --rm, --no-TTY, restic, init]
+        chdir: "{{ sauvegarde_path }}"
+      changed_when: true
+      when: sauvegarde_repository.rc == 10
+
+    - name: Read the backup's cron job
+      ansible.builtin.command:
+        argv: [midclt, call, cronjob.query, "{{ [['description', '=', sauvegarde_cron_job.description]] | to_json }}"]
+      register: sauvegarde_cron_jobs
+      changed_when: false
+
+    - name: Create the backup's cron job
+      ansible.builtin.command:
+        argv: [midclt, call, cronjob.create, "{{ sauvegarde_cron_job | to_json }}"]
+      changed_when: true
+      when: sauvegarde_cron_jobs.stdout | from_json | length == 0
+
+    - name: Update the backup's cron job
+      ansible.builtin.command:
+        argv: [midclt, call, cronjob.update, "{{ sauvegarde_existing_job.id }}", "{{ sauvegarde_cron_job | to_json }}"]
+      changed_when: true
+      vars:
+        sauvegarde_existing_job: "{{ sauvegarde_cron_jobs.stdout | from_json | first }}"
+      when:
+        - sauvegarde_cron_jobs.stdout | from_json | length > 0
+        - sauvegarde_existing_job | combine(sauvegarde_cron_job) != sauvegarde_existing_job

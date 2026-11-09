@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# Backup to Google Drive, rendered by services/sauvegarde/deploy.yml and run
+# as root by a TrueNAS cron job. Takes one atomic ZFS snapshot of the datasets
+# to back up, mounts it read-only under the same paths every night (so restic
+# only reads what changed), and has restic (this service's Compose stack) back
+# it up, encrypted. Its result goes to node_exporter's textfile collector
+# (services/metriques), which Vigie alerts on. Each run logs to logs/.
+set -euo pipefail
+
+directory={{ sauvegarde_path | quote }}
+pool={{ sauvegarde_pool | quote }}
+host={{ inventory_hostname | quote }}
+textfile={{ sauvegarde_textfile_directory | quote }}
+# Shell patterns matched against dataset names, children included
+roots=({{ sauvegarde_datasets | map('quote') | join(' ') }})
+excluded=({{ sauvegarde_excluded_datasets | map('quote') | join(' ') }})
+snapshot=sauvegarde
+staging=/run/sauvegarde
+# Kept snapshots: a week of days, a month of weeks, a year of months
+retention=(--keep-daily 7 --keep-weekly 4 --keep-monthly 12)
+
+mkdir -p "$directory/logs"
+find "$directory/logs" -name '*.log' -mtime +30 -delete
+exec >> "$directory/logs/$(date +%Y-%m-%d_%H%M%S).log" 2>&1
+
+# The first upload takes days: the next nights leave it running
+exec 9> "$directory/.lock"
+if ! flock -n 9; then
+    echo "A backup is still running"
+    exit 0
+fi
+
+compose() {
+    (cd "$directory" && docker compose "$@")
+}
+restic() {
+    compose run --rm --no-TTY --quiet-pull -v "$staging:/source:ro" restic "$@"
+}
+
+# Unmounts and destroys the snapshot; also the leftovers of an interrupted run
+release() {
+    if mountpoint -q "$staging"; then
+        umount -R "$staging"
+    fi
+    zfs list -H -o name -t snapshot -r "$pool" | { grep -F "@$snapshot" || true; } | while read -r name; do
+        if [ "${name##*@}" = "$snapshot" ]; then
+            zfs destroy "$name"
+        fi
+    done
+}
+
+started=$(date +%s)
+added=0
+finish() {
+    local status=$?
+    release || status=1
+    if [ "$status" -eq 0 ]; then
+        echo "$started" > "$directory/last_success"
+    fi
+    local last_success
+    last_success=$(cat "$directory/last_success" 2> /dev/null || echo 0)
+    mkdir -p "$textfile"
+    cat > "$textfile/sauvegarde.prom.$$" <<EOF
+# HELP sauvegarde_last_run_success Whether the last backup to Google Drive succeeded.
+# TYPE sauvegarde_last_run_success gauge
+sauvegarde_last_run_success $([ "$status" -eq 0 ] && echo 1 || echo 0)
+# HELP sauvegarde_last_run_timestamp_seconds When the last backup started.
+# TYPE sauvegarde_last_run_timestamp_seconds gauge
+sauvegarde_last_run_timestamp_seconds $started
+# HELP sauvegarde_last_run_duration_seconds How long the last backup took.
+# TYPE sauvegarde_last_run_duration_seconds gauge
+sauvegarde_last_run_duration_seconds $(($(date +%s) - started))
+# HELP sauvegarde_last_run_added_bytes Bytes the last backup added to the repository, after deduplication and compression.
+# TYPE sauvegarde_last_run_added_bytes gauge
+sauvegarde_last_run_added_bytes $added
+# HELP sauvegarde_last_success_timestamp_seconds When the snapshot of the last successful backup was taken.
+# TYPE sauvegarde_last_success_timestamp_seconds gauge
+sauvegarde_last_success_timestamp_seconds $last_success
+EOF
+    mv "$textfile/sauvegarde.prom.$$" "$textfile/sauvegarde.prom"
+    echo "Finished with status $status"
+    exit "$status"
+}
+trap finish EXIT
+
+release
+
+mapfile -t names < <(zfs list -H -o name -t filesystem -r "$pool")
+datasets=()
+for name in "${names[@]}"; do
+    wanted=false
+    # Unquoted on purpose: the entries are patterns
+    # shellcheck disable=SC2254
+    for root in "${roots[@]}"; do
+        case "$name" in $root | $root/*) wanted=true ;; esac
+    done
+    # shellcheck disable=SC2254
+    for skip in "${excluded[@]}"; do
+        case "$name" in $skip | $skip/*) wanted=false ;; esac
+    done
+    if [ "$wanted" = true ]; then
+        datasets+=("$name")
+    fi
+done
+if [ -z "${datasets[*]-}" ]; then
+    echo "No dataset matches ${roots[*]}"
+    exit 1
+fi
+echo "Datasets: ${datasets[*]}"
+
+# All at once, so that the datasets are consistent with each other
+zfs snapshot "${datasets[@]/%/@$snapshot}"
+# zfs list puts parents before their children, which mount inside them. A
+# dataset whose key is not loaded fails here
+mkdir -p "$staging"
+mount -t tmpfs -o size=1m,mode=0755 sauvegarde "$staging"
+for name in "${datasets[@]}"; do
+    target="$staging/${name#"$pool"/}"
+    mkdir -p "$target"
+    mount -t zfs -o ro "$name@$snapshot" "$target"
+done
+
+restic unlock
+# restic's own cache (the service folder is in the snapshot) carries a
+# CACHEDIR.TAG; large packs mean fewer files in Google Drive
+restic backup /source --host "$host" --exclude-caches --pack-size 64 --json --quiet > "$directory/summary.json"
+added=$(python3 -c '
+import json
+import sys
+
+for line in sys.stdin:
+    try:
+        message = json.loads(line)
+    except ValueError:
+        continue
+    if message.get("message_type") == "summary":
+        print(message.get("data_added", 0))
+' < "$directory/summary.json" | tail -n 1)
+added=${added:-0}
+release
+
+# Once a week: forget old snapshots, then read back a part of the repository
+if [ "$(date +%u)" = 7 ]; then
+    restic forget --host "$host" "${retention[@]}" --prune
+    restic check --read-data-subset 2%
+fi
+
+# The repository's size in Google Drive and its snapshot count, for Vigie's
+# Backups dashboard: after the weekly prune, and when they were never read
+# (restic stats reads the whole index). In their own file, kept between runs;
+# failing to read them does not fail the backup
+if [ "$(date +%u)" = 7 ] || [ ! -e "$textfile/sauvegarde_repository.prom" ]; then
+    mkdir -p "$textfile"
+    if restic stats --mode raw-data --json > "$directory/stats.json" \
+        && python3 -c '
+import json
+import sys
+
+stats = json.load(sys.stdin)
+print("# HELP sauvegarde_repository_size_bytes Size of the restic repository in Google Drive, compressed and encrypted.")
+print("# TYPE sauvegarde_repository_size_bytes gauge")
+print("sauvegarde_repository_size_bytes", int(stats["total_size"]))
+print("# HELP sauvegarde_repository_snapshots Snapshots kept in the restic repository.")
+print("# TYPE sauvegarde_repository_snapshots gauge")
+print("sauvegarde_repository_snapshots", int(stats["snapshots_count"]))
+' < "$directory/stats.json" > "$textfile/sauvegarde_repository.prom.$$"; then
+        mv "$textfile/sauvegarde_repository.prom.$$" "$textfile/sauvegarde_repository.prom"
+    else
+        rm -f "$textfile/sauvegarde_repository.prom.$$"
+        echo "Could not read the repository's size"
+    fi
+fi

@@ -18,6 +18,8 @@
   ansible.builtin.import_playbook: services/etat/deploy.yml
 - name: Metrics exporters and log shipper
   ansible.builtin.import_playbook: services/metriques/deploy.yml
+- name: Backup to Google Drive
+  ansible.builtin.import_playbook: services/sauvegarde/deploy.yml
 - name: Vigie
   ansible.builtin.import_playbook: services/vigie/deploy.yml
 - name: HA-Linky

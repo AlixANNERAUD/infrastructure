@@ -1,0 +1,33 @@
+---
+# Backup to Google Drive (services/sauvegarde): each night, one atomic ZFS
+# snapshot of these datasets and of the datasets below them, read by restic.
+# Entries are shell patterns matched against dataset names; an excluded
+# dataset takes its children with it. Left out on purpose: the media library
+# (downloaded again by Radarr and Sonarr), Docker's images (ix-apps/docker),
+# camera recordings and temporary datasets.
+sauvegarde_directory: Sauvegarde
+sauvegarde_pool: Donnees
+sauvegarde_datasets:
+  - Donnees/Applications
+  - Donnees/Applications_chiffrees
+  - Donnees/Sauvegardes
+  - Donnees/Utilisateurs   # being moved into Nextcloud (Nuage)
+  - Donnees/Musique
+  - Donnees/Videos
+  - Donnees/ix-apps/app_configs   # TrueNAS Apps settings
+  - Donnees/ix-apps/app_mounts    # TrueNAS Apps volumes
+  - Donnees/.system/configs-*     # TrueNAS' own configuration backups
+sauvegarde_excluded_datasets:
+  - Donnees/ix-apps/app_mounts/gitea   # former Gitea, replaced by Applications_chiffrees/Gitea
+
+# Google keeps uploads under 750 GB a day per account: 8 MiB/s stays below
+sauvegarde_bandwidth_limit: 8M
+# Folder of the restic repository in Google Drive
+sauvegarde_remote_path: Sauvegardes/Bruxelles
+# TrueNAS cron schedule (local time)
+sauvegarde_schedule:
+  minute: "30"
+  hour: "1"
+  dom: "*"
+  month: "*"
+  dow: "*"
