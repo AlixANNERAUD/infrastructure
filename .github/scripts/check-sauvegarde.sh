@@ -148,9 +148,11 @@ for path in /source/Applications/app.txt /source/Applications/Nuage/User_data/ph
         exit 1
     fi
 done
-for path in Mediatheque gitea docker; do
-    if grep -q "/$path" <<< "$listed"; then
-        echo "$path is backed up: $(grep "/$path" <<< "$listed")"
+# Their files: an excluded child dataset still leaves its empty mount point
+# folder in its parent's snapshot
+for file in film.txt repo.txt image.txt; do
+    if grep -q "/$file\$" <<< "$listed"; then
+        echo "$file is backed up: $(grep "/$file\$" <<< "$listed")"
         exit 1
     fi
 done

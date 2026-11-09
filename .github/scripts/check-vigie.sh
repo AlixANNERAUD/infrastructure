@@ -463,6 +463,9 @@ check(
         "containers-luxembourg": "http://cadvisor:8080/metrics",
         "node-bruxelles": "https://metriques.bruxelles.anneraud.fr/node/metrics",
         "containers-bruxelles": "https://metriques.bruxelles.anneraud.fr/containers/metrics",
+        # Gatus instances, by their alias in the proxy network
+        "gatus-anneraud": "http://gatus-anneraud:8080/metrics",
+        "gatus-derapage": "http://gatus-derapage:8080/metrics",
     },
     f"scrape targets are {urls}",
 )
