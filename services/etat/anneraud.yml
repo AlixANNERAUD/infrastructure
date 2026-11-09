@@ -432,6 +432,16 @@ endpoints:
     alerts:
       - type: homeassistant
 
+  - name: Vulnérabilités (nanobom)
+    group: Services
+    url: "https://nanobom.anneraud.fr/healthz"
+    interval: 10m
+    conditions:
+      - "[STATUS] == 200"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+    alerts:
+      - type: homeassistant
+
   - name: Databasus
     group: Administration
     url: "https://databasus.anneraud.fr:443/api/v1/system/health"

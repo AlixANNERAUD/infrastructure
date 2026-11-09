@@ -1,0 +1,27 @@
+---
+# nanobom: SBOM vulnerability tracker. CI pipelines upload their SBOMs to it
+# (nanobom-action) and it checks them against OSV every night. Its SQLite
+# database lives in data/. Create the first administrator once deployed:
+#   docker exec vulnerabilites /app/nanobom create-administrator --username <name>
+- name: Deploy nanobom
+  hosts: vulnerabilites
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+    - ../../vault/cloudflare/vault.yml
+  vars:
+    vulnerabilites_host: nanobom.anneraud.fr
+  roles:
+    - role: compose_service
+      vars:
+        compose_service_name: vulnerabilites
+        compose_service_directories:
+          # The image runs as 65532
+          - path: data
+            owner: 65532
+            group: 65532
+            mode: "0700"
+        compose_service_environment:
+          HOST: "{{ vulnerabilites_host }}"
+        compose_service_dns_records:
+          - record: "{{ vulnerabilites_host }}"

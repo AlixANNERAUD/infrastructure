@@ -44,6 +44,8 @@
   ansible.builtin.import_playbook: services/translate/deploy.yml
 - name: Vault Xila
   ansible.builtin.import_playbook: services/secrets_xila/deploy.yml
+- name: Vulnérabilités (nanobom)
+  ansible.builtin.import_playbook: services/vulnerabilites/deploy.yml
 - name: Wakapi
   ansible.builtin.import_playbook: services/wakapi/deploy.yml
 - name: Zitadel
