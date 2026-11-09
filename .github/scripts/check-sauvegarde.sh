@@ -92,6 +92,9 @@ write .system/configs-0123 config.db truenas
 # a local folder served by the same rclone
 mkdir -p "$service/cache" "$service/logs" "$service/repository"
 chmod 0777 "$service/repository"
+# restic runs as root without DAC_OVERRIDE: its cache must be root's, as
+# the role creates it on Bruxelles
+sudo chown root:root "$service/cache"
 cp services/sauvegarde/compose.yml "$service/"
 cat > "$service/.env" <<EOF
 REMOTE_PATH=unused

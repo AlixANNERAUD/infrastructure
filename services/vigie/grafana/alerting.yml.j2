@@ -487,8 +487,9 @@ groups:
               refId: query
               instant: true
               range: false
-              # The newest certificate of each name: a renewed one replaces it
-              expr: max by (host, cn) (traefik_tls_certs_not_after{cn!="TRAEFIK DEFAULT CERT"}) - time()
+              # The newest certificate of each name (a renewed one replaces
+              # it), only those expiring within 14 days
+              expr: (max by (host, cn) (traefik_tls_certs_not_after{cn!="TRAEFIK DEFAULT CERT"}) - time()) < 1209600
           - refId: threshold
             datasourceUid: __expr__
             model:
