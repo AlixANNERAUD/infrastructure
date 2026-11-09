@@ -44,6 +44,7 @@
         owner: root
         group: root
         mode: "0644"
+      register: openbao_configuration
 
     - name: Check existing TLS certificate and key
       ansible.builtin.stat:
@@ -79,6 +80,7 @@
           - subjectAltName=DNS:vault.xila.dev
       when: not openbao_tls_files.results[0].stat.exists
       changed_when: true
+      register: openbao_certificate
 
     - name: Protect OpenBao TLS files
       ansible.builtin.file:
@@ -97,14 +99,18 @@
         content: |
           BAO_API_ADDR={{ openbao_api_url }}
 
+    # A new container starts sealed, and this OpenBao has no automatic unseal:
+    # it is only recreated when its mounted configuration or certificate
+    # changed (Compose itself recreates it when compose.yml or .env change)
     - name: Deploy OpenBao
       community.docker.docker_compose_v2:
         project_src: "{{ openbao_root_directory }}"
         pull: missing
-        recreate: always
+        recreate: "{{ 'always' if openbao_configuration is changed or openbao_certificate is changed else 'auto' }}"
         state: present
         wait: true
         wait_timeout: 120
+      notify: Remind to unseal OpenBao
 
     - name: Update Cloudflare DNS record for OpenBao
       community.general.cloudflare_dns:
@@ -115,3 +121,10 @@
         record: vault.xila.dev
         value: "{{ local_dns_host }}"
         proxied: false
+
+  handlers:
+    - name: Remind to unseal OpenBao
+      ansible.builtin.debug:
+        msg: >-
+          OpenBao's container was created or recreated: it stays sealed until someone unseals it
+          ({{ openbao_api_url }}).
