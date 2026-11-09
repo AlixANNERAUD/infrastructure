@@ -67,6 +67,9 @@
           - source: grafana/dashboards/backups.json
             destination: grafana/dashboards/backups.json
             restart: false
+          - source: grafana/dashboards/availability.json
+            destination: grafana/dashboards/availability.json
+            restart: false
         compose_service_environment:
           GRAFANA_ADMIN_PASSWORD: "{{ vigie_grafana_admin_password }}"
           PROXY_NETWORK: "{{ proxy_network }}"

@@ -26,3 +26,9 @@ vigie_latency_excluded_services:
   - qbittorrent
   - meshcentral      # remote desktop sessions
   - open-webui       # streamed model answers
+
+# Gatus instances (services/etat) VictoriaMetrics scrapes when they run on
+# Vigie's host: inventory group, alias in the proxy network, status page
+vigie_gatus_instances:
+  - [etat_anneraud, gatus-anneraud, etat.anneraud.fr]
+  - [status_dera_page, gatus-derapage, status.dera.page]

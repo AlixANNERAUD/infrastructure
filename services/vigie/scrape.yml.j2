@@ -20,6 +20,17 @@ scrape_configs:
       - targets: ["{{ hostvars['bruxelles'].traefik_dashboard_host }}"]
         labels:
           host: bruxelles
+{% for group, alias, page in vigie_gatus_instances if inventory_hostname in groups[group] | default([]) %}
+
+  # Gatus of {{ page }} (services/etat), by its alias in the proxy network
+  - job_name: {{ alias }}
+    metrics_path: /metrics
+    scheme: http
+    static_configs:
+      - targets: ["{{ alias }}:8080"]
+        labels:
+          page: {{ page }}
+{% endfor %}
 {% for host in groups['protection'] | sort %}
 {%   set local = host == inventory_hostname %}
 
@@ -56,7 +67,7 @@ scrape_configs:
     metric_relabel_configs:
       # Only what the Hosts dashboard and alerts read
       - source_labels: [__name__]
-        regex: container_(cpu_usage_seconds_total|memory_working_set_bytes|memory_rss|spec_memory_limit_bytes|network_(receive|transmit)_bytes_total|fs_(reads|writes)_bytes_total)|machine_(cpu_cores|memory_bytes)
+        regex: container_(cpu_usage_seconds_total|memory_working_set_bytes|memory_rss|spec_memory_limit_bytes|network_(receive|transmit)_bytes_total|fs_(reads|writes)_bytes_total|start_time_seconds)|machine_(cpu_cores|memory_bytes)
         action: keep
       # scope="host": the root container, whose network is the host's
       - source_labels: [id]

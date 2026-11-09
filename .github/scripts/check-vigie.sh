@@ -383,11 +383,18 @@ for step in range(17):
         print(f"traefik_router_requests_total{{{labels}}} {count} {timestamp}")
     labels = 'name="crowdsecurity/http-probing",job="crowdsec-luxembourg",host="luxembourg"'
     print(f"cs_bucket_overflowed_total{{{labels}}} {step * 3} {timestamp}")
+    # Certificates: expiring.test expires in 5 days (the certificate rule must
+    # fire), renewed.test was renewed (its old serial expires in 5 days too,
+    # the new one in 80: it must not), and Traefik's default certificate is left out
+    for cn, serial, days in (("expiring.test", "1", 5), ("renewed.test", "2", 5), ("renewed.test", "3", 80),
+                             ("TRAEFIK DEFAULT CERT", "4", 1)):
+        labels = f'cn="{cn}",serial="{serial}",sans="{cn}",host="luxembourg"'
+        print(f"traefik_tls_certs_not_after{{{labels}}} {now + days * 86400} {timestamp}")
 EOF
 curl -fsS --data-binary "@$directory/samples.prom" "$metrics/api/v1/import/prometheus"
 curl -fsS "$metrics/internal/force_flush" > /dev/null
 
-# Every query of the protection and backup dashboards must be valid MetricsQL
+# Every query of the protection, backup and availability dashboards must be valid MetricsQL
 uv run python - "$metrics" <<'EOF'
 import json
 import sys
@@ -397,11 +404,11 @@ import urllib.request
 from pathlib import Path
 
 failures = []
-for name in ("crowdsec.json", "rate_limits.json", "backups.json"):
+for name in ("crowdsec.json", "rate_limits.json", "backups.json", "availability.json"):
     panels = json.loads(Path("services/vigie/grafana/dashboards", name).read_text())["panels"]
     for panel in panels:
         for target in panel.get("targets", []):
-            query = target["expr"].replace("$host", ".*").replace("$__rate_interval", "2m")
+            query = target["expr"].replace("$host", ".*").replace("$page", ".*").replace("$__rate_interval", "2m")
             query = query.replace("$__interval", "1m").replace("$__range", "1h")
             url = sys.argv[1] + "/api/v1/query?" + urllib.parse.urlencode({"query": query})
             try:
@@ -411,7 +418,7 @@ for name in ("crowdsec.json", "rate_limits.json", "backups.json"):
                 status = error.read().decode()
             if status != "success":
                 failures.append(f"{name}, {panel['title']}: {status}")
-print("\n".join(failures) or "The protection and backup dashboards' queries are valid")
+print("\n".join(failures) or "The protection, backup and availability dashboards' queries are valid")
 sys.exit(1 if failures else 0)
 EOF
 
@@ -456,6 +463,9 @@ check(
         "containers-luxembourg": "http://cadvisor:8080/metrics",
         "node-bruxelles": "https://metriques.bruxelles.anneraud.fr/node/metrics",
         "containers-bruxelles": "https://metriques.bruxelles.anneraud.fr/containers/metrics",
+        # Gatus instances, by their alias in the proxy network
+        "gatus-anneraud": "http://gatus-anneraud:8080/metrics",
+        "gatus-derapage": "http://gatus-derapage:8080/metrics",
     },
     f"scrape targets are {urls}",
 )
@@ -484,6 +494,8 @@ logs_dashboard = load("dashboard-traefik-logs.json").get("dashboard", {})
 check(logs_dashboard.get("uid") == "traefik-logs", "dashboard traefik-logs is missing")
 backups_dashboard = load("dashboard-backups.json").get("dashboard", {})
 check(backups_dashboard.get("uid") == "backups", "dashboard backups is missing")
+availability_dashboard = load("dashboard-availability.json").get("dashboard", {})
+check(availability_dashboard.get("uid") == "availability", "dashboard availability is missing")
 
 groups = load("rules.json").get("data", {}).get("groups", [])
 
@@ -500,7 +512,12 @@ expected_groups = {
         "CrowdSec metrics missing", "CrowdSec bouncer silent", "CrowdSec reads no access log",
         "CrowdSec alert spike", "Login rate limit spike",
     },
-    "Hosts": {"Host disk space low", "ZFS pool unhealthy", "Host memory high", "Host CPU high", "Host metrics missing"},
+    "Hosts": {
+        "Host disk space low", "ZFS pool unhealthy", "Host memory high", "Host CPU high", "Host metrics missing",
+        "Host temperature high", "Host disk filling up", "Host out of memory", "Host clock not synchronised",
+        "Host clock skew", "Container restarting",
+    },
+    "Certificates": {"Certificate expiring"},
     # Bruxelles is in the sauvegarde group: its rules are rendered
     "Backups": {"Backup failed", "Backup stale"},
 }
@@ -548,6 +565,11 @@ alerting("Login rate limit spike", "router", ["vaultwarden-login@file"], ["vault
 # The backup result above, read by node_exporter on Luxembourg here
 alerting("Backup failed", "host", ["luxembourg"], ["luxembourg", "failed"])
 alerting("Backup stale", "host", ["luxembourg"], ["luxembourg", "2d"])
+# The sample certificates above: only expiring.test, renewed.test's new one counts
+alerting("Certificate expiring", "cn", ["expiring.test"], ["expiring.test", "luxembourg", "4d"])
+# Every container of this check started once
+restarting = rules.get("Container restarting", {}).get("state")
+check(restarting == "inactive", f"rule Container restarting is {restarting}")
 # Both wait for CrowdSec to answer, which it does not here
 for name in ("CrowdSec bouncer silent", "CrowdSec reads no access log"):
     state = rules.get(name, {}).get("state")
@@ -584,14 +606,15 @@ def query(expression):
 
 
 # Every query of the Hosts dashboard parses and, once the exporters have been scraped twice, returns
-# series (ZFS ones only with a pool)
+# series (ZFS ones only with a pool, temperatures only on a machine with sensors)
 panels = [panel for panel in json.loads(Path("services/vigie/grafana/dashboards/hosts.json").read_text())["panels"] if panel["type"] != "row"]
 for panel in panels:
     for target in panel.get("targets", []):
-        expression = target["expr"].replace("$__rate_interval", "2m").replace("$host", ".*").replace("$app", ".*")
+        expression = target["expr"].replace("$__rate_interval", "2m").replace("$__range", "1h")
+        expression = expression.replace("$host", ".*").replace("$app", ".*")
         result = query(expression)
         check(result.get("status") == "success", f"panel {panel['title']}: {result.get('error')}")
-        if zfs_pool or not re.search(r"zfs", expression):
+        if (zfs_pool or not re.search(r"zfs", expression)) and "hwmon" not in expression:
             check(bool(result.get("data", {}).get("result")), f"panel {panel['title']} has no data: {expression}")
 # Containers are named after their Compose project (app) and container
 grafana = query(f'container_memory_working_set_bytes{{host="luxembourg", app="{project}", container="{project}-grafana-1"}}')
@@ -613,7 +636,7 @@ for _ in $(seq 48); do
     curl -sS "$grafana/api/datasources/uid/victoriametrics/health" > "$directory/datasource.json" || true
     curl -sS "$grafana/api/datasources/uid/victorialogs/health" > "$directory/datasource-logs.json" || true
     curl -sS "$grafana/api/plugins/victoriametrics-logs-datasource/settings" > "$directory/plugin-logs.json" || true
-    for uid in traefik crowdsec rate-limits hosts traefik-logs backups; do
+    for uid in traefik crowdsec rate-limits hosts traefik-logs backups availability; do
         curl -sS "$grafana/api/dashboards/uid/$uid" > "$directory/dashboard-$uid.json" || true
     done
     curl -fsS "$grafana/api/prometheus/grafana/api/v1/rules" > "$directory/rules.json" || true
