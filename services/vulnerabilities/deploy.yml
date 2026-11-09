@@ -12,7 +12,7 @@
     - ../../vault/vulnerabilities/vault.yml
     - ../../vault/cloudflare/vault.yml
   vars:
-    vulnerabilities_host: nanobom.anneraud.fr
+    vulnerabilities_host: vulnerabilities.xila.dev
   pre_tasks:
     # It goes into nanobom's database URL as it is
     - name: Check the database password
