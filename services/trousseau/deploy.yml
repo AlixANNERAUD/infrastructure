@@ -1,0 +1,111 @@
+---
+# Trousseau: OpenBao on Luxembourg, behind the VPN. It signs short-lived SSH
+# certificates after a Zitadel login (mise ssh:login) and the hosts' keys.
+# The stack initializes itself on its first start (config.hcl.j2), then
+# OpenTofu (opentofu/trousseau, run from the controller over the VPN)
+# configures it. See the documentation's Trousseau page.
+- name: Deploy Trousseau
+  hosts: trousseau
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+    - ../../vault/trousseau/vault.yml
+    - ../../vault/cloudflare/vault.yml
+  vars:
+    trousseau_host: trousseau.anneraud.fr
+    trousseau_api_url: "https://{{ trousseau_host }}"
+    # OpenBao runs as this user, which owns its data
+    trousseau_user: 8200
+    # Changes with the seal key, as OpenBao requires
+    trousseau_seal_key_id: "{{ (trousseau_seal_key | default('') | hash('sha256'))[:12] }}"
+    # Docker's range, where Traefik connects from: its X-Forwarded-For is trusted
+    trousseau_proxy_networks: [172.16.0.0/12]
+    trousseau_opentofu_path: "{{ playbook_dir }}/../../opentofu/trousseau"
+    trousseau_state_path: "{{ playbook_dir }}/../../vault/trousseau/opentofu.tfstate"
+  pre_tasks:
+    - name: Check the Trousseau secrets
+      ansible.builtin.assert:
+        that:
+          - trousseau_seal_key | default('') is match('^[0-9a-f]{64}$')
+          - trousseau_automation_secret_id | default('') | length >= 32
+          - trousseau_state_passphrase | default('') | length >= 16
+          - trousseau_administrator_email | default('') is search('@')
+        fail_msg: >-
+          vault/trousseau/vault.yml needs trousseau_seal_key (openssl rand -hex 32),
+          trousseau_automation_secret_id (openssl rand -hex 32), trousseau_state_passphrase
+          (openssl rand -base64 32) and trousseau_administrator_email (the Zitadel email allowed to administer it):
+          see the documentation's Trousseau page.
+        quiet: true
+
+    # Without the Zitadel credentials the client id is empty: OpenTofu then
+    # leaves the Zitadel login out
+    - name: Get Trousseau's Zitadel login
+      ansible.builtin.include_role:
+        name: zitadel
+        tasks_from: login
+      vars:
+        zitadel_login_application: trousseau
+        zitadel_login_environment_file: "{{ services_root }}/trousseau/.env"
+        zitadel_login_client_id_variable: OIDC_CLIENT_ID
+        zitadel_login_client_secret_variable: OIDC_CLIENT_SECRET
+
+  roles:
+    - role: compose_service
+      vars:
+        compose_service_name: trousseau
+        compose_service_user: "{{ trousseau_user }}"
+        compose_service_directories:
+          - path: data
+            owner: "{{ trousseau_user }}"
+            group: "{{ trousseau_user }}"
+            mode: "0700"
+        compose_service_templates:
+          - source: config.hcl.j2
+            destination: config.hcl
+        compose_service_environment:
+          HOST: "{{ trousseau_host }}"
+          PROXY_NETWORK: "{{ proxy_network }}"
+          SEAL_KEY: "{{ trousseau_seal_key }}"
+          AUTOMATION_SECRET_ID: "{{ trousseau_automation_secret_id }}"
+          # Not read by OpenBao: kept so that a failed Zitadel provisioning
+          # reuses them (zitadel role, login)
+          OIDC_CLIENT_ID: "{{ zitadel_login_client_id }}"
+          OIDC_CLIENT_SECRET: "{{ zitadel_login_client_secret }}"
+        compose_service_dns_records:
+          - record: "{{ trousseau_host }}"
+            visibility: private
+
+  tasks:
+    # The static seal unseals it at every start; the first start also
+    # initializes it
+    - name: Wait for OpenBao to be unsealed
+      ansible.builtin.command:
+        argv: [docker, exec, trousseau, bao, status, -address=http://127.0.0.1:8200]
+      register: trousseau_status
+      until: trousseau_status.rc == 0
+      retries: 24
+      delay: 5
+      changed_when: false
+
+    # From the controller, over the VPN, with the AppRole of the first start
+    - name: Configure OpenBao
+      ansible.builtin.include_role:
+        name: opentofu
+      vars:
+        opentofu_project_path: "{{ trousseau_opentofu_path }}"
+        opentofu_state_path: "{{ trousseau_state_path }}"
+        opentofu_variables:
+          address: "{{ trousseau_api_url }}"
+          oidc_client_id: "{{ zitadel_login_client_id }}"
+          automation_ssh_sources: "{{ automation_ssh_sources }}"
+        opentofu_secret_variables:
+          automation_secret_id: "{{ trousseau_automation_secret_id }}"
+          oidc_client_secret: "{{ zitadel_login_client_secret }}"
+          administrator_email: "{{ trousseau_administrator_email }}"
+          state_passphrase: "{{ trousseau_state_passphrase }}"
+
+    - name: Show the certificate authorities
+      ansible.builtin.debug:
+        msg:
+          - "Users: {{ opentofu_apply.outputs.user_certificate_authority.value }}"
+          - "Hosts: {{ opentofu_apply.outputs.host_certificate_authority.value }}"

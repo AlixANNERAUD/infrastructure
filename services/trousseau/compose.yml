@@ -1,0 +1,63 @@
+name: trousseau
+
+# Container logs are unbounded by default and would fill the disk
+x-logging: &logging
+  driver: local
+  options:
+    max-size: "20m"
+    max-file: "3"
+
+services:
+  # OpenBao: signs SSH certificates after a Zitadel login (opentofu/trousseau
+  # configures it). Reached only through Traefik, behind the internal
+  # allowlist; the API port is never published
+  openbao:
+    image: openbao/openbao:2.7.2
+    logging: *logging
+    container_name: trousseau
+    restart: unless-stopped
+    user: "${USER_ID}:${GROUP_ID}"
+    command: ["server", "-config=/openbao/config/config.hcl"]
+    environment:
+      # The image's entrypoint changes the folders' owner otherwise; deploy.yml
+      # creates them for this user
+      SKIP_CHOWN: "true"
+      SKIP_SETCAP: "true"
+      # Read once by the static seal and the first start (config.hcl)
+      SEAL_KEY: ${SEAL_KEY}
+      AUTOMATION_SECRET_ID: ${AUTOMATION_SECRET_ID}
+    volumes:
+      - ./config.hcl:/openbao/config/config.hcl:ro
+      - ./data:/openbao/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      proxy:
+        # Gatus checks its health by this name
+        aliases:
+          - trousseau
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
+      - traefik.http.routers.trousseau.rule=Host(`${HOST}`)
+      - traefik.http.routers.trousseau.entrypoints=web-secure
+      - traefik.http.routers.trousseau.tls=true
+      - traefik.http.routers.trousseau.tls.certresolver=letsencrypt
+      - traefik.http.routers.trousseau.middlewares=internal-allowlist@file
+      - traefik.http.services.trousseau.loadbalancer.server.port=8200
+    # Healthy once unsealed (bao status exits with 2 while sealed)
+    healthcheck:
+      test: ["CMD", "bao", "status", "-address=http://127.0.0.1:8200"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  proxy:
+    name: ${PROXY_NETWORK}
+    external: true

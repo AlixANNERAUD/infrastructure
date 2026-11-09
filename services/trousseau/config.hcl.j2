@@ -1,0 +1,94 @@
+# OpenBao server of services/trousseau, rendered by deploy.yml. Its web
+# interface is at {{ trousseau_api_url }}/ui, behind Traefik's internal
+# allowlist (LAN and VPN only)
+ui = true
+disable_mlock = true
+api_addr = {{ trousseau_api_url | to_json }}
+cluster_addr = "http://trousseau:8201"
+
+storage "raft" {
+  path    = "/openbao/data"
+  node_id = {{ inventory_hostname | to_json }}
+}
+
+# Plain HTTP inside the proxy network: Traefik terminates TLS. Client
+# addresses come from Traefik's X-Forwarded-For, trusted from Docker's range
+listener "tcp" {
+  address                            = "0.0.0.0:8200"
+  cluster_address                    = "0.0.0.0:8201"
+  tls_disable                        = true
+  x_forwarded_for_authorized_addrs   = {{ trousseau_proxy_networks | join(',') | to_json }}
+  x_forwarded_for_reject_not_present = false
+}
+
+# Unsealed at every start with the key of the Ansible vault, passed through
+# the environment: no manual unseal after a reboot. Its identifier follows the
+# key, so that changing the key is noticed (see the documentation's Trousseau
+# page before changing it)
+seal "static" {
+  current_key_id = {{ trousseau_seal_key_id | to_json }}
+  current_key    = "env://SEAL_KEY"
+}
+
+# Every request and response, secrets hashed, in the container's output
+audit "file" "stdout" {
+  options {
+    file_path = "stdout"
+  }
+}
+
+# First start only: the access deploy.yml's OpenTofu run needs (an AppRole
+# with the administration policy and the vault's secret id). OpenTofu
+# (opentofu/trousseau) configures everything else, the Zitadel login
+# included. The root token is revoked once this is done
+initialize "deploiement" {
+  request "administration-policy" {
+    operation = "update"
+    path      = "sys/policies/acl/administration"
+    data = {
+      policy = "path \"*\" { capabilities = [\"create\", \"read\", \"update\", \"patch\", \"delete\", \"list\", \"sudo\"] }"
+    }
+  }
+
+  request "approle" {
+    operation = "update"
+    path      = "sys/auth/approle"
+    data = {
+      type        = "approle"
+      description = "Deployments (services/trousseau/deploy.yml)"
+    }
+  }
+
+  request "deploiement-role" {
+    operation = "update"
+    path      = "auth/approle/role/deploiement"
+    data = {
+      token_policies     = ["administration"]
+      token_ttl          = "30m"
+      token_max_ttl      = "1h"
+      secret_id_ttl      = "0"
+      secret_id_num_uses = 0
+    }
+  }
+
+  request "deploiement-role-id" {
+    operation = "update"
+    path      = "auth/approle/role/deploiement/role-id"
+    data = {
+      role_id = "deploiement"
+    }
+  }
+
+  request "deploiement-secret-id" {
+    operation = "update"
+    path      = "auth/approle/role/deploiement/custom-secret-id"
+    data = {
+      secret_id = {
+        eval_source     = "env"
+        eval_type       = "string"
+        env_var         = "AUTOMATION_SECRET_ID"
+        require_present = true
+      }
+    }
+  }
+}

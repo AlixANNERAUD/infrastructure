@@ -232,11 +232,35 @@ jobs:
           CHECK_ZFS_POOL: sauvegarde-check
         run: .github/scripts/check-sauvegarde.sh
 
+  trousseau:
+    name: Trousseau
+    runs-on: ubuntu-latest
+    env:
+      TF_REGISTRY_CLIENT_TIMEOUT: "120"
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+
+      - uses: jdx/mise-action@v5.2.4
+        with:
+          env: false
+
+      - name: Install tools
+        run: |
+          uv sync --locked
+          uv run ansible-galaxy collection install -r requirements.yml
+
+      - name: Initialize OpenBao, configure it and log in with its certificates
+        run: .github/scripts/check-trousseau.sh
+
   # Single check required by the branch ruleset: add new jobs to `needs`
   required:
     name: required
     if: always()
-    needs: [ansible, compose, molecule, molecule-zitadel, opentofu, protection, sauvegarde, traefik-routes, vigie]
+    needs: [ansible, compose, molecule, molecule-zitadel, opentofu, protection, sauvegarde, traefik-routes, trousseau, vigie]
     runs-on: ubuntu-latest
     steps:
       - name: Check that all required jobs succeeded

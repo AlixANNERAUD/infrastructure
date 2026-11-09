@@ -42,6 +42,8 @@
   ansible.builtin.import_playbook: services/telechargement/deploy.yml
 - name: Tolgee
   ansible.builtin.import_playbook: services/translate/deploy.yml
+- name: Trousseau
+  ansible.builtin.import_playbook: services/trousseau/deploy.yml
 - name: Vault Xila
   ansible.builtin.import_playbook: services/secrets_xila/deploy.yml
 - name: Vulnerabilities (nanobom)

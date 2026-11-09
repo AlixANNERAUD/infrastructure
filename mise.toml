@@ -1,5 +1,7 @@
 [tools]
 opentofu = "1.13.2"
+# OpenBao's CLI, for Trousseau (mise ssh:login)
+"aqua:openbao/openbao/bao" = "2.7.2"
 
 [env]
 # Ansible runs this script for the vault password: it keeps it in the system keyring
@@ -9,6 +11,8 @@ ANSIBLE_VAULT_PASSWORD_FILE = "{{ config_root }}/vault-password-client.py"
 # Shortcuts: `mise run <task> [arguments]`, or `mise <task>` when no mise command has that name.
 # Tasks run with the tools above on PATH, so OpenTofu is there for the Zitadel role.
 EDITOR = "zed --wait"
+# Trousseau (services/trousseau), for bao and mise ssh:login; over the VPN
+BAO_ADDR = "https://trousseau.anneraud.fr"
 
 [tasks.setup]
 description = "Install the pinned tools and Ansible collections"
@@ -47,3 +51,19 @@ run = "uv run ansible-vault edit"
 [tasks."vault:create"]
 description = "Create a new vault file: mise vault:create vault/<service>/vault.yml"
 run = "uv run ansible-vault create"
+
+[tasks."ssh:login"]
+description = "Log in to Trousseau through Zitadel and get SSH certificates for a working day"
+run = """
+set -eu
+# A browser window for Zitadel, unless the token of an earlier login still works
+bao token lookup > /dev/null 2>&1 || bao login -no-print -method=oidc callbackmode=direct
+key=${SSH_KEY:-$HOME/.ssh/id_ed25519}
+bao write -field=signed_key ssh-utilisateurs/sign/alix public_key=@"$key.pub" > "$key-cert.pub"
+ssh-keygen -L -f "$key-cert.pub" | grep -E 'Principals|Valid' -A1
+# Ansible's key, when this machine has one
+if [ -f "$HOME/.ssh/ansible.pub" ]; then
+    bao write -field=signed_key ssh-utilisateurs/sign/ansible public_key=@"$HOME/.ssh/ansible.pub" > "$HOME/.ssh/ansible-cert.pub"
+    echo "Ansible's key is signed too"
+fi
+"""

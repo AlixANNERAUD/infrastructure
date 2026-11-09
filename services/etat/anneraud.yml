@@ -478,6 +478,18 @@ endpoints:
     alerts:
       - type: homeassistant
 
+  # Checked directly, by its alias in the proxy network: 200 only once
+  # unsealed (503 while sealed)
+  - name: Trousseau (OpenBao)
+    group: Administration
+    url: "http://trousseau:8200/v1/sys/health"
+    interval: 5m
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].sealed == false"
+    alerts:
+      - type: homeassistant
+
   - name: Bruxelles
     url: "icmp://local.bruxelles.anneraud.fr"
     group: Infrastructure

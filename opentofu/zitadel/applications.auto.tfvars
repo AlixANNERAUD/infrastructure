@@ -26,6 +26,17 @@ applications = {
     redirect_uris  = ["https://archive.anneraud.fr/accounts/oidc/zitadel/login/callback/"]
   }
 
+  # Trousseau (OpenBao, trousseau.anneraud.fr): its web interface and
+  # bao login (callbackmode=direct) both come back to its own address
+  trousseau = {
+    project        = "Trousseau"
+    authentication = "client_secret"
+    redirect_uris = [
+      "https://trousseau.anneraud.fr/ui/vault/auth/oidc/oidc/callback",
+      "https://trousseau.anneraud.fr/v1/auth/oidc/oidc/callback",
+    ]
+  }
+
   # Semaphore (deploiement.anneraud.fr): a confidential client
   deploiement = {
     project        = "Deploiement"
