@@ -178,6 +178,193 @@ groups:
         annotations:
           summary: "{% raw %}{{ if .Labels.host }}{{ .Labels.job }} cannot be scraped{{ else }}No host metrics at all: VictoriaMetrics scrapes no exporter{{ end }}{% endraw %}"
 
+      # Every hardware sensor (hwmon): at the drive's own warning threshold
+      # (NVMe drives report one), 85 °C for sensors without one (CPUs)
+      - uid: hosts-temperature-high
+        title: Host temperature high
+        condition: threshold
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: query
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model:
+              refId: query
+              instant: true
+              range: false
+              expr: >-
+                (
+                  (node_hwmon_temp_celsius >= on (host, chip, sensor) (node_hwmon_temp_max_celsius > 0))
+                  or (node_hwmon_temp_celsius > 85 unless on (host, chip, sensor) (node_hwmon_temp_max_celsius > 0))
+                )
+                * on (host, chip) group_left (chip_name) node_hwmon_chip_names
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: query
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+        annotations:
+          summary: "{% raw %}{{ .Labels.chip_name }} {{ .Labels.sensor }} on {{ .Labels.host }} is at {{ printf \"%.0f\" .Values.query.Value }} °C{% endraw %}"
+
+      # Time left before a filesystem or a ZFS pool is full at the rate of the
+      # last two days (node-mixin's NodeFilesystemSpaceFillingUp, over a week):
+      # pools through their root dataset, whose free space is the pool's
+      - uid: hosts-disk-filling-up
+        title: Host disk filling up
+        condition: threshold
+        for: 1h
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: query
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model:
+              refId: query
+              instant: true
+              range: false
+              expr: >-
+                (
+                  node_filesystem_avail_bytes{fstype!~"zfs|tmpfs|ramfs|squashfs|erofs|iso9660|nfs.*|cifs|fuse.*"}
+                  / (-deriv(node_filesystem_avail_bytes{fstype!~"zfs|tmpfs|ramfs|squashfs|erofs|iso9660|nfs.*|cifs|fuse.*"}[2d]) > 0)
+                  and on (host, device, mountpoint) node_filesystem_readonly == 0
+                )
+                or
+                (
+                  node_filesystem_avail_bytes{fstype="zfs", device!~".*/.*"}
+                  / (-deriv(node_filesystem_avail_bytes{fstype="zfs", device!~".*/.*"}[2d]) > 0)
+                )
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: query
+              conditions:
+                - evaluator: {type: lt, params: [604800]}
+        annotations:
+          summary: "{% raw %}{{ .Labels.mountpoint }} on {{ .Labels.host }} will be full in {{ humanizeDuration .Values.query.Value }} at the rate of the last two days{% endraw %}"
+
+      # The kernel's OOM killer ended processes: the kernel log names them
+      - uid: hosts-oom-kill
+        title: Host out of memory
+        condition: threshold
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: query
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model:
+              refId: query
+              instant: true
+              range: false
+              expr: increase(node_vmstat_oom_kill[10m])
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: query
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+        annotations:
+          summary: "{% raw %}The kernel of {{ .Labels.host }} killed {{ printf \"%.0f\" .Values.query.Value }} process(es) for lack of memory: see dmesg{% endraw %}"
+
+      # node-mixin's NodeClockNotSynchronising: the kernel no longer gets the
+      # time from NTP and its error estimate has grown
+      - uid: hosts-clock-not-synchronised
+        title: Host clock not synchronised
+        condition: threshold
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: query
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model:
+              refId: query
+              instant: true
+              range: false
+              expr: node_timex_maxerror_seconds >= 16 and on (host) min_over_time(node_timex_sync_status[5m]) == 0
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: query
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+        annotations:
+          summary: "{% raw %}The clock of {{ .Labels.host }} is no longer synchronised (error up to {{ humanizeDuration .Values.query.Value }}): logins and certificates depend on it{% endraw %}"
+
+      # node-mixin's NodeClockSkewDetected: more than 50 ms off, and not
+      # converging back
+      - uid: hosts-clock-skew
+        title: Host clock skew
+        condition: threshold
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: query
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model:
+              refId: query
+              instant: true
+              range: false
+              expr: >-
+                abs(
+                  (node_timex_offset_seconds > 0.05 and deriv(node_timex_offset_seconds[5m]) >= 0)
+                  or (node_timex_offset_seconds < -0.05 and deriv(node_timex_offset_seconds[5m]) <= 0)
+                )
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: query
+              conditions:
+                - evaluator: {type: gt, params: [0.05]}
+        annotations:
+          summary: "{% raw %}The clock of {{ .Labels.host }} is {{ humanizeDuration .Values.query.Value }} off{% endraw %}"
+
+      # A container started 3 times within an hour (cAdvisor's start time):
+      # a crash loop; one deploy recreates it once
+      - uid: hosts-container-restarting
+        title: Container restarting
+        condition: threshold
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: query
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model:
+              refId: query
+              instant: true
+              range: false
+              expr: max by (host, app, container) (changes(container_start_time_seconds{container!=""}[1h]))
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: query
+              conditions:
+                - evaluator: {type: gt, params: [2]}
+        annotations:
+          summary: "{% raw %}{{ .Labels.container }} on {{ .Labels.host }} started {{ printf \"%.0f\" .Values.query.Value }} times in the last hour{% endraw %}"
+
   - orgId: 1
     name: Traefik
     folder: Vigie
@@ -277,6 +464,41 @@ groups:
                 - evaluator: {type: lt, params: [1]}
         annotations:
           summary: "{% raw %}{{ if .Labels.host }}Traefik on {{ .Labels.host }} cannot be scraped{{ else }}No Traefik metrics at all: VictoriaMetrics scrapes nothing{{ end }}{% endraw %}"
+
+  # Certificates both Traefik instances serve, internal names included (Gatus
+  # only checks the public endpoints). Let's Encrypt renews them 30 days
+  # ahead: one with less than 14 days left failed to renew
+  - orgId: 1
+    name: Certificates
+    folder: Vigie
+    interval: {{ vigie_alert_evaluation_interval }}
+    rules:
+      - uid: certificates-expiring
+        title: Certificate expiring
+        condition: threshold
+        for: 1h
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: query
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: victoriametrics
+            model:
+              refId: query
+              instant: true
+              range: false
+              # The newest certificate of each name: a renewed one replaces it
+              expr: max by (host, cn) (traefik_tls_certs_not_after{cn!="TRAEFIK DEFAULT CERT"}) - time()
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: query
+              conditions:
+                - evaluator: {type: lt, params: [1209600]}
+        annotations:
+          summary: "{% raw %}The certificate of {{ .Labels.cn }} on {{ .Labels.host }} expires in {{ humanizeDuration .Values.query.Value }}: its renewal failed{% endraw %}"
 {% if groups['sauvegarde'] | default([]) | length > 0 %}
 
   # Backup to Google Drive (services/sauvegarde): its script writes its result

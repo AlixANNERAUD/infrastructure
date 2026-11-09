@@ -1,3 +1,6 @@
+# Results on /metrics for Vigie (services/vigie); Traefik keeps the path internal
+metrics: true
+
 storage:
   type: postgres
   path: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
