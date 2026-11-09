@@ -8,12 +8,12 @@ Ansible playbooks and Docker Compose files that deploy Alix's self-hosted servic
 - `hosts/workstations/mcp.yml` — points the owner's MCP clients (Claude Code, Codex, OpenCode, Antigravity) at MCPHub, run on the workstation itself.
 - `hosts/<host>/` — host-level playbooks (packages, networking, `hosts/bruxelles/nextcloud_after_update.yml`); `hosts/bootstrap.yml` and `hosts/replication.yml` apply to several hosts.
 - `dns/<zone>.yml` — one playbook per Cloudflare DNS zone (`anneraud.yml`, `xila.yml`, `minitrainstore.yml`, `guenola_sahut.yml`), applied on their own, not by `site.yml`.
-- `services/authentification/applications.yml` + `opentofu/zitadel/` — the whole Anneraud Zitadel organization (policies, users from the vault, OIDC applications); see the readme's "Zitadel" section. A service that needs Zitadel login gets an entry in `opentofu/zitadel/applications.auto.tfvars` and uses `roles/zitadel` from its `deploy.yml` (see `services/vigie/deploy.yml`).
-- `services/<service>/tests/*.yml` — playbook tests that need no host (CI runs them); `services/archive` prepares Paperless's (a TrueNAS app) Zitadel variables to paste, see the readme's "TrueNAS apps" section.
+- `services/authentification/applications.yml` + `opentofu/zitadel/` — the whole Anneraud Zitadel organization (policies, users from the vault, OIDC applications); see the documentation's Authentification page. A service that needs Zitadel login gets an entry in `opentofu/zitadel/applications.auto.tfvars` and uses `roles/zitadel` from its `deploy.yml` (see `services/vigie/deploy.yml`).
+- `services/<service>/tests/*.yml` — playbook tests that need no host (CI runs them); `services/archive` prepares Paperless's (a TrueNAS app) Zitadel variables to paste, see the documentation's Authentification page ("Applications TrueNAS").
 - `inventory/hosts.yml` — hosts, plus one group per service naming the host it runs on (`translate: {hosts: {luxembourg:}}`). Group names use underscores (`status_dera_page`).
 - `inventory/host_vars/<host>.yml` (or a folder, `inventory/host_vars/bruxelles/`) — per-host settings: connection, `local_dns_host` / `global_dns_host`, `services_root`, `proxy_network`. Put host facts here, not in playbooks.
 - `vault/` — **private submodule** (`Infrastructure_vault`) with Ansible Vault files, one per service: `vault/<service>/vault.yml`, plus `vault/ansible/vault.yml` (sudo password) and `vault/cloudflare/vault.yml`.
-- `services/website/website` — separate submodule; not part of this repo's code.
+- `services/website/website` — the documentation site (https://www.anneraud.fr/documentation/, VitePress, in French), a submodule of its own repository (`Infrastructure_website`, published to GitHub Pages on every push to its `main`). It explains how everything works and how to operate it; `readme.md` only presents the repository and links there. When a change alters how something works or is operated, update the matching page in `src/documentation/` of that repository (`npm run check` before pushing), not the readme.
 
 ## Hosts
 
@@ -80,7 +80,7 @@ Rules:
 - Pin image tags (no `latest`, no untagged images); Dependabot (`.github/dependabot.yml`) opens one grouped PR per ecosystem every Monday. It does not cover `requirements.yml` or `.python-version`: update those by hand.
 - Ansible style: FQCN modules (`ansible.builtin.copy`), `true`/`false`, `changed_when` on `command`/`shell`, handlers for restarts.
 - Lines that can't be split (DNS TXT records, Traefik rules, long commands) get `# yamllint disable-line rule:line-length`. Never put that comment inside a `|` block scalar: it would become part of the file content; wrap the task in `# yamllint disable/enable rule:line-length` instead.
-- New public endpoints should also get a Gatus check in `services/etat/anneraud.yml` or `services/etat/dera_page.yml`, and a row in `readme.md`.
+- New public endpoints should also get a Gatus check in `services/etat/anneraud.yml` or `services/etat/dera_page.yml`, and a row in the documentation's Services page (`src/documentation/services.md` of the website).
 
 ## Hosts access
 
