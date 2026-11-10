@@ -7,7 +7,7 @@ x-logging: &logging
 
 services:
   nanobom:
-    image: ghcr.io/alixanneraud/nanobom:0.1.0
+    image: ghcr.io/alixanneraud/nanobom:0.1.1
     logging: *logging
     container_name: vulnerabilities
     restart: unless-stopped
