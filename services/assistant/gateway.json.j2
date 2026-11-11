@@ -1,0 +1,8 @@
+[
+  {"path": "gateway.mode", "value": "local"},
+  {"path": "gateway.bind", "value": "lan"},
+  {"path": "gateway.auth.mode", "value": "token"},
+  {"path": "gateway.publicOrigin", "value": "https://{{ assistant_host }}"},
+  {"path": "gateway.controlUi.allowedOrigins", "value": ["https://{{ assistant_host }}"]},
+  {"path": "gateway.trustedProxies", "value": {{ assistant_trusted_proxies | to_json }}}
+]

@@ -1,0 +1,70 @@
+---
+# OpenClaw: personal AI assistant, driven from its Control UI (LAN and VPN
+# only) and from the messaging channels set up in it. The deployment owns the
+# gateway settings (gateway.json.j2); models and channels are set up once
+# deployed, with the onboarding:
+#   docker exec -it assistant node dist/index.js onboard
+# Provider keys and channel tokens go in assistant_environment, in the vault.
+- name: Deploy OpenClaw
+  hosts: assistant
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+    - ../../vault/assistant/vault.yml
+    - ../../vault/cloudflare/vault.yml
+  vars:
+    assistant_host: assistant.anneraud.fr
+    # No account on the host has it; OpenClaw only needs its home writable
+    assistant_user: 2000
+    # API keys, bot tokens and URLs: Compose would interpret $ and quotes in .env
+    assistant_value_pattern: '^[A-Za-z0-9._~:/+=@,-]*$'
+  pre_tasks:
+    # Compose reads it from .env, where $ and quotes would be interpreted
+    - name: Check the gateway token and the extra variables
+      ansible.builtin.assert:
+        that:
+          - assistant_gateway_token | default('') is match('^[A-Za-z0-9._~-]{32,}$')
+          - assistant_environment | default({}) is mapping
+          - assistant_environment | default({}) | dict2items | rejectattr('key', 'match', '^[A-Z][A-Z0-9_]*$') | list | length == 0
+          - assistant_environment | default({}) | dict2items | map(attribute='value') | map('string')
+            | reject('match', assistant_value_pattern) | list | length == 0
+        fail_msg: >-
+          vault/assistant/vault.yml needs assistant_gateway_token, at least 32 characters among letters,
+          digits and -._~ (openssl rand -hex 32), and assistant_environment, when set, maps upper-case
+          variable names to values made of letters, digits and ._~:/+=@,-
+        quiet: true
+
+    # Traefik reaches OpenClaw from this network: OpenClaw takes the client's
+    # address from its X-Forwarded-For only there
+    - name: Look up the proxy network
+      community.docker.docker_network_info:
+        name: "{{ proxy_network }}"
+      register: assistant_proxy_network
+      failed_when: not assistant_proxy_network.exists   # created by services/proxy
+
+    - name: Trust Traefik's forwarded addresses from the proxy network
+      ansible.builtin.set_fact:
+        assistant_trusted_proxies: "{{ assistant_proxy_network.network.IPAM.Config | map(attribute='Subnet') | list }}"
+
+  roles:
+    - role: compose_service
+      vars:
+        compose_service_name: assistant
+        compose_service_user: "{{ assistant_user }}"
+        compose_service_directories:
+          - path: home   # its state, credentials and workspace: no one else reads them
+            owner: "{{ assistant_user }}"
+            group: "{{ assistant_user }}"
+            mode: "0700"
+        compose_service_templates:
+          - source: gateway.json.j2
+            destination: gateway.json
+        compose_service_environment: >-
+          {{ {
+            'HOST': assistant_host,
+            'PROXY_NETWORK': proxy_network,
+            'OPENCLAW_GATEWAY_TOKEN': assistant_gateway_token,
+          } | combine(assistant_environment | default({})) }}
+        compose_service_dns_records:
+          - record: "{{ assistant_host }}"
+            visibility: private

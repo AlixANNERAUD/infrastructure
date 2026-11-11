@@ -1,0 +1,83 @@
+# Container logs are unbounded by default and would fill the disk
+x-logging: &logging
+  driver: local
+  options:
+    max-size: "20m"
+    max-file: "3"
+
+# OpenClaw runs commands and reads the web on its own, so a page or a message
+# can try to steer it (prompt injection): it gets no capabilities, a read-only
+# root and its own folder only, mounted as its home
+x-openclaw: &openclaw
+  logging: *logging
+  user: "${USER_ID}:${GROUP_ID}"
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  # The gateway token and the provider and channel credentials, written by the
+  # playbook (not required for CI's docker compose config, which has no .env)
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    HOME: /home/node
+    OPENCLAW_HOME: /home/node
+    OPENCLAW_STATE_DIR: /home/node/.openclaw
+    OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+    OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+    OPENCLAW_GATEWAY_PORT: "18789"
+    # No mDNS announcement: nothing on Docker's network would use it
+    OPENCLAW_DISABLE_BONJOUR: "1"
+    TZ: Europe/Paris
+  tmpfs:
+    - /tmp
+
+services:
+  # Writes the gateway settings the deployment owns (gateway.json: binding,
+  # authentication, origin, proxy) before each start; everything else
+  # (models, channels, skills) stays configured from the Control UI or the CLI
+  configuration:
+    <<: *openclaw
+    image: ghcr.io/openclaw/openclaw:2026.11.3
+    restart: "no"
+    network_mode: none
+    entrypoint: ["node", "dist/index.js"]
+    command: ["config", "set", "--batch-file", "/run/openclaw/gateway.json"]
+    volumes:
+      - ./home:/home/node
+      - ./gateway.json:/run/openclaw/gateway.json:ro
+
+  openclaw:
+    <<: *openclaw
+    image: ghcr.io/openclaw/openclaw:2026.11.3
+    container_name: assistant
+    restart: unless-stopped
+    mem_limit: 2g
+    # Starts before the onboarding has chosen a model; the image's healthcheck
+    # pings /healthz
+    command: ["node", "dist/index.js", "gateway", "--allow-unconfigured", "--bind", "lan", "--port", "18789"]
+    volumes:
+      - ./home:/home/node
+    depends_on:
+      configuration:
+        condition: service_completed_successfully
+    # Through Traefik only, and out to the model providers and channels
+    networks:
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
+      - traefik.http.routers.assistant.rule=Host(`${HOST}`)
+      - traefik.http.routers.assistant.entrypoints=web-secure
+      - traefik.http.routers.assistant.tls=true
+      - traefik.http.routers.assistant.tls.certresolver=letsencrypt
+      # The Control UI drives the agent: LAN and VPN only
+      - traefik.http.routers.assistant.middlewares=internal-allowlist@file
+      - traefik.http.services.assistant.loadbalancer.server.port=18789
+
+networks:
+  proxy:
+    name: "${PROXY_NETWORK}"
+    external: true
