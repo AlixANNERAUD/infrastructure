@@ -167,9 +167,9 @@ endpoints:
     alerts:
       - type: homeassistant
 
-  - name: Assistant (Open WebUI)
+  - name: Discussion (Open WebUI)
     group: Services
-    url: "https://assistant.anneraud.fr/"
+    url: "https://discussion.anneraud.fr/"
     interval: 10m
     conditions:
       - "[STATUS] == 200"
