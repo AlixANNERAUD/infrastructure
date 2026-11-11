@@ -59,6 +59,7 @@
         compose_service_templates:
           - source: gateway.json.j2
             destination: gateway.json
+            restart: false   # applied below, then the gateway restarts only if a setting changed
         compose_service_environment: >-
           {{ {
             'HOST': assistant_host,
@@ -68,3 +69,25 @@
         compose_service_dns_records:
           - record: "{{ assistant_host }}"
             visibility: private
+
+  post_tasks:
+    # From inside the gateway's container: OpenClaw refuses config set from
+    # another one while the gateway runs (it can't check who holds the
+    # configuration across PID namespaces)
+    - name: Apply the gateway settings
+      community.docker.docker_container_exec:
+        container: assistant
+        argv: [node, dist/index.js, config, set, --batch-file, /run/openclaw/gateway.json]
+      register: assistant_configuration
+      changed_when: (assistant_configuration.stdout ~ assistant_configuration.stderr) is search('Updated')
+      # Just (re)started: the gateway may not hold its configuration yet
+      retries: 6
+      delay: 10
+      until: assistant_configuration.rc == 0
+      notify: Restart the gateway
+
+  handlers:
+    - name: Restart the gateway
+      community.docker.docker_compose_v2:
+        project_src: "{{ services_root }}/assistant"
+        state: restarted

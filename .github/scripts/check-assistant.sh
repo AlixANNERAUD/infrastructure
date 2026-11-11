@@ -2,9 +2,11 @@
 # Lay out OpenClaw (services/assistant) as its playbook does, with gateway.json
 # rendered from its template for a stand-in proxy network, start it with its
 # own Compose file, and check that:
-# - the configuration container writes the deployment's gateway settings,
-# - the gateway starts with them on its read-only root, as the deployment's
-#   user, and answers /healthz on the proxy network,
+# - the settings applied from inside the running gateway, as the playbook does,
+#   reach its configuration, and applying them again (a later deployment, the
+#   gateway still running) succeeds and changes nothing,
+# - the gateway runs on its read-only root, as the deployment's user, and
+#   answers /healthz on the proxy network,
 # - its gateway answers the token from .env and refuses another one.
 set -euo pipefail
 
@@ -51,18 +53,38 @@ mkdir "$directory/home"
 sudo chown "$user:$user" "$directory/home"
 sudo chmod 0700 "$directory/home"
 
-# Not --wait: it would count the configuration container, which exits once done
-compose up -d
-for _ in $(seq 1 100); do
-    health=$(docker inspect assistant --format '{{ .State.Health.Status }}' 2> /dev/null || true)
-    [ "$health" = healthy ] && break
-    sleep 3
-done
-if [ "$health" != healthy ]; then
+wait_healthy() {
+    for _ in $(seq 1 100); do
+        health=$(docker inspect assistant --format '{{ .State.Health.Status }}' 2> /dev/null || true)
+        [ "$health" = healthy ] && return 0
+        sleep 3
+    done
     echo "error the gateway is not healthy ($health)"
     exit 1
+}
+# As the playbook's post_tasks: from inside the gateway's container
+apply_settings() {
+    docker exec assistant node dist/index.js config set --batch-file /run/openclaw/gateway.json 2>&1
+}
+
+compose up -d
+wait_healthy
+output=$(apply_settings)
+if ! grep -q Updated <<< "$output"; then
+    echo "error the first deployment changes no setting: $output"
+    exit 1
 fi
+compose restart
+wait_healthy
 echo "ok    the gateway is healthy after its configuration"
+
+# A later deployment, the gateway running: no error, nothing to restart
+output=$(apply_settings)
+if grep -q Updated <<< "$output"; then
+    echo "error a later deployment changes settings again: $output"
+    exit 1
+fi
+echo "ok    applying the settings again, the gateway running, changes nothing"
 
 configuration=$(docker exec assistant cat /home/node/.openclaw/openclaw.json)
 for expected in "https://$host" "$subnet" '"token"' '"lan"'; do
