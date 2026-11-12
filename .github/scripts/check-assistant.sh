@@ -4,7 +4,7 @@
 # - it gets healthy with only the capabilities its compose file keeps,
 # - the playbook's settings (the proxy network trusted by the dashboard) are
 #   applied, and applying them again changes nothing,
-# - the gateway and the dashboard run as the deployment's user, not as root,
+# - Hermes' own processes (gateway, dashboard) run as the deployment's user,
 # - the dashboard on the proxy network requires the login from .env: it
 #   refuses a wrong password and accepts the right one.
 set -euo pipefail
@@ -83,20 +83,16 @@ if ! grep -qF -- "$subnet" <<< "$current"; then
 fi
 echo "ok    the dashboard trusts the proxy network once set, and the playbook sees it ($current)"
 
-# Every process but s6's own supervision tree runs as the deployment's user
+# Hermes' own processes (the gateway, the dashboard: its Python) run as the
+# deployment's user; only s6's supervision tree and init scripts run as root
 processes=$(docker top assistant -eo pid,uid,args)
-for service in "gateway run" "dashboard"; do
-    if ! grep -E "^ *[0-9]+ +$user .*$service" <<< "$processes" > /dev/null; then
-        echo "error no '$service' process runs as $user:"
-        echo "$processes"
-        exit 1
-    fi
-    if grep -E "^ *[0-9]+ +0 .*hermes.*$service" <<< "$processes" > /dev/null; then
-        echo "error a '$service' process runs as root:"
-        echo "$processes"
-        exit 1
-    fi
-done
+hermes_processes=$(grep -E '/opt/hermes/\.venv/bin/python' <<< "$processes" || true)
+if [ "$(grep -cE "^ *[0-9]+ +$user " <<< "$hermes_processes")" -lt 2 ] \
+    || grep -vE "^ *[0-9]+ +$user " <<< "$hermes_processes" | grep -q .; then
+    echo "error Hermes' processes do not all run as $user:"
+    echo "$processes"
+    exit 1
+fi
 echo "ok    the gateway and the dashboard run as $user"
 
 curl_proxy() {
