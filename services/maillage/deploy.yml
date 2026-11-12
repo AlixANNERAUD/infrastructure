@@ -12,8 +12,6 @@
         compose_service_name: maillage
         compose_service_directory: netbird   # previous name, kept so containers and volumes stay the same
         compose_service_user: 991
-        compose_service_directories:
-          - data
         compose_service_templates:
           - source: config.yaml.j2
             destination: config.yaml
