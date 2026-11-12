@@ -84,14 +84,14 @@ fi
 echo "ok    the dashboard trusts the proxy network once set, and the playbook sees it ($current)"
 
 # Every process but s6's own supervision tree runs as the deployment's user
-processes=$(docker top assistant -eo uid,args)
+processes=$(docker top assistant -eo pid,uid,args)
 for service in "gateway run" "dashboard"; do
-    if ! grep -E "^ *$user .*$service" <<< "$processes" > /dev/null; then
+    if ! grep -E "^ *[0-9]+ +$user .*$service" <<< "$processes" > /dev/null; then
         echo "error no '$service' process runs as $user:"
         echo "$processes"
         exit 1
     fi
-    if grep -E "^ *0 .*hermes.*$service" <<< "$processes" > /dev/null; then
+    if grep -E "^ *[0-9]+ +0 .*hermes.*$service" <<< "$processes" > /dev/null; then
         echo "error a '$service' process runs as root:"
         echo "$processes"
         exit 1
