@@ -8,7 +8,7 @@ x-logging: &logging
 services:
   # UI dashboard
   dashboard:
-    image: netbirdio/dashboard:v2.95.0
+    image: netbirdio/dashboard:v2.96.1
     logging: *logging
     container_name: netbird-dashboard
     restart: unless-stopped
@@ -38,7 +38,7 @@ services:
 
   # Combined server (Management + Signal + Relay + STUN)
   netbird-server:
-    image: netbirdio/netbird-server:0.81.4
+    image: netbirdio/netbird-server:0.82.1
     logging: *logging
     container_name: netbird-server
     restart: unless-stopped
@@ -46,7 +46,10 @@ services:
     ports:
       - "3478:3478/udp"
     volumes:
-      - ./data:/var/lib/netbird
+      # Its database (SQLite) and keys, in the volume it has always had: a
+      # move to a folder must be done from the console (OCI), since the VPN
+      # is how Ansible and SSH reach Luxembourg
+      - netbird_data:/var/lib/netbird
       - ./config.yaml:/etc/netbird/config.yaml
     command: ["--config", "/etc/netbird/config.yaml"]
     labels:
@@ -93,3 +96,7 @@ services:
 networks:
   traefik:
     external: true
+
+volumes:
+  netbird_data:
+    name: netbird_netbird_data   # created by the first deploy, under the project netbird

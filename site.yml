@@ -30,8 +30,8 @@
   ansible.builtin.import_playbook: services/matrix_dera_page/deploy.yml
 - name: MCPHub
   ansible.builtin.import_playbook: services/mcphub/deploy.yml
-- name: Netbird
-  ansible.builtin.import_playbook: services/vpn/deploy.yml
+- name: Maillage (NetBird)
+  ansible.builtin.import_playbook: services/maillage/deploy.yml
 - name: Notes
   ansible.builtin.import_playbook: services/notes/deploy.yml
 - name: Replication
