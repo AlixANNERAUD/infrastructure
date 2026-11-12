@@ -30,9 +30,10 @@ applications = {
   # in through Zitadel as a confidential client; services/maillage/configuration.yml
   # passes the client to opentofu/netbird
   netbird = {
-    project        = "NetBird"
-    authentication = "client_secret"
-    redirect_uris  = ["https://netbird.anneraud.fr/oauth2/callback"]
+    project          = "NetBird"
+    authentication   = "client_secret"
+    redirect_uris    = ["https://netbird.anneraud.fr/oauth2/callback"]
+    post_logout_uris = ["https://netbird.anneraud.fr/oauth2/logout/callback"]
   }
 
   # Semaphore (deploiement.anneraud.fr): a confidential client
