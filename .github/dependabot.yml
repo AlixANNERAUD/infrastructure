@@ -1,7 +1,7 @@
 ---
 # Dependency updates, grouped per ecosystem into one weekly PR each.
-# Ansible collections (requirements.yml) and .python-version are not supported
-# by Dependabot and are updated by hand.
+# Ansible collections (requirements.yml), .python-version and OpenTofu itself
+# (mise.toml) are not supported by Dependabot and are updated by hand.
 version: 2
 updates:
   - package-ecosystem: docker-compose
@@ -41,3 +41,18 @@ updates:
       python-tooling:
         patterns: ["*"]
     labels: [dependencies, python]
+
+  # Providers of the OpenTofu configurations, and their lock files. A new
+  # provider can change what the next apply does: plan before merging
+  - package-ecosystem: opentofu
+    directories:
+      - /opentofu/*
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Paris
+    groups:
+      opentofu:
+        patterns: ["*"]
+    labels: [dependencies, opentofu]
