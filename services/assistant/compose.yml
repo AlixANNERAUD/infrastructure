@@ -9,10 +9,11 @@ services:
   # Hermes Agent runs commands and reads the web on its own, so a page or a
   # message can try to steer it (prompt injection). Its image starts as root
   # under s6-overlay to own its data folder, then runs the gateway and the
-  # dashboard as USER_ID: it keeps only the capabilities that takes
+  # dashboard as USER_ID: it keeps only the capabilities that takes. One
+  # stack per person (NAME), each with its own folder, user and address
   hermes:
     image: nousresearch/hermes-agent:v0.23.1
-    container_name: assistant
+    container_name: ${NAME}
     logging: *logging
     restart: unless-stopped
     cap_drop: [ALL]
@@ -58,13 +59,13 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=${PROXY_NETWORK}
-      - traefik.http.routers.assistant.rule=Host(`${HOST}`)
-      - traefik.http.routers.assistant.entrypoints=web-secure
-      - traefik.http.routers.assistant.tls=true
-      - traefik.http.routers.assistant.tls.certresolver=letsencrypt
+      - traefik.http.routers.${NAME}.rule=Host(`${HOST}`)
+      - traefik.http.routers.${NAME}.entrypoints=web-secure
+      - traefik.http.routers.${NAME}.tls=true
+      - traefik.http.routers.${NAME}.tls.certresolver=letsencrypt
       # The dashboard drives the agent: LAN and VPN only
-      - traefik.http.routers.assistant.middlewares=internal-allowlist@file
-      - traefik.http.services.assistant.loadbalancer.server.port=9119
+      - traefik.http.routers.${NAME}.middlewares=internal-allowlist@file
+      - traefik.http.services.${NAME}.loadbalancer.server.port=9119
 
 networks:
   proxy:

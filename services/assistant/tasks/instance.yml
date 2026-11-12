@@ -1,0 +1,54 @@
+---
+# One person's assistant: its stack in services_root/<name>, run as its own
+# user, with its own dashboard login and address (deploy.yml loops over the
+# vault's assistant_instances)
+- name: Deploy {{ assistant_instance.name }}
+  ansible.builtin.include_role:
+    name: compose_service
+  vars:
+    compose_service_name: "{{ assistant_instance.name }}"
+    compose_service_user: "{{ assistant_instance.user }}"
+    compose_service_directories:
+      - path: data   # credentials, memory and sessions: no one else reads them
+        owner: "{{ assistant_instance.user }}"
+        group: "{{ assistant_instance.user }}"
+        mode: "0700"
+    compose_service_environment: >-
+      {{ {
+        'NAME': assistant_instance.name,
+        'HOST': assistant_instance.host,
+        'PROXY_NETWORK': proxy_network,
+        'HERMES_DASHBOARD_BASIC_AUTH_USERNAME': assistant_instance.dashboard_username,
+        'HERMES_DASHBOARD_BASIC_AUTH_PASSWORD': assistant_instance.dashboard_password,
+        'HERMES_DASHBOARD_BASIC_AUTH_SECRET': assistant_instance.dashboard_secret,
+      } | combine(assistant_instance.environment | default({})) }}
+    compose_service_dns_records:
+      - record: "{{ assistant_instance.host }}"
+        visibility: private
+
+# dashboard.trusted_proxies has no environment variable: it lives in Hermes'
+# config.yaml, next to the settings made from the dashboard
+- name: Read the proxies trusted by the dashboard of {{ assistant_instance.name }}
+  community.docker.docker_container_exec:
+    container: "{{ assistant_instance.name }}"
+    argv: [hermes, config, get, dashboard.trusted_proxies]
+  register: assistant_current_proxies
+  changed_when: false
+  # Just (re)started: its setup may not be done yet
+  retries: 12
+  delay: 10
+  until: assistant_current_proxies.rc == 0
+
+- name: Trust the proxy network in the dashboard of {{ assistant_instance.name }}
+  community.docker.docker_container_exec:
+    container: "{{ assistant_instance.name }}"
+    argv: [hermes, config, set, dashboard.trusted_proxies, "{{ assistant_trusted_proxies | to_json }}"]
+  register: assistant_proxies_set
+  when: assistant_trusted_proxies | reject('in', assistant_current_proxies.stdout) | list | length > 0
+
+# Not a handler: it would run once, for the last assistant of the loop
+- name: Restart with the proxy network trusted, {{ assistant_instance.name }}  # noqa: no-handler
+  community.docker.docker_compose_v2:
+    project_src: "{{ services_root }}/{{ assistant_instance.name }}"
+    state: restarted
+  when: assistant_proxies_set is changed

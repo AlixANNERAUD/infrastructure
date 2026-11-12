@@ -41,6 +41,7 @@ subnet=$(docker network inspect "$network" --format '{{ (index .IPAM.Config 0).S
 # The service folder, as compose_service lays it out
 cp services/assistant/compose.yml "$directory/"
 cat > "$directory/.env" <<EOF
+NAME=assistant
 USER_ID=$user
 GROUP_ID=$user
 HOST=$host
