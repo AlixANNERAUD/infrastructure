@@ -1,0 +1,41 @@
+---
+# NetBird's account (groups, policies, networks, routes, DNS, setup keys) and
+# its login through Zitadel, described in opentofu/netbird: this playbook
+# provisions NetBird's Zitadel application, then applies that configuration.
+# It runs on the controller, which holds the vault and the encrypted state:
+#   mise deploy services/vpn/configuration.yml
+- name: Configure NetBird
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../../vault/authentification/vault.yml
+    - ../../vault/vpn/vault.yml
+  roles:
+    - role: zitadel
+  tasks:
+    - name: Check NetBird's credentials and Zitadel application
+      ansible.builtin.assert:
+        that:
+          - netbird_automation_token | default('') | length > 0
+          - netbird_state_passphrase | default('') | length >= 16
+          - zitadel_provisioned
+          - zitadel_client_ids.netbird | default('') | length > 0
+          - zitadel_client_secrets.netbird | default('') | length > 0
+        fail_msg: >-
+          vault/vpn/vault.yml needs netbird_automation_token (NetBird dashboard: Team → Service Users, an
+          admin service user, then an access token) and netbird_state_passphrase (openssl rand -base64 32),
+          and Zitadel must be provisioned with its netbird application (see the messages above)
+        quiet: true
+
+    - name: Apply NetBird's configuration
+      ansible.builtin.include_role:
+        name: opentofu
+      vars:
+        opentofu_project_path: "{{ playbook_dir }}/../../opentofu/netbird"
+        opentofu_state_path: "{{ playbook_dir }}/../../vault/vpn/opentofu.tfstate"
+        opentofu_variables:
+          zitadel_client_id: "{{ zitadel_client_ids.netbird }}"
+        opentofu_secret_variables:
+          netbird_token: "{{ netbird_automation_token }}"
+          state_passphrase: "{{ netbird_state_passphrase }}"
+          zitadel_client_secret: "{{ zitadel_client_secrets.netbird }}"
