@@ -27,7 +27,7 @@ applications = {
   }
 
   # NetBird (netbird.anneraud.fr): its embedded identity provider (Dex) logs
-  # in through Zitadel as a confidential client; services/vpn/configuration.yml
+  # in through Zitadel as a confidential client; services/maillage/configuration.yml
   # passes the client to opentofu/netbird
   netbird = {
     project        = "NetBird"
