@@ -34,7 +34,7 @@
   ansible.builtin.import_playbook: services/maillage/deploy.yml
 - name: Notes
   ansible.builtin.import_playbook: services/notes/deploy.yml
-- name: OpenClaw
+- name: Hermes Agent
   ansible.builtin.import_playbook: services/assistant/deploy.yml
 - name: Replication
   ansible.builtin.import_playbook: hosts/replication.yml

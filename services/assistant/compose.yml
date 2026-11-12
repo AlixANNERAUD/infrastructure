@@ -6,50 +6,53 @@ x-logging: &logging
     max-file: "3"
 
 services:
-  # OpenClaw runs commands and reads the web on its own, so a page or a message
-  # can try to steer it (prompt injection): it gets no capabilities, a read-only
-  # root and its own folder only, mounted as its home
-  openclaw:
-    image: ghcr.io/openclaw/openclaw:2026.11.3
+  # Hermes Agent runs commands and reads the web on its own, so a page or a
+  # message can try to steer it (prompt injection). Its image starts as root
+  # under s6-overlay to own its data folder, then runs the gateway and the
+  # dashboard as USER_ID: it keeps only the capabilities that takes
+  hermes:
+    image: nousresearch/hermes-agent:v0.23.1
     container_name: assistant
     logging: *logging
     restart: unless-stopped
-    user: "${USER_ID}:${GROUP_ID}"
-    init: true
-    read_only: true
     cap_drop: [ALL]
+    cap_add:
+      - CHOWN          # data folder handed to USER_ID
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID         # s6-setuidgid drops each service to USER_ID
+      - SETGID
+      - KILL           # s6 signals the services it supervises
     security_opt:
       - no-new-privileges:true
     mem_limit: 2g
-    # The gateway token and the provider and channel credentials, written by the
-    # playbook (not required for CI's docker compose config, which has no .env)
+    pids_limit: 512
+    # Provider and channel credentials (Matrix), and the dashboard's login,
+    # written by the playbook (not required for CI's docker compose config,
+    # which has no .env)
     env_file:
       - path: .env
         required: false
     environment:
-      HOME: /home/node
-      OPENCLAW_HOME: /home/node
-      OPENCLAW_STATE_DIR: /home/node/.openclaw
-      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
-      OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
-      OPENCLAW_GATEWAY_PORT: "18789"
-      # No mDNS announcement: nothing on Docker's network would use it
-      OPENCLAW_DISABLE_BONJOUR: "1"
+      HERMES_UID: ${USER_ID}
+      HERMES_GID: ${GROUP_ID}
+      # The web dashboard, next to the gateway: behind Traefik, it requires
+      # the username and password from .env (no login, no start)
+      HERMES_DASHBOARD: "1"
+      HERMES_DASHBOARD_PUBLIC_URL: https://${HOST}
       TZ: Europe/Paris
-    tmpfs:
-      - /tmp
-    # Starts before the onboarding has chosen a model; the image's healthcheck
-    # pings /healthz
-    command: ["node", "dist/index.js", "gateway", "--allow-unconfigured", "--bind", "lan", "--port", "18789"]
+    command: ["gateway", "run"]
+    # /api/status answers without a login
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9119/api/status', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 2m
+      retries: 3
     volumes:
-      - ./home:/home/node
-      # The gateway settings the deployment owns (binding, authentication,
-      # origin, proxy), applied by the playbook from inside this container:
-      # OpenClaw refuses config set from another one while the gateway runs.
-      # Everything else (models, channels, skills) stays configured from the
-      # Control UI or the CLI
-      - ./gateway.json:/run/openclaw/gateway.json:ro
-    # Through Traefik only, and out to the model providers and channels
+      # Configuration, credentials, memory, skills and sessions
+      - ./data:/opt/data
+    # Through Traefik only, and out to the model providers, Matrix and MCPHub
     networks:
       - proxy
     labels:
@@ -59,9 +62,9 @@ services:
       - traefik.http.routers.assistant.entrypoints=web-secure
       - traefik.http.routers.assistant.tls=true
       - traefik.http.routers.assistant.tls.certresolver=letsencrypt
-      # The Control UI drives the agent: LAN and VPN only
+      # The dashboard drives the agent: LAN and VPN only
       - traefik.http.routers.assistant.middlewares=internal-allowlist@file
-      - traefik.http.services.assistant.loadbalancer.server.port=18789
+      - traefik.http.services.assistant.loadbalancer.server.port=9119
 
 networks:
   proxy:

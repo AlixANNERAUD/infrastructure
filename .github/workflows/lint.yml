@@ -238,14 +238,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      - uses: astral-sh/setup-uv@v10.3.3
-        with:
-          enable-cache: true
-
-      - name: Install tools
-        run: uv sync --locked
-
-      - name: Start OpenClaw with the deployment's gateway settings
+      - name: Start Hermes Agent with the deployment's settings
         run: .github/scripts/check-assistant.sh
 
   # Single check required by the branch ruleset: add new jobs to `needs`

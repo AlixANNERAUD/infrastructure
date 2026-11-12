@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-# Lay out OpenClaw (services/assistant) as its playbook does, with gateway.json
-# rendered from its template for a stand-in proxy network, start it with its
-# own Compose file, and check that:
-# - the settings applied from inside the running gateway, as the playbook does,
-#   reach its configuration, and applying them again (a later deployment, the
-#   gateway still running) succeeds and changes nothing,
-# - the gateway runs on its read-only root, as the deployment's user, and
-#   answers /healthz on the proxy network,
-# - its gateway answers the token from .env and refuses another one.
+# Lay out Hermes Agent (services/assistant) as its playbook does, start it with
+# its own Compose file on a stand-in proxy network, and check that:
+# - it gets healthy with only the capabilities its compose file keeps,
+# - the playbook's settings (the proxy network trusted by the dashboard) are
+#   applied, and applying them again changes nothing,
+# - the gateway and the dashboard run as the deployment's user, not as root,
+# - the dashboard on the proxy network requires the login from .env: it
+#   refuses a wrong password and accepts the right one.
 set -euo pipefail
 
 directory=$(mktemp -d)
 project=check-assistant
 network=check-assistant-$$
 user=2000
-token=checkassistantgatewaytoken0123456789
+username=checkassistant
+password=checkassistantpassword0123
+secret=checkassistantsecret0123456789abcdef
 curl_image=curlimages/curl:8.22.0
 host=assistant.anneraud.fr
 
@@ -25,9 +26,9 @@ cleanup() {
     status=$?
     if [ "$status" -ne 0 ]; then
         compose ps -a 2>&1 || true
-        compose logs --tail 80 2>&1 || true
+        compose logs --tail 120 2>&1 || true
     fi
-    compose down --volumes --timeout 1 > /dev/null 2>&1 || true
+    compose down --volumes --timeout 5 > /dev/null 2>&1 || true
     docker network rm "$network" > /dev/null 2>&1 || true
     sudo rm -rf "$directory"
     exit "$status"
@@ -39,19 +40,18 @@ subnet=$(docker network inspect "$network" --format '{{ (index .IPAM.Config 0).S
 
 # The service folder, as compose_service lays it out
 cp services/assistant/compose.yml "$directory/"
-uv run ansible localhost --connection local -m ansible.builtin.template \
-    -a "src=services/assistant/gateway.json.j2 dest=$directory/gateway.json mode=0644" \
-    -e "assistant_host=$host" -e "{\"assistant_trusted_proxies\": [\"$subnet\"]}" > /dev/null
 cat > "$directory/.env" <<EOF
 USER_ID=$user
 GROUP_ID=$user
 HOST=$host
 PROXY_NETWORK=$network
-OPENCLAW_GATEWAY_TOKEN=$token
+HERMES_DASHBOARD_BASIC_AUTH_USERNAME=$username
+HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=$password
+HERMES_DASHBOARD_BASIC_AUTH_SECRET=$secret
 EOF
-mkdir "$directory/home"
-sudo chown "$user:$user" "$directory/home"
-sudo chmod 0700 "$directory/home"
+mkdir "$directory/data"
+sudo chown "$user:$user" "$directory/data"
+sudo chmod 0700 "$directory/data"
 
 wait_healthy() {
     for _ in $(seq 1 100); do
@@ -59,59 +59,66 @@ wait_healthy() {
         [ "$health" = healthy ] && return 0
         sleep 3
     done
-    echo "error the gateway is not healthy ($health)"
+    echo "error Hermes is not healthy ($health)"
     exit 1
-}
-# As the playbook's post_tasks: from inside the gateway's container
-apply_settings() {
-    docker exec assistant node dist/index.js config set --batch-file /run/openclaw/gateway.json 2>&1
 }
 
 compose up -d
 wait_healthy
-output=$(apply_settings)
-if ! grep -q Updated <<< "$output"; then
-    echo "error the first deployment changes no setting: $output"
+echo "ok    Hermes is healthy with its reduced capabilities"
+
+# As the playbook's post_tasks
+current=$(docker exec assistant hermes config get dashboard.trusted_proxies)
+if grep -qF -- "$subnet" <<< "$current"; then
+    echo "error the proxy network is trusted before the playbook sets it: $current"
     exit 1
 fi
+docker exec assistant hermes config set dashboard.trusted_proxies "[\"$subnet\"]" > /dev/null
 compose restart
 wait_healthy
-echo "ok    the gateway is healthy after its configuration"
-
-# A later deployment, the gateway running: no error, nothing to restart
-output=$(apply_settings)
-if grep -q Updated <<< "$output"; then
-    echo "error a later deployment changes settings again: $output"
+current=$(docker exec assistant hermes config get dashboard.trusted_proxies)
+if ! grep -qF -- "$subnet" <<< "$current"; then
+    echo "error the proxy network is not trusted after the playbook sets it: $current"
     exit 1
 fi
-echo "ok    applying the settings again, the gateway running, changes nothing"
+echo "ok    the dashboard trusts the proxy network once set, and the playbook sees it ($current)"
 
-configuration=$(docker exec assistant cat /home/node/.openclaw/openclaw.json)
-for expected in "https://$host" "$subnet" '"token"' '"lan"'; do
-    if ! grep -qF -- "$expected" <<< "$configuration"; then
-        echo "error the configuration lacks $expected:"
-        echo "$configuration"
+# Every process but s6's own supervision tree runs as the deployment's user
+processes=$(docker top assistant -eo uid,args)
+for service in "gateway run" "dashboard"; do
+    if ! grep -E "^ *$user .*$service" <<< "$processes" > /dev/null; then
+        echo "error no '$service' process runs as $user:"
+        echo "$processes"
+        exit 1
+    fi
+    if grep -E "^ *0 .*hermes.*$service" <<< "$processes" > /dev/null; then
+        echo "error a '$service' process runs as root:"
+        echo "$processes"
         exit 1
     fi
 done
-echo "ok    the configuration holds the deployment's gateway settings"
+echo "ok    the gateway and the dashboard run as $user"
 
-if [ "$(docker exec assistant id -u)" != "$user" ]; then
-    echo "error the gateway does not run as $user"
+curl_proxy() {
+    docker run --rm --network "$network" "$curl_image" -sS --max-time 10 -H "Host: $host" "$@"
+}
+status=$(curl_proxy http://assistant:9119/api/status)
+if ! grep -q '"basic"' <<< "$status"; then
+    echo "error the dashboard does not require its login: $status"
     exit 1
 fi
-if docker exec assistant touch /app/check 2> /dev/null; then
-    echo "error the gateway's root is writable"
+code=$(curl_proxy -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+    --data "{\"provider\": \"basic\", \"username\": \"$username\", \"password\": \"wrong-password\"}" \
+    http://assistant:9119/auth/password-login)
+if [ "$code" != 401 ]; then
+    echo "error the dashboard answers $code to a wrong password"
     exit 1
 fi
-echo "ok    the gateway runs as $user on a read-only root"
-
-docker run --rm --network "$network" "$curl_image" -fsS --max-time 10 http://assistant:18789/healthz > /dev/null
-echo "ok    the gateway answers /healthz on the proxy network"
-
-docker exec assistant node dist/index.js gateway health --token "$token" > /dev/null
-if docker exec assistant node dist/index.js gateway health --token wrong-token > /dev/null 2>&1; then
-    echo "error the gateway accepts a wrong token"
+code=$(curl_proxy -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+    --data "{\"provider\": \"basic\", \"username\": \"$username\", \"password\": \"$password\"}" \
+    http://assistant:9119/auth/password-login)
+if [ "$code" != 200 ]; then
+    echo "error the dashboard answers $code to the right password"
     exit 1
 fi
-echo "ok    the gateway answers its token and refuses another one"
+echo "ok    the dashboard requires its login on the proxy network"
