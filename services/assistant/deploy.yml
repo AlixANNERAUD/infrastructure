@@ -1,0 +1,76 @@
+---
+# Hermes Agent: personal AI assistants, one per person, each driven from its
+# dashboard (LAN and VPN only), from Matrix and from T3 Code (ACP), with
+# MCPHub's tools. The people are listed in the vault (assistant_instances), not
+# here: the repository is public. Each one gets its own stack, folder, Linux
+# user and address, so no assistant reads another's files. Models, Matrix and
+# MCPHub are set up once deployed, inside each container:
+#   docker exec -it <name> hermes auth add openai-codex   # ChatGPT subscription
+#   docker exec -it <name> hermes config edit             # mcp_servers: MCPHub
+- name: Deploy Hermes Agent
+  hosts: assistant
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+    - ../../vault/assistant/vault.yml
+    - ../../vault/cloudflare/vault.yml
+  vars:
+    # API keys, tokens, Matrix IDs and URLs: Compose would interpret $ and quotes in .env
+    assistant_value_pattern: '^[A-Za-z0-9._~:/+=@!,-]*$'
+    assistant_secret_pattern: '^[A-Za-z0-9._~-]*$'
+  pre_tasks:
+    # Compose reads them from .env, where $ and quotes would be interpreted;
+    # names and users must not collide, or two people would share a folder
+    - name: Check the assistants
+      ansible.builtin.assert:
+        that:
+          - assistant_instances | default([]) is sequence
+          - assistant_instances | default([]) | map(attribute='name') | unique | length == assistant_instances | default([]) | length
+          - assistant_instances | default([]) | map(attribute='user') | unique | length == assistant_instances | default([]) | length
+          - assistant_instances | default([]) | map(attribute='host') | unique | length == assistant_instances | default([]) | length
+        fail_msg: vault/assistant/vault.yml lists assistant_instances, with a different name, user and host for each
+        quiet: true
+
+    - name: Check each assistant's settings
+      ansible.builtin.assert:
+        that:
+          - item.name is match('^assistant(-[a-z0-9]+)*$')
+          - item.host is match('^[a-z0-9-]+(\.[a-z0-9-]+)+$')
+          - item.user | int >= 2000
+          - item.dashboard_username | default('') is match('^[a-z][a-z0-9_-]*$')
+          - item.dashboard_password | default('') is match(assistant_secret_pattern) and item.dashboard_password | length >= 20
+          - item.dashboard_secret | default('') is match(assistant_secret_pattern) and item.dashboard_secret | length >= 32
+          - item.environment | default({}) is mapping
+          - item.environment | default({}) | dict2items | rejectattr('key', 'match', '^[A-Z][A-Z0-9_]*$') | list | length == 0
+          - item.environment | default({}) | dict2items | map(attribute='value') | map('string')
+            | reject('match', assistant_value_pattern) | list | length == 0
+        fail_msg: >-
+          Each assistant needs a name (assistant or assistant-<word>), a host, a user (2000 or more, no
+          account on the host), a dashboard_username, a dashboard_password (at least 20 characters) and a
+          dashboard_secret (at least 32, openssl rand -hex 32), both made of letters, digits and -._~;
+          its environment, when set, maps upper-case variable names to values made of letters, digits
+          and ._~:/+=@!,-
+        quiet: true
+      loop: "{{ assistant_instances | default([]) }}"
+      loop_control:
+        label: "{{ item.name | default('?') }}"
+
+    # Traefik reaches the dashboards from this network: they take the client's
+    # address and scheme from its forwarded headers only there
+    - name: Look up the proxy network
+      community.docker.docker_network_info:
+        name: "{{ proxy_network }}"
+      register: assistant_proxy_network
+      failed_when: not assistant_proxy_network.exists   # created by services/proxy
+
+    - name: Trust Traefik's forwarded headers from the proxy network
+      ansible.builtin.set_fact:
+        assistant_trusted_proxies: "{{ assistant_proxy_network.network.IPAM.Config | map(attribute='Subnet') | list }}"
+
+  tasks:
+    - name: Deploy each assistant
+      ansible.builtin.include_tasks: tasks/instance.yml
+      loop: "{{ assistant_instances | default([]) }}"
+      loop_control:
+        loop_var: assistant_instance
+        label: "{{ assistant_instance.name }}"

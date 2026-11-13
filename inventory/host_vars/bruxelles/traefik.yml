@@ -180,7 +180,7 @@ traefik_routes:
     url: http://ix-bichon-bichon-1:8080
     internal: true
   - name: open-webui
-    hosts: [assistant.anneraud.fr]
+    hosts: [discussion.anneraud.fr]
     url: http://ix-open-webui-open-webui-1:8080
     internal: true
   - name: searxng

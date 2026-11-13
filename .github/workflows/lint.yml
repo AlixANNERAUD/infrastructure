@@ -232,11 +232,20 @@ jobs:
           CHECK_ZFS_POOL: sauvegarde-check
         run: .github/scripts/check-sauvegarde.sh
 
+  assistant:
+    name: Assistant
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Start Hermes Agent with the deployment's settings
+        run: .github/scripts/check-assistant.sh
+
   # Single check required by the branch ruleset: add new jobs to `needs`
   required:
     name: required
     if: always()
-    needs: [ansible, compose, molecule, molecule-zitadel, opentofu, protection, sauvegarde, traefik-routes, vigie]
+    needs: [ansible, assistant, compose, molecule, molecule-zitadel, opentofu, protection, sauvegarde, traefik-routes, vigie]
     runs-on: ubuntu-latest
     steps:
       - name: Check that all required jobs succeeded
