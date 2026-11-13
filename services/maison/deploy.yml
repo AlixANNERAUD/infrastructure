@@ -13,12 +13,6 @@
     - ../../vault/ansible/vault.yml
     - ../../vault/maison/vault.yml
     - ../../vault/cloudflare/vault.yml
-  vars:
-    maison_configuration: "{{ services_root }}/Home_assistant/Configuration"
-    # HACS, installed only when missing: it then updates itself from its UI.
-    # Not followed by Dependabot: https://github.com/hacs/integration/releases
-    maison_hacs_version: 2.0.5
-    maison_hacs_checksum: sha256:97be6b824a4f38e683728cc6dd72367f6b8bad0a43428b1b3b987a3087adf413
   pre_tasks:
     # Written to .env and into the recorder's URL: no character to escape there
     - name: Check the vault values
@@ -80,44 +74,3 @@
           TRAEFIK_LOGIN_RATE_LIMIT_AVERAGE: "{{ traefik_login_rate_limit.average }}"
           TRAEFIK_LOGIN_RATE_LIMIT_PERIOD: "{{ traefik_login_rate_limit.period }}"
           TRAEFIK_LOGIN_RATE_LIMIT_BURST: "{{ traefik_login_rate_limit.burst }}"
-
-  post_tasks:
-    - name: Look for HACS
-      ansible.builtin.stat:
-        path: "{{ maison_configuration }}/custom_components/hacs/manifest.json"
-      register: maison_hacs
-
-    - name: Install HACS
-      when: not maison_hacs.stat.exists
-      block:
-        - name: Download HACS
-          ansible.builtin.get_url:
-            url: "https://github.com/hacs/integration/releases/download/{{ maison_hacs_version }}/hacs.zip"
-            dest: "{{ maison_configuration }}/custom_components/hacs.zip"
-            checksum: "{{ maison_hacs_checksum }}"
-            mode: "0640"
-
-        # The release's files sit at the archive's root; the host's Python
-        # extracts it, as TrueNAS may lack unzip
-        - name: Extract HACS
-          ansible.builtin.command:
-            argv:
-              - python3
-              - -m
-              - zipfile
-              - -e
-              - "{{ maison_configuration }}/custom_components/hacs.zip"
-              - "{{ maison_configuration }}/custom_components/hacs"
-            creates: "{{ maison_configuration }}/custom_components/hacs/manifest.json"
-
-        - name: Remove the HACS archive
-          ansible.builtin.file:
-            path: "{{ maison_configuration }}/custom_components/hacs.zip"
-            state: absent
-
-        # Integrations load at startup only
-        - name: Restart Home Assistant with HACS
-          community.docker.docker_compose_v2:
-            project_src: "{{ services_root }}/Home_assistant"
-            services: [home-assistant]
-            state: restarted
