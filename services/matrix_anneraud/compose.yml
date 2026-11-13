@@ -27,7 +27,7 @@ services:
     # anneraud.fr:443
     labels:
       - traefik.enable=true
-      - traefik.docker.network=proxy
+      - traefik.docker.network=${PROXY_NETWORK}
       - traefik.http.routers.synapse.rule=Host(`matrix.anneraud.fr`)
       - traefik.http.routers.synapse.entrypoints=web-secure
       - traefik.http.routers.synapse.tls=true
@@ -85,4 +85,5 @@ networks:
   databases:
     external: true
   proxy:
+    name: "${PROXY_NETWORK}"
     external: true

@@ -29,6 +29,7 @@
     - role: compose_service
       vars:
         compose_service_name: deploiement
+        compose_service_proxy: true
         compose_service_directory: Deploiement
         # UID of the semaphore user in the official image
         compose_service_user: 1001

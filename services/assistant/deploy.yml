@@ -55,18 +55,6 @@
       loop_control:
         label: "{{ item.name | default('?') }}"
 
-    # Traefik reaches the dashboards from this network: they take the client's
-    # address and scheme from its forwarded headers only there
-    - name: Look up the proxy network
-      community.docker.docker_network_info:
-        name: "{{ proxy_network }}"
-      register: assistant_proxy_network
-      failed_when: not assistant_proxy_network.exists   # created by services/proxy
-
-    - name: Trust Traefik's forwarded headers from the proxy network
-      ansible.builtin.set_fact:
-        assistant_trusted_proxies: "{{ assistant_proxy_network.network.IPAM.Config | map(attribute='Subnet') | list }}"
-
   tasks:
     - name: Deploy each assistant
       ansible.builtin.include_tasks: tasks/instance.yml

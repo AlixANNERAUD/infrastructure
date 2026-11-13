@@ -151,6 +151,9 @@ jobs:
           uv sync --locked
           uv run ansible-galaxy collection install -r requirements.yml
 
+      - name: Check that each routed app has its own proxy network
+        run: .github/scripts/check-proxy-networks.sh
+
       - name: Load the rendered routes in Traefik
         run: .github/scripts/check-traefik-routes.sh
 

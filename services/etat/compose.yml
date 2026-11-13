@@ -47,15 +47,17 @@ services:
       - ./config:/config
     networks:
       database:
+      proxy:
       # Vigie's VictoriaMetrics scrapes /metrics by this alias (both instances
-      # are named gatus here)
-      traefik:
+      # are named gatus here), in the internal network of the exporters
+      metrics:
         aliases:
           - ${STACK_NAME}
     depends_on:
       - postgres
     labels:
       - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
       - traefik.http.routers.${STACK_NAME}.rule=${PROXY_RULE}
       - traefik.http.routers.${STACK_NAME}.entrypoints=web-secure
       - traefik.http.routers.${STACK_NAME}.tls=true
@@ -70,9 +72,14 @@ services:
       - traefik.http.routers.${STACK_NAME}-metrics.service=${STACK_NAME}
       - traefik.http.routers.${STACK_NAME}-metrics.middlewares=internal-allowlist@file
 
-# Only the database lives here: no route out of the Docker network
 networks:
+  # Only the database lives here: no route out of the Docker network
   database:
     internal: true
-  traefik:
+  # Vigie's VictoriaMetrics and services/metriques only
+  metrics:
+    name: metriques
+    external: true
+  proxy:
+    name: "${PROXY_NETWORK}"
     external: true

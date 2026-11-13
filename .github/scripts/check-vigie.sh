@@ -34,7 +34,7 @@ cleanup() {
     COMPOSE_PROFILES=mcp compose down --volumes --timeout 5 > /dev/null 2>&1 || true
     exporters down --volumes --timeout 5 > /dev/null 2>&1 || true
     docker rm -f traefik > /dev/null 2>&1 || true
-    docker network rm "$network" "$metrics_network" protection-metrics > /dev/null 2>&1 || true
+    docker network rm "$network" "$metrics_network" protection-metrics traefik-metrics > /dev/null 2>&1 || true
     rm -rf "$directory"
     exit "$status"
 }
@@ -139,6 +139,8 @@ docker network create "$network" > /dev/null
 # Shared with CrowdSec, which does not run here: its target is down
 docker network create --internal protection-metrics > /dev/null
 docker network create --internal "$metrics_network" > /dev/null
+# Shared with Traefik, which does not run here either
+docker network create --internal traefik-metrics > /dev/null
 exporters up -d --wait --quiet-pull
 
 # VictoriaMetrics must accept the scrape configuration as it is

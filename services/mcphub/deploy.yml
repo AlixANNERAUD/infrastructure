@@ -23,6 +23,7 @@
     - role: compose_service
       vars:
         compose_service_name: mcphub
+        compose_service_proxy: true
         compose_service_directory: MCPHub
         # TrueNAS datasets: their permissions are enforced on every deploy
         compose_service_directories:
@@ -36,6 +37,8 @@
             mode: "0700"
         compose_service_external_networks:
           - name: databases   # shared with Databasus
+            internal: true
+          - name: liaison-automatisation   # shared with n8n, also created by services/proxy
             internal: true
         compose_service_environment:
           POSTGRES_DB: mcphub

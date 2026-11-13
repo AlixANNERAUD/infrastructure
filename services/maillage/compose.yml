@@ -12,7 +12,7 @@ services:
     logging: *logging
     container_name: netbird-dashboard
     restart: unless-stopped
-    networks: [traefik]
+    networks: [proxy]
     environment:
       - NETBIRD_MGMT_API_ENDPOINT=https://netbird.anneraud.fr
       - NETBIRD_MGMT_GRPC_API_ENDPOINT=https://netbird.anneraud.fr
@@ -29,6 +29,7 @@ services:
 
     labels:
       - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
       - traefik.http.routers.netbird-dashboard.rule=Host(`netbird.anneraud.fr`)
       - traefik.http.routers.netbird-dashboard.entrypoints=web-secure
       - traefik.http.routers.netbird-dashboard.tls=true
@@ -42,7 +43,7 @@ services:
     logging: *logging
     container_name: netbird-server
     restart: unless-stopped
-    networks: [traefik]
+    networks: [proxy]
     ports:
       - "3478:3478/udp"
     volumes:
@@ -54,6 +55,7 @@ services:
     command: ["--config", "/etc/netbird/config.yaml"]
     labels:
       - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
       # gRPC router (needs h2c backend for HTTP/2 cleartext)
       # yamllint disable-line rule:line-length
       - traefik.http.routers.netbird-grpc.rule=Host(`netbird.anneraud.fr`) && (PathPrefix(`/signalexchange.SignalExchange/`) || PathPrefix(`/management.ManagementService/`))
@@ -94,7 +96,8 @@ services:
       - traefik.http.services.netbird-health-svc.loadbalancer.server.port=9000
 
 networks:
-  traefik:
+  proxy:
+    name: "${PROXY_NETWORK}"
     external: true
 
 volumes:

@@ -26,6 +26,7 @@ services:
       - proxy
     labels:
       - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
       - traefik.http.routers.openbao.rule=Host(`vault.xila.dev`)
       - traefik.http.routers.openbao.entrypoints=web-secure
       # The only xila.dev name on Bruxelles: this router requests the zone's wildcard
@@ -54,4 +55,5 @@ services:
 
 networks:
   proxy:
+    name: "${PROXY_NETWORK}"
     external: true

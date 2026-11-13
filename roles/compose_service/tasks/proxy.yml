@@ -1,0 +1,43 @@
+---
+# One network per stack, shared only with Traefik: an app reached through
+# Traefik can't reach the others directly, past Traefik's protections
+# (allowlist, CrowdSec, rate limits). Not internal: the app goes out through it
+- name: Look up the proxy network
+  community.docker.docker_network_info:
+    name: "{{ compose_service_proxy_network }}"
+  register: compose_service_proxy_lookup
+
+# Never recreate an existing network: a driver mismatch would make the module
+# disconnect every container. The label lets the proxy playbook find it again
+- name: Create the proxy network
+  community.docker.docker_network:
+    name: "{{ compose_service_proxy_network }}"
+    labels:
+      anneraud.proxy: "true"
+  when: not compose_service_proxy_lookup.exists
+
+- name: Look up Traefik
+  community.docker.docker_container_info:
+    name: "{{ compose_service_proxy_traefik }}"
+  register: compose_service_traefik
+
+# Live, without restarting Traefik; services/proxy connects it again to every
+# labelled network when it is recreated. Before Traefik exists, it does that
+- name: Connect Traefik to the proxy network
+  community.docker.docker_network:
+    name: "{{ compose_service_proxy_network }}"
+    connected:
+      - "{{ compose_service_proxy_traefik }}"
+    appends: true
+  when: compose_service_traefik.exists
+
+- name: Read the proxy network's subnets
+  community.docker.docker_network_info:
+    name: "{{ compose_service_proxy_network }}"
+  register: compose_service_proxy_network_info
+
+# Empty in check mode, before the network exists
+- name: Keep the proxy network's subnets
+  ansible.builtin.set_fact:
+    compose_service_proxy_subnets: >-
+      {{ (compose_service_proxy_network_info.network | default({}, true)).IPAM.Config | default([]) | map(attribute='Subnet') | list }}

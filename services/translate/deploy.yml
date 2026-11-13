@@ -10,6 +10,7 @@
     - role: compose_service
       vars:
         compose_service_name: translate
+        compose_service_proxy: true
         compose_service_directory: tolgee_anneraud   # previous name, kept so containers and volumes stay the same
         compose_service_environment:
           DATABASE_NAME: tolgee

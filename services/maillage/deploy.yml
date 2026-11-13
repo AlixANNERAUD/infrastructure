@@ -10,6 +10,7 @@
     - role: compose_service
       vars:
         compose_service_name: maillage
+        compose_service_proxy: true
         compose_service_directory: netbird   # previous name, kept so containers and volumes stay the same
         compose_service_user: 991
         compose_service_templates:

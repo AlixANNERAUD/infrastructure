@@ -19,9 +19,10 @@ services:
     volumes:
       - /opt/star_history/repos.sqlite:/app/repos.sqlite
     networks:
-      - traefik
+      - proxy
     labels:
       - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
       - traefik.http.routers.star-repo.rule=Host(`star-history.dera.page`) || Host(`simrepo.dera.page`)
       - traefik.http.routers.star-repo.entrypoints=web-secure
       - traefik.http.routers.star-repo.tls=true
@@ -38,5 +39,6 @@ services:
       - traefik.http.middlewares.star-repo-cors.headers.addvaryheader=true
 
 networks:
-  traefik:
+  proxy:
+    name: "${PROXY_NETWORK}"
     external: true

@@ -12,6 +12,11 @@
     - role: compose_service
       vars:
         compose_service_name: etat_anneraud
+        compose_service_proxy: true
+        # Shared with Vigie, which scrapes Gatus' metrics there
+        compose_service_external_networks:
+          - name: metriques
+            internal: true
         compose_service_directory: gatus_anneraud   # previous name, kept so containers and volumes stay the same
         compose_service_files:
           - source: anneraud.yml
@@ -37,6 +42,11 @@
     - role: compose_service
       vars:
         compose_service_name: status_dera_page
+        compose_service_proxy: true
+        # Shared with Vigie, which scrapes Gatus' metrics there
+        compose_service_external_networks:
+          - name: metriques
+            internal: true
         compose_service_directory: gatus_derapage
         compose_service_files:
           - source: dera_page.yml

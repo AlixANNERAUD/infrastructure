@@ -56,6 +56,11 @@
     owner: "{{ compose_service_user }}"
     group: "{{ compose_service_group }}"
 
+# Before .env and the templates: they name the network and its subnets
+- name: Give the stack its own proxy network
+  ansible.builtin.include_tasks: proxy.yml
+  when: compose_service_proxy | bool
+
 # Compose would otherwise warn about two Compose files in the folder
 - name: Remove the former docker-compose.yml
   ansible.builtin.file:
@@ -70,6 +75,9 @@
       {% if compose_service_user | string != 'root' %}
       USER_ID={{ compose_service_user }}
       GROUP_ID={{ compose_service_group }}
+      {% endif %}
+      {% if compose_service_proxy | bool %}
+      PROXY_NETWORK={{ compose_service_proxy_network }}
       {% endif %}
       {% for name, value in compose_service_environment.items() %}
       {{ name }}={{ value }}

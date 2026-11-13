@@ -14,6 +14,11 @@
         state: absent
       when: compose_service_test_compose.stat.exists
 
+    - name: Remove the stand-in Traefik
+      community.docker.docker_container:
+        name: molecule_test_traefik
+        state: absent
+
     - name: Remove the external test networks
       community.docker.docker_network:
         name: "{{ item }}"
@@ -21,6 +26,7 @@
       loop:
         - molecule_test_database
         - molecule_test_drift
+        - proxy-molecule_test
 
     - name: Remove the test services folder
       ansible.builtin.file:

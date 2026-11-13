@@ -10,6 +10,7 @@
     - role: compose_service
       vars:
         compose_service_name: authentification
+        compose_service_proxy: true
         compose_service_directory: Zitadel
         compose_service_environment:
           ZITADEL_DOMAIN: authentification.anneraud.fr

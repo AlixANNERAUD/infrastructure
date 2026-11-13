@@ -1,0 +1,23 @@
+---
+# Apps that call each other directly, by container name: each network joins
+# only them, internal (no way out; each app goes out through its own network).
+# services/proxy creates them; the TrueNAS Apps join them in their settings,
+# the stacks of this repository in their compose.yml. Traefik is not on them.
+# internal: false gives a way out to an app that has no proxy network
+application_networks:
+  # Prowlarr (with FlareSolverr) feeds Radarr and Sonarr, which send to
+  # qBittorrent (behind gluetun, services/telechargement); Bazarr follows
+  # Radarr and Sonarr, Seerr asks them and reads Jellyfin
+  - name: liaison-telechargement
+    members: [gluetun, prowlarr, flaresolverr, radarr, sonarr, bazarr, seerr, jellyfin]
+  # Open WebUI's web search
+  - name: liaison-recherche
+    members: [open-webui, searxng]
+  # MCPHub's n8n server (services/mcphub)
+  - name: liaison-automatisation
+    members: [mcphub, n8n]
+  # FlareSolverr has no route, so no proxy network: its way out to the sites
+  # it solves, shared with no other app
+  - name: sortie-flaresolverr
+    internal: false
+    members: [flaresolverr]

@@ -30,15 +30,17 @@ services:
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
     volumes:
       - ./Data:/app/data
+    # liaison reaches n8n's MCP server (a TrueNAS App) by its container name
     networks:
       - internal
       - proxy
+      - liaison
     depends_on:
       postgres:
         condition: service_healthy
     labels:
       - traefik.enable=true
-      - traefik.docker.network=proxy
+      - traefik.docker.network=${PROXY_NETWORK}
       - traefik.http.routers.mcphub.rule=Host(`mcphub.anneraud.fr`)
       - traefik.http.routers.mcphub.entrypoints=web-secure
       - traefik.http.routers.mcphub.tls=true
@@ -71,4 +73,9 @@ networks:
   databases:
     external: true
   proxy:
+    name: "${PROXY_NETWORK}"
+    external: true
+  # MCPHub and n8n only (inventory/host_vars/bruxelles/applications.yml)
+  liaison:
+    name: liaison-automatisation
     external: true

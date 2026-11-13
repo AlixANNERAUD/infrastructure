@@ -10,9 +10,14 @@
     - role: compose_service
       vars:
         compose_service_name: telechargement
+        compose_service_proxy: true
         compose_service_directory: qBittorrent
         compose_service_user: 568
         compose_service_group: 3010
+        # Shared with Radarr and Sonarr (TrueNAS Apps), also created by services/proxy
+        compose_service_external_networks:
+          - name: liaison-telechargement
+            internal: true
         compose_service_environment:
           VPN_USER_NAME: "{{ vpn_user_name }}"
           VPN_PASSWORD: "{{ vpn_password }}"

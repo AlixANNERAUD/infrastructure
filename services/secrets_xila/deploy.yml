@@ -7,6 +7,7 @@
     openbao_api_url: https://vault.xila.dev
     openbao_container_uid: "568"
     openbao_container_gid: "568"
+    openbao_proxy_network: proxy-secrets_xila
   vars_files:
     - ../../vault/ansible/vault.yml
     - ../../vault/cloudflare/vault.yml
@@ -88,6 +89,16 @@
         mode: "0440"
       loop: [tls.crt, tls.key]
 
+    # Its own network, shared only with Traefik, as compose_service_proxy
+    # gives the other stacks
+    - name: Give OpenBao its own proxy network
+      ansible.builtin.include_role:
+        name: compose_service
+        tasks_from: proxy
+      vars:
+        compose_service_name: secrets_xila
+        compose_service_proxy_network: "{{ openbao_proxy_network }}"
+
     - name: Configure OpenBao Compose environment
       ansible.builtin.copy:
         dest: "{{ openbao_root_directory }}/.env"
@@ -96,6 +107,7 @@
         mode: "0600"
         content: |
           BAO_API_ADDR={{ openbao_api_url }}
+          PROXY_NETWORK={{ openbao_proxy_network }}
 
     - name: Deploy OpenBao
       community.docker.docker_compose_v2:

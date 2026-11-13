@@ -18,11 +18,15 @@ services:
     ports:
       - 6881:6881
       - 6881:6881/udp
+    # The proxy network goes out and serves the web UI; the other apps of the
+    # download chain (Radarr, Sonarr) reach qBittorrent over liaison
     networks:
       - proxy
+      - liaison
     # qBittorrent's web UI, which shares this container's network
     labels:
       - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
       - traefik.http.routers.qbittorrent.rule=Host(`telechargement.anneraud.fr`)
       - traefik.http.routers.qbittorrent.entrypoints=web-secure
       - traefik.http.routers.qbittorrent.tls=true
@@ -67,4 +71,9 @@ services:
 
 networks:
   proxy:
+    name: "${PROXY_NETWORK}"
+    external: true
+  # The download chain only (inventory/host_vars/bruxelles/applications.yml)
+  liaison:
+    name: liaison-telechargement
     external: true

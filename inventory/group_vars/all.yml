@@ -15,9 +15,11 @@ ssh_administrators:
 # plus the other controllers' (Semaphore's public key, printed by
 # services/deploiement/deploy.yml), which run on Bruxelles. Only these keys are
 # accepted. Every key works from automation_ssh_sources; on TrueNAS (Bruxelles)
-# the controllers' keys also work from the proxy network, where their
-# containers connect from (see hosts/bootstrap.yml).
+# the controllers' keys also work from Semaphore's proxy network
+# (automation_controller_network), where its container connects from (see
+# hosts/bootstrap.yml).
 automation_user: ansible
+automation_controller_network: proxy-deploiement
 # (a public key, written here so that Semaphore can run hosts/bootstrap.yml too)
 automation_laptop_public_key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH2a6tQP6NqnRvRMzeJxyavYhCXuLmU3JWgHhmMp6UxP ansible@helsinki.anneraud.fr
 automation_additional_public_keys: []

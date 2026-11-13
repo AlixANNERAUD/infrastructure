@@ -22,15 +22,16 @@ services:
     volumes:
       - ./scrape.yml:/etc/vigie/scrape.yml:ro
       - ./victoriametrics:/victoria-metrics-data
-    # The proxy network reaches Luxembourg's Traefik and, through the host,
-    # Bruxelles' over Netbird; protection-metrics only reaches CrowdSec
-    # (services/protection), metrics Luxembourg's exporters
+    # traefik-metrics reaches Luxembourg's Traefik, the proxy network
+    # Bruxelles' through the host over Netbird; protection-metrics only
+    # reaches CrowdSec (services/protection), metrics Luxembourg's exporters
     # (services/metriques). The port is never published
     networks:
       - vigie
       - proxy
       - protection-metrics
       - metrics
+      - traefik-metrics
 
   # Traefik's access logs of both hosts, shipped by Vector (services/metriques):
   # on this host over the internal metriques network, from the others through
@@ -111,6 +112,7 @@ services:
       - victorialogs
     labels:
       - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
       - traefik.http.routers.vigie.rule=Host(`vigie.anneraud.fr`)
       - traefik.http.routers.vigie.entrypoints=web-secure
       - traefik.http.routers.vigie.tls=true
@@ -173,6 +175,10 @@ networks:
   # Created by both playbooks; empty on a host without CrowdSec
   protection-metrics:
     name: protection-metrics
+    external: true
+  # Traefik and VictoriaMetrics only, created by both playbooks
+  traefik-metrics:
+    name: traefik-metrics
     external: true
   # VictoriaMetrics, VictoriaLogs and services/metriques (exporters, Vector) only
   metrics:

@@ -90,6 +90,23 @@ argument_specs:
             type: bool
             default: false
             description: Create the network without access outside the Docker network.
+      compose_service_proxy:
+        type: bool
+        default: false
+        description: >-
+          Give the stack its own proxy network, shared only with Traefik:
+          created when missing (labelled anneraud.proxy, so the proxy
+          playbook reconnects Traefik to it when Traefik is recreated),
+          Traefik connected to it, and its name written to .env as
+          PROXY_NETWORK. Its subnets are then in compose_service_proxy_subnets.
+      compose_service_proxy_network:
+        type: str
+        default: proxy-<compose_service_name>
+        description: Name of the stack's proxy network.
+      compose_service_proxy_traefik:
+        type: str
+        default: traefik
+        description: Name of Traefik's container, connected to the proxy network.
       compose_service_dns_records:
         type: list
         elements: dict

@@ -30,6 +30,7 @@ services:
       - proxy
     labels:
       - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
       - traefik.http.routers.semaphore.rule=Host(`deploiement.anneraud.fr`)
       - traefik.http.routers.semaphore.entrypoints=web-secure
       - traefik.http.routers.semaphore.tls=true
@@ -38,4 +39,5 @@ services:
 
 networks:
   proxy:
+    name: "${PROXY_NETWORK}"
     external: true

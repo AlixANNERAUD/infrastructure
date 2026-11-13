@@ -10,6 +10,7 @@
     - role: compose_service
       vars:
         compose_service_name: wakapi
+        compose_service_proxy: true
         compose_service_directory: Wakapi
         compose_service_user: 568
         compose_service_environment:
