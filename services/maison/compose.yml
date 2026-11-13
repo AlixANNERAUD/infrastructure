@@ -7,9 +7,10 @@ x-logging: &logging
 
 services:
   # Reached through Traefik on its own proxy network, and on the LAN through
-  # its macvlan address for discovery (mDNS, SSDP). Its HTTP settings (port,
-  # trusted proxy) and recorder are in Configuration/packages/infrastructure.yaml,
-  # rendered by the playbook
+  # its macvlan address for discovery (mDNS, SSDP). Its recorder is in
+  # Configuration/packages/infrastructure.yaml, rendered by the playbook; its
+  # HTTP settings (port 8080, the proxy-maison subnet as trusted proxy) are set
+  # in its UI (Settings > System > Network), the only place it reads them now
   home-assistant:
     image: ghcr.io/home-assistant/home-assistant:2026.11.1
     logging: *logging

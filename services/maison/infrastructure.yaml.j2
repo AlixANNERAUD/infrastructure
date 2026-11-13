@@ -1,13 +1,7 @@
 # Rendered by services/maison/deploy.yml (Infrastructure repository): changes
 # made here are overwritten on the next deploy.
-# Traefik reaches Home Assistant over the stack's own proxy network only
-http:
-  server_port: 8080
-  use_x_forwarded_for: true
-  trusted_proxies:
-{% for subnet in compose_service_proxy_subnets %}
-    - {{ subnet }}
-{% endfor %}
+# HTTP settings (port 8080, Traefik's proxy-maison subnet as trusted proxy)
+# live in Home Assistant's UI since 2026: Settings > System > Network.
 
 # History and long-term statistics, in the stack's PostgreSQL
 recorder:

@@ -3,7 +3,9 @@
 # (Linky meter readings from Enedis), in one stack. Home Assistant is routed
 # by Traefik and also has its own LAN address (macvlan) for device discovery.
 # The configuration folder is Home Assistant's own, except
-# Configuration/packages/infrastructure.yaml (HTTP and recorder), rendered here
+# Configuration/packages/infrastructure.yaml (the recorder), rendered here. Its
+# HTTP settings are set in its UI: Settings > System > Network, with the
+# subnet of proxy-maison as trusted proxy
 - name: Deploy Maison (Home Assistant)
   hosts: maison
   become: true
