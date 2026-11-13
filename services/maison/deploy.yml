@@ -1,0 +1,74 @@
+---
+# Home: Home Assistant, its PostgreSQL (history and statistics) and HA-Linky
+# (Linky meter readings from Enedis), in one stack. Home Assistant is routed
+# by Traefik and also has its own LAN address (macvlan) for device discovery.
+# The configuration folder is Home Assistant's own, except
+# Configuration/packages/infrastructure.yaml (HTTP and recorder), rendered here
+- name: Deploy Maison (Home Assistant)
+  hosts: maison
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+    - ../../vault/maison/vault.yml
+    - ../../vault/cloudflare/vault.yml
+  pre_tasks:
+    # Written to .env and into the recorder's URL: no character to escape there
+    - name: Check the vault values
+      ansible.builtin.assert:
+        that:
+          - maison_database_password | default('') is match('^[A-Za-z0-9._~-]{16,}$')
+          - home_assistant_supervisor_token | default('') | length > 0
+          - ha_linky_meters | default([]) is sequence
+        fail_msg: >-
+          vault/maison/vault.yml needs maison_database_password (the existing database's, at least 16
+          letters, digits or -._~), home_assistant_supervisor_token (HA-Linky's long-lived token),
+          ha_linky_meters and ha_linky_costs
+        quiet: true
+
+    - name: Look up the LAN network
+      community.docker.docker_network_info:
+        name: "{{ maison_macvlan.name }}"
+      register: maison_lan_network
+
+    # Never recreate an existing network: the module would disconnect Home Assistant
+    - name: Create the LAN network
+      community.docker.docker_network:
+        name: "{{ maison_macvlan.name }}"
+        driver: macvlan
+        driver_options:
+          parent: "{{ maison_macvlan.parent }}"
+        ipam_config:
+          - subnet: "{{ maison_macvlan.subnet }}"
+            gateway: "{{ maison_macvlan.gateway }}"
+            iprange: "{{ maison_macvlan.address }}"
+      when: not maison_lan_network.exists
+
+  roles:
+    - role: compose_service
+      vars:
+        compose_service_name: maison
+        compose_service_proxy: true
+        compose_service_directory: Home_assistant   # the former TrueNAS App's dataset, kept with its data
+        compose_service_directories:
+          - path: Postgres_data   # Postgres runs as 999 and refuses a folder others can read
+            owner: "999"
+            group: "999"
+            mode: "0700"
+          - path: Linky
+            mode: "0750"
+        compose_service_templates:
+          - source: infrastructure.yaml.j2
+            destination: Configuration/packages/infrastructure.yaml
+          - source: ha_linky_options.json.j2
+            destination: Linky/options.json
+        compose_service_external_networks:
+          - name: databases   # shared with Databasus
+            internal: true
+        compose_service_environment:
+          DATABASE_PASSWORD: "{{ maison_database_password }}"
+          HOME_ASSISTANT_TOKEN: "{{ home_assistant_supervisor_token }}"
+          MACVLAN_NETWORK: "{{ maison_macvlan.name }}"
+          CAMERAS_PATH: /mnt/Donnees/Cameras
+          TRAEFIK_LOGIN_RATE_LIMIT_AVERAGE: "{{ traefik_login_rate_limit.average }}"
+          TRAEFIK_LOGIN_RATE_LIMIT_PERIOD: "{{ traefik_login_rate_limit.period }}"
+          TRAEFIK_LOGIN_RATE_LIMIT_BURST: "{{ traefik_login_rate_limit.burst }}"

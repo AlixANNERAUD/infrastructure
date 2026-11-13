@@ -22,8 +22,8 @@
   ansible.builtin.import_playbook: services/sauvegarde/deploy.yml
 - name: Vigie
   ansible.builtin.import_playbook: services/vigie/deploy.yml
-- name: HA-Linky
-  ansible.builtin.import_playbook: services/linky/deploy.yml
+- name: Maison (Home Assistant)
+  ansible.builtin.import_playbook: services/maison/deploy.yml
 - name: Matrix (anneraud.fr)
   ansible.builtin.import_playbook: services/matrix_anneraud/deploy.yml
 - name: Matrix (dera.page)

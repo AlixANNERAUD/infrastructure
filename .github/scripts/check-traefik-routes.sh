@@ -266,6 +266,11 @@ expected = {
         "stand_in": "matrix_anneraud-synapse", "rule": "(Host(`anneraud.fr`)) && PathPrefix(`/.well-known/matrix`)", "url": "http:8008",
     },
     "matrix-delegation-1": {"stand_in": "matrix_anneraud-synapse", "rule": "(Host(`anneraud.fr`)) && PathPrefix(`/_matrix`)", "url": "http:8008"},
+    "home-assistant": {"stand_in": "maison-home-assistant", "rule": "Host(`maison.anneraud.fr`)", "url": "http:8080"},
+    "home-assistant-login": {
+        "stand_in": "maison-home-assistant", "service": "home-assistant", "tier": "login",
+        "rule": "(Host(`maison.anneraud.fr`)) && Method(`POST`) && (PathRegexp(`(?i)^/auth/login_flow`))",
+    },
     "mcphub": {"stand_in": "mcphub-mcphub", "rule": "Host(`mcphub.anneraud.fr`)", "middlewares": internal, "url": "http:3000"},
     "semaphore": {"stand_in": "deploiement-semaphore", "rule": "Host(`deploiement.anneraud.fr`)", "middlewares": internal, "url": "http:3000"},
     "openbao": {
