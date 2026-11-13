@@ -134,7 +134,8 @@
 
     # Each routed app has a network of its own shared only with Traefik
     # (compose_service_proxy): a recreated Traefik has lost them, so it joins
-    # every labelled network again
+    # every labelled network again, and every network the routes name, whose
+    # label TrueNAS may drop when it recreates an app's network
     - name: List the proxy networks
       community.docker.docker_host_info:
         networks: true
@@ -144,12 +145,13 @@
 
     - name: Connect Traefik to every proxy network
       community.docker.docker_network:
-        name: "{{ item.Name }}"
+        name: "{{ item }}"
         connected: [traefik]
         appends: true
-      loop: "{{ traefik_proxy_networks.networks }}"
-      loop_control:
-        label: "{{ item.Name }}"
+      loop: >-
+        {{ ((traefik_proxy_networks.networks | map(attribute='Name') | list)
+            + (traefik_routes | default([]) | selectattr('network', 'defined') | map(attribute='network') | list))
+           | unique | sort }}
 
     - name: Read Traefik's networks
       ansible.builtin.command:
