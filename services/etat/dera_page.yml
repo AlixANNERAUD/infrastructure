@@ -30,14 +30,6 @@ endpoints:
       - "[CERTIFICATE_EXPIRATION] > 336h"
       - "[BODY] == pat(*OK*)"
 
-  - name: Bible
-    group: Services
-    url: "https://yves.dera.page"
-    interval: 1m
-    conditions:
-      - "[STATUS] == 200"
-      - "[CERTIFICATE_EXPIRATION] > 336h"
-
   - name: Genda
     group: Services
     url: "https://genda.dera.page"
