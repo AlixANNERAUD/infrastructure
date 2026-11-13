@@ -13,6 +13,22 @@ ui:
   default-sort-by: group
 
 endpoints:
+  - name: Dera.page
+    group: Services
+    url: "https://dera.page/"
+    interval: 1m
+    conditions:
+      - "[STATUS] == 200"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+
+  - name: Signal
+    group: Services
+    url: "https://signal.dera.page/"
+    interval: 1m
+    conditions:
+      - "[STATUS] == 200"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+
   - name: Stotra
     group: Services
     url: "https://stotra.dera.page/api/user/leaderboard"
@@ -29,14 +45,6 @@ endpoints:
       - "[STATUS] == 200"
       - "[CERTIFICATE_EXPIRATION] > 336h"
       - "[BODY] == pat(*OK*)"
-
-  - name: Bible
-    group: Services
-    url: "https://yves.dera.page"
-    interval: 1m
-    conditions:
-      - "[STATUS] == 200"
-      - "[CERTIFICATE_EXPIRATION] > 336h"
 
   - name: Genda
     group: Services
@@ -133,10 +141,20 @@ endpoints:
     conditions:
       - "[CONNECTED] == true"
 
-  - name: Star History
+  - name: Simrepo
     group: Services
-    url: "https://star-history.dera.page"
+    url: "https://simrepo.dera.page/"
     interval: 1m
     conditions:
       - "[STATUS] == 200"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+
+  - name: Star History
+    group: Services
+    url: "https://star-history.dera.page/"
+    client:
+      ignore-redirect: true
+    interval: 1m
+    conditions:
+      - "[STATUS] == 301"
       - "[CERTIFICATE_EXPIRATION] > 336h"
