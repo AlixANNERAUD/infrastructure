@@ -23,7 +23,6 @@ set -euo pipefail
 directory=$(mktemp -d)
 proxy=$directory/proxy
 protection=$directory/protection
-proxy_network=check-protection-proxy-$$
 # An IPv6 client on its own Docker network, coming in through the published port
 client_network=check-protection-client-$$
 client_subnet=fd7e:57::/64
@@ -64,7 +63,7 @@ cleanup() {
     fi
     compose_proxy down --volumes --timeout 5 > /dev/null 2>&1 || true
     compose_protection down --volumes --timeout 5 > /dev/null 2>&1 || true
-    docker network rm "$proxy_network" "$client_network" protection protection-metrics traefik-metrics > /dev/null 2>&1 || true
+    docker network rm "$client_network" protection protection-metrics traefik-metrics > /dev/null 2>&1 || true
     # CrowdSec's files belong to root
     sudo -n rm -rf "$directory" 2> /dev/null || rm -rf "$directory"
     exit "$status"
@@ -173,7 +172,6 @@ EOF
 cat > "$proxy/.env" <<EOF
 CLOUDFLARE_EMAIL=check@example.org
 CLOUDFLARE_API_KEY=check
-PROXY_NETWORK=$proxy_network
 TRAEFIK_DASHBOARD_HOST=traefik.check.test
 TRAEFIK_FEDERATION_PUBLISH=127.0.0.1::8448
 TRAEFIK_TRUSTED_PROXIES=$(echo "$docker_networks" | tr -d '[] "')
@@ -195,7 +193,6 @@ fi
 docker network create --internal protection > /dev/null
 docker network create --internal protection-metrics > /dev/null
 docker network create --internal traefik-metrics > /dev/null
-docker network create "$proxy_network" > /dev/null
 
 # The engine installs the hub collections before its local API answers
 compose_protection up -d --wait --wait-timeout 300 --quiet-pull

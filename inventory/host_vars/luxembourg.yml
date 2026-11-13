@@ -7,7 +7,6 @@ global_dns_host: global.luxembourg.anneraud.fr
 
 # Compose stacks live in /opt, behind Traefik
 services_root: /opt
-proxy_network: traefik
 
 # Traefik instance
 traefik_directory: traefik

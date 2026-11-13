@@ -23,10 +23,6 @@ services:
       # (one address for every IPv6 client: shared rate limits, CrowdSec bans)
       ingress:
         gw_priority: 1
-      # Shared by the apps not yet on a network of their own; every other
-      # app has one shared only with Traefik, which the proxy playbook and
-      # each app's deploy connect it to (not listed here)
-      proxy: {}
       protection: {}   # reaches CrowdSec's local API (services/protection)
       traefik-metrics: {}   # Vigie scrapes the metrics entrypoint (Luxembourg)
     environment:
@@ -38,7 +34,6 @@ services:
       - "--api.dashboard=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
-      - "--providers.docker.network=${PROXY_NETWORK}"
       - "--providers.file.directory=/etc/traefik/dynamic"
 
       - "--entryPoints.web.address=:80"
@@ -124,12 +119,12 @@ services:
       - "traefik.http.routers.metrics-internal.service=prometheus@internal"
 
 networks:
-  # Traefik only, created by Compose: published ports and outgoing traffic
+  # Traefik only, created by Compose: published ports and outgoing traffic.
+  # Each app also has a network of its own shared only with Traefik
+  # (proxy-<app>), which the proxy playbook and the app's deploy connect it
+  # to, so they are not listed here
   ingress:
     enable_ipv6: true
-  proxy:
-    name: "${PROXY_NETWORK}"
-    external: true
   # Traefik and CrowdSec only, created by both playbooks; empty on hosts
   # without CrowdSec
   protection:

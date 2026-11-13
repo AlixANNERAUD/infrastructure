@@ -57,17 +57,6 @@
         traefik_docker_settings: >-
           {{ (traefik_docker_daemon.content | b64decode | from_json) if traefik_docker_daemon.content is defined else {} }}
 
-    - name: Look up the proxy network
-      community.docker.docker_network_info:
-        name: "{{ proxy_network }}"
-      register: traefik_proxy_network
-
-    # Never recreate an existing network: a driver mismatch would make the module disconnect every container
-    - name: Create the proxy network
-      community.docker.docker_network:
-        name: "{{ proxy_network }}"
-      when: not traefik_proxy_network.exists
-
   roles:
     - role: compose_service
       vars:
@@ -94,7 +83,6 @@
         compose_service_environment:
           CLOUDFLARE_EMAIL: "{{ cloudflare_email }}"
           CLOUDFLARE_API_KEY: "{{ cloudflare_api_key }}"
-          PROXY_NETWORK: "{{ proxy_network }}"
           TRAEFIK_DASHBOARD_HOST: "{{ traefik_dashboard_host }}"
           TRAEFIK_FEDERATION_PUBLISH: "{{ traefik_federation_publish }}"
           TRAEFIK_TRUSTED_PROXIES: "{{ cloudflare_networks | join(',') }}"

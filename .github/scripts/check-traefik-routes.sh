@@ -3,7 +3,7 @@
 # deployed: the file routes rendered from inventory/host_vars/bruxelles/traefik.yml
 # (TrueNAS Apps and LAN devices) with the shared policy, and the Docker labels
 # of the stacks deployed on Bruxelles, carried by stand-in containers (whoami)
-# on a network named like Bruxelles' proxy network. Every router must be
+# on one stand-in proxy network (each has its own once deployed). Every router must be
 # enabled and match the routing expected below, and requests check the
 # backends, the internal allowlist and the login rate limits.
 set -euo pipefail
@@ -11,8 +11,8 @@ set -euo pipefail
 directory=$(mktemp -d)
 project=check-traefik-routes-$$
 container=$project
-# The stacks' labels and Compose files name Bruxelles' proxy network
-proxy_network=$(sed -n 's/^proxy_network: *//p' inventory/host_vars/bruxelles/main.yml)
+# Stands in for every stack's proxy network (PROXY_NETWORK in their .env)
+proxy_network=$project-proxy
 # Answers every path with its hostname, on the port the labels give
 stand_in_image=traefik/whoami:v1.12.0
 cleanup() {

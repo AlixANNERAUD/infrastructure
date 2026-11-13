@@ -8,7 +8,6 @@ global_dns_host: global.bruxelles.anneraud.fr
 
 # Compose stacks live on the encrypted dataset, behind Traefik
 services_root: /mnt/Donnees/Applications_chiffrees
-proxy_network: proxy
 
 # Host and container metrics (services/metriques), scraped by Vigie from
 # Luxembourg over Netbird through Traefik, behind the internal allowlist, at
