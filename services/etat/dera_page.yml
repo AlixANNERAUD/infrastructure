@@ -13,6 +13,14 @@ ui:
   default-sort-by: group
 
 endpoints:
+  - name: Dera.page
+    group: Services
+    url: "https://dera.page/"
+    interval: 1m
+    conditions:
+      - "[STATUS] == 200"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+
   - name: Stotra
     group: Services
     url: "https://stotra.dera.page/api/user/leaderboard"
