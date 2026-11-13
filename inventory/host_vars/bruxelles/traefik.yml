@@ -94,15 +94,6 @@ traefik_routes:
     url: http://ix-collabora-collabora-1:8080
     network: proxy-collabora
     internal: false
-  - name: home-assistant
-    hosts: [maison.anneraud.fr]
-    url: http://ix-home-assistant-home-assistant-1:8080
-    network: proxy-home-assistant
-    internal: false
-    # Login flow steps; the apps renew their tokens on /auth/token
-    rate_limit:
-      <<: *login_rate_limit
-      prefixes: [/auth/login_flow]
   - name: jellyfin
     hosts: [mediatheque.anneraud.fr]
     url: http://ix-jellyfin-jellyfin-1:8096

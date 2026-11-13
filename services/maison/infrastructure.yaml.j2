@@ -1,0 +1,10 @@
+# Rendered by services/maison/deploy.yml (Infrastructure repository): changes
+# made here are overwritten on the next deploy.
+# HTTP settings (port 8080, Traefik's proxy-maison subnet as trusted proxy)
+# live in Home Assistant's UI since 2026: Settings > System > Network.
+
+# History and long-term statistics, in the stack's PostgreSQL
+recorder:
+  purge_keep_days: 30
+  commit_interval: 3
+  db_url: "postgresql://home-assistant:{{ maison_database_password }}@postgres:5432/home-assistant?sslmode=disable"

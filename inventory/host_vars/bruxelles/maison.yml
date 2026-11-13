@@ -1,0 +1,10 @@
+---
+# Home Assistant's own address on the LAN (services/maison), for discovery
+# (mDNS, SSDP): a macvlan network on the host's interface, from which Docker
+# hands out this single address. The host itself can't reach it (macvlan)
+maison_macvlan:
+  name: macvlan0
+  parent: enp4s0
+  subnet: 192.168.0.0/24
+  gateway: 192.168.0.1
+  address: 192.168.0.24/32
