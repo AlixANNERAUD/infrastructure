@@ -3,7 +3,7 @@ global:
   scrape_interval: 30s
 
 scrape_configs:
-  # Luxembourg's Traefik, on its internal metrics entrypoint in the proxy network
+  # Luxembourg's Traefik, on its internal metrics entrypoint in the traefik-metrics network
   - job_name: traefik-luxembourg
     metrics_path: /metrics
     scheme: http

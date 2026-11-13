@@ -36,7 +36,7 @@ services:
       - proxy
     labels:
       - traefik.enable=true
-      - traefik.docker.network=proxy
+      - traefik.docker.network=${PROXY_NETWORK}
       - traefik.http.routers.wakapi.rule=Host(`wakapi.anneraud.fr`) || Host(`wakapi.dera.page`)
       - traefik.http.routers.wakapi.entrypoints=web-secure
       # The only dera.page name on Bruxelles: this router requests the zone's
@@ -70,4 +70,5 @@ networks:
   databases:
     external: true
   proxy:
+    name: "${PROXY_NETWORK}"
     external: true

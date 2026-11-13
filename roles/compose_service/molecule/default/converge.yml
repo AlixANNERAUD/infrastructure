@@ -17,6 +17,14 @@
     - name: Create a network that the role will find different
       community.docker.docker_network:
         name: molecule_test_drift
+
+    # Stands in for Traefik, which the role connects to the stack's proxy network
+    - name: Start a stand-in Traefik
+      community.docker.docker_container:
+        name: molecule_test_traefik
+        image: busybox:1.37
+        command: sleep 3600
+        state: started
   roles:
     - role: compose_service
       vars:
@@ -49,5 +57,13 @@
             internal: true
           - name: molecule_test_drift
             internal: true
+        compose_service_proxy: true
+        compose_service_proxy_traefik: molecule_test_traefik
         compose_service_environment:
           PROXY_RULE: Host(`molecule.example`)
+  post_tasks:
+    - name: Check that the role reports the proxy network's subnets
+      ansible.builtin.assert:
+        that:
+          - compose_service_proxy_subnets | length > 0
+          - compose_service_proxy_subnets[0] is match('^[0-9a-f.:]+/[0-9]+$')

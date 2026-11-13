@@ -105,6 +105,9 @@ for stack in stacks:
     compose = Path(f"services/{stack}/compose.yml")
     names = sorted(set(re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)", compose.read_text())))
     environment = {name: placeholder(name) for name in names} | deployed_environment(stack)
+    # Deployed, each stack has a proxy network of its own; here they all share the stand-in one
+    environment |= {name: proxy_network for name, value in environment.items()
+                    if name == "PROXY_NETWORK" or str(value).startswith("proxy-")}
     environment_file = directory / f"{stack}.env"
     environment_file.write_text("".join(f"{name}={value}\n" for name, value in environment.items()))
     configuration = json.loads(subprocess.run(

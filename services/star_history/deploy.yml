@@ -10,6 +10,7 @@
     - role: compose_service
       vars:
         compose_service_name: star_history
+        compose_service_proxy: true
         compose_service_user: 991
         compose_service_mounted_files:
           - repos.sqlite

@@ -38,6 +38,7 @@
         that:
           - "'USER_ID=' ~ lookup('ansible.builtin.pipe', 'id -u') in content"
           - "'PROXY_RULE=Host(`molecule.example`)' in content"
+          - "'PROXY_NETWORK=proxy-molecule_test' in content"
       vars:
         content: "{{ compose_service_test_environment.content | b64decode }}"
 
@@ -94,6 +95,25 @@
         that:
           - compose_service_test_network.exists
           - compose_service_test_network.network.Internal
+
+    - name: Look up the proxy network
+      community.docker.docker_network_info:
+        name: proxy-molecule_test
+      register: compose_service_test_proxy
+
+    # Labelled for services/proxy, not internal (the app goes out through it),
+    # shared by the app and Traefik only
+    - name: Check the proxy network
+      ansible.builtin.assert:
+        that:
+          - compose_service_test_proxy.exists
+          - compose_service_test_proxy.network.Labels['anneraud.proxy'] == 'true'
+          - not compose_service_test_proxy.network.Internal
+          - containers | length == 2
+          - "'molecule_test_traefik' in containers"
+          - containers | select('match', '^molecule_test-app-') | list | length == 1
+      vars:
+        containers: "{{ compose_service_test_proxy.network.Containers.values() | map(attribute='Name') | list }}"
 
     - name: Read when the container started
       ansible.builtin.command:

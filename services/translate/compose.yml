@@ -31,9 +31,10 @@ services:
       - database
     networks:
       - internal
-      - traefik
+      - proxy
     labels:
       - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
       # Main router; translate.xila.dev redirects to translate.anneraud.fr
       - traefik.http.routers.tolgee.rule=Host(`translate.anneraud.fr`) || Host(`translate.xila.dev`)
       - traefik.http.routers.tolgee.entrypoints=web-secure
@@ -100,5 +101,6 @@ networks:
   # Database side only: no route out of the Docker network
   internal:
     internal: true
-  traefik:
+  proxy:
+    name: "${PROXY_NETWORK}"
     external: true

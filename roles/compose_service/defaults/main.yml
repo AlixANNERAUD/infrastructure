@@ -31,6 +31,15 @@ compose_service_mounted_files: []
 # (existing ones are left untouched): [{name: databases, internal: true}], internal defaults to false
 compose_service_external_networks: []
 
+# Behind Traefik: the stack gets a network of its own, shared only with
+# Traefik (compose.yml names it ${PROXY_NETWORK}, written to .env), so no
+# other app can reach it. The role creates it and connects Traefik to it;
+# compose_service_proxy_subnets then holds its subnets, for the apps that
+# trust Traefik's forwarded headers
+compose_service_proxy: false
+compose_service_proxy_network: "proxy-{{ compose_service_name }}"
+compose_service_proxy_traefik: traefik   # Traefik's container
+
 # CNAME records pointing to the host: [{record: app.example.org, visibility: public | private, zone: example.org}]
 # visibility defaults to public (global_dns_host), zone to the last two labels of the record
 compose_service_dns_records: []

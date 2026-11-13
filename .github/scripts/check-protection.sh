@@ -64,7 +64,7 @@ cleanup() {
     fi
     compose_proxy down --volumes --timeout 5 > /dev/null 2>&1 || true
     compose_protection down --volumes --timeout 5 > /dev/null 2>&1 || true
-    docker network rm "$proxy_network" "$client_network" protection protection-metrics > /dev/null 2>&1 || true
+    docker network rm "$proxy_network" "$client_network" protection protection-metrics traefik-metrics > /dev/null 2>&1 || true
     # CrowdSec's files belong to root
     sudo -n rm -rf "$directory" 2> /dev/null || rm -rf "$directory"
     exit "$status"
@@ -194,6 +194,7 @@ fi
 
 docker network create --internal protection > /dev/null
 docker network create --internal protection-metrics > /dev/null
+docker network create --internal traefik-metrics > /dev/null
 docker network create "$proxy_network" > /dev/null
 
 # The engine installs the hub collections before its local API answers

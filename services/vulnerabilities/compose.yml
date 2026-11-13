@@ -29,9 +29,10 @@ services:
       NANOBOM_TRUST_FORWARDED_HEADERS: "true"
     networks:
       - internal
-      - traefik
+      - proxy
     labels:
       - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
       - traefik.http.routers.vulnerabilities.rule=Host(`${HOST}`)
       - traefik.http.routers.vulnerabilities.entrypoints=web-secure
       - traefik.http.routers.vulnerabilities.tls=true
@@ -83,5 +84,6 @@ networks:
   # Database side only: no route out of the Docker network
   internal:
     internal: true
-  traefik:
+  proxy:
+    name: "${PROXY_NETWORK}"
     external: true

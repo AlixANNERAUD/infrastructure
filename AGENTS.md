@@ -67,6 +67,7 @@ Compose services are deployed with the shared role `roles/compose_service` (see 
         compose_service_name: wakapi
         compose_service_directory: Wakapi   # only when the folder name differs from the service name
         compose_service_user: 568            # also written to .env as USER_ID / GROUP_ID
+        compose_service_proxy: true          # routed by Traefik: its own proxy network, written to .env as PROXY_NETWORK
         compose_service_environment: {...}   # written to .env
         compose_service_files: [{source: config.yml, destination: config/config.yml}]
         compose_service_mounted_files: [repos.sqlite]
@@ -77,6 +78,7 @@ The role creates the folder under the host's `services_root` (permissions only o
 
 Rules:
 
+- Every app routed by Traefik has a network of its own, shared only with Traefik (`proxy-<service>`): its `deploy.yml` sets `compose_service_proxy: true`, its `compose.yml` joins `proxy: {name: "${PROXY_NETWORK}", external: true}`, and each routed container carries `traefik.docker.network=${PROXY_NETWORK}` and its `loadbalancer.server.port`. Apps that trust Traefik's forwarded headers trust `compose_service_proxy_subnets` only. TrueNAS routes in `inventory/host_vars/bruxelles/traefik.yml` name their app's `network: proxy-<app>`; apps that call each other share an internal `liaison-*` network (`inventory/host_vars/bruxelles/applications.yml`). Never put a new app on the shared `traefik`/`proxy` network. `.github/scripts/check-proxy-networks.sh` checks this.
 - Bind-mount paths in `compose.yml` must match what `deploy.yml` creates. A missing file mount makes Docker create a directory in its place.
 - Pass UID/GID and secrets to Compose through `.env` (`${USER_ID}:${GROUP_ID}`), not hard-coded twice.
 - Every long-running container gets `restart: unless-stopped`, databases included.

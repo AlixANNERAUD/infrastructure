@@ -48,7 +48,7 @@ services:
     # its /64); the limits come from inventory/host_vars/bruxelles/traefik.yml
     labels:
       - traefik.enable=true
-      - traefik.docker.network=proxy
+      - traefik.docker.network=${PROXY_NETWORK}
       - traefik.http.routers.zitadel.rule=Host(`authentification.anneraud.fr`)
       - traefik.http.routers.zitadel.entrypoints=web-secure
       - traefik.http.routers.zitadel.tls=true
@@ -87,7 +87,7 @@ services:
       - proxy
     labels:
       - traefik.enable=true
-      - traefik.docker.network=proxy
+      - traefik.docker.network=${PROXY_NETWORK}
       - traefik.http.routers.zitadel-1.rule=(Host(`authentification.anneraud.fr`)) && PathPrefix(`/ui/v2/login`)
       - traefik.http.routers.zitadel-1.entrypoints=web-secure
       - traefik.http.routers.zitadel-1.tls=true
@@ -137,4 +137,5 @@ networks:
   databases:
     external: true
   proxy:
+    name: "${PROXY_NETWORK}"
     external: true

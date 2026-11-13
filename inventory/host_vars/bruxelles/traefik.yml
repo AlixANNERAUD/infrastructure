@@ -28,10 +28,15 @@ traefik_busy_login_rate_limit: &busy_login_rate_limit
 
 # The first route serving a zone requests its wildcard certificate; dera.page's
 # and xila.dev's are requested by labels (services/wakapi, services/secrets_xila)
+#
+# network: the app's own proxy network, shared only with Traefik, created by
+# services/proxy. The TrueNAS App joins it in its settings, in place of the
+# shared proxy network, so it can't reach the other apps; LAN devices have none
 traefik_routes:
   - name: paperless
     hosts: [archive.anneraud.fr]
     url: http://ix-paperless-ngx-paperless-1:8000
+    network: proxy-paperless-ngx
     internal: true
   - name: truenas
     hosts: [bruxelles.anneraud.fr]
@@ -41,19 +46,23 @@ traefik_routes:
   - name: firefly
     hosts: [finances.anneraud.fr]
     url: http://ix-firefly-iii-firefly-iii-1:8080
+    network: proxy-firefly-iii
     internal: true
   - name: firefly-importer
     hosts: [importeur-finances.anneraud.fr]
     url: http://ix-firefly-iii-importer-1:8080
+    network: proxy-firefly-iii
     internal: true
   - name: portainer
     hosts: [conteneurs.bruxelles.anneraud.fr]
     url: https://ix-portainer-portainer-1:8080
+    network: proxy-portainer
     internal: true
     insecure_backend: true
   - name: nextcloud
     hosts: [nuage.anneraud.fr]
     url: http://ix-nextcloud-nextcloud-1:80
+    network: proxy-nextcloud
     internal: false
     # Login form and two-factor challenge. Higher: the desktop client polls
     # /login/v2/poll every 3 s while its user logs in in the browser
@@ -68,10 +77,12 @@ traefik_routes:
   - name: mealie
     hosts: [recettes.anneraud.fr]
     url: http://ix-mealie-mealie-1:8080
+    network: proxy-mealie
     internal: true
   - name: vaultwarden
     hosts: [bitwarden.anneraud.fr]
     url: http://ix-vaultwarden-vaultwarden-1:8080
+    network: proxy-vaultwarden
     internal: false
     # Password and token requests (clients refresh their token about hourly),
     # and the admin page's login
@@ -81,10 +92,12 @@ traefik_routes:
   - name: collabora
     hosts: [collabora.anneraud.fr]
     url: http://ix-collabora-collabora-1:8080
+    network: proxy-collabora
     internal: false
   - name: home-assistant
     hosts: [maison.anneraud.fr]
     url: http://ix-home-assistant-home-assistant-1:8080
+    network: proxy-home-assistant
     internal: false
     # Login flow steps; the apps renew their tokens on /auth/token
     rate_limit:
@@ -93,6 +106,7 @@ traefik_routes:
   - name: jellyfin
     hosts: [mediatheque.anneraud.fr]
     url: http://ix-jellyfin-jellyfin-1:8096
+    network: proxy-jellyfin
     internal: false
     # AuthenticateByName and AuthenticateWithQuickConnect
     rate_limit:
@@ -101,10 +115,12 @@ traefik_routes:
   - name: radarr
     hosts: [radarr.anneraud.fr]
     url: http://ix-radarr-radarr-1:8080
+    network: proxy-radarr
     internal: true
   - name: sonarr
     hosts: [sonarr.anneraud.fr]
     url: http://ix-sonarr-sonarr-1:8080
+    network: proxy-sonarr
     internal: true
   - name: router
     hosts: [berlin.anneraud.fr]
@@ -128,68 +144,84 @@ traefik_routes:
   - name: gitea
     hosts: [git.anneraud.fr]
     url: http://ix-gitea-gitea-1:30008
+    network: proxy-gitea
     internal: true
   - name: ddns-updater
     hosts: [ddns-updater.bruxelles.anneraud.fr]
     url: http://ix-ddns-updater-ddns-1:8080
+    network: proxy-ddns-updater
     internal: true
   - name: umami
     hosts: [s.anneraud.fr, s.guenola-sahut.fr]
     url: http://ix-umami-umami-1:8080
+    network: proxy-umami
     internal: false
   - name: prowlarr
     hosts: [prowlarr.anneraud.fr]
     url: http://ix-prowlarr-prowlarr-1:8080
+    network: proxy-prowlarr
     internal: true
   - name: seerr
     hosts: [jellyseerr.anneraud.fr]
     url: http://ix-seerr-seerr-1:8080
+    network: proxy-seerr
     internal: true
   - name: bazarr
     hosts: [bazarr.anneraud.fr]
     url: http://ix-bazarr-bazarr-1:8080
+    network: proxy-bazarr
     internal: true
   - name: n8n
     hosts: [automatisation.anneraud.fr]
     url: http://ix-n8n-n8n-1:8080
+    network: proxy-n8n
     internal: true
   - name: odoo-minitrainstore
     hosts: [www.minitrainstore.fr]
     url: http://ix-odoo-odoo-1:8069
+    network: proxy-odoo
     internal: false
     cloudflare_only: true
   - name: odoo-guenola-sahut
     hosts: [www.guenola-sahut.fr]
     url: http://ix-odoo-guenola-sahut-odoo-1:8069
+    network: proxy-odoo-guenola-sahut
     internal: false
     cloudflare_only: true
   - name: bentopdf
     hosts: [pdf.anneraud.fr]
     url: http://ix-bentopdf-bentopdf-1:8080
+    network: proxy-bentopdf
     internal: true   # no login of its own
   - name: metube
     hosts: [metube.anneraud.fr]
     url: http://ix-metube-metube-1:8080
+    network: proxy-metube
     internal: true
   - name: databasus
     hosts: [databasus.anneraud.fr]
     url: http://ix-databasus-databasus-1:4005
+    network: proxy-databasus
     internal: true
   - name: bichon
     hosts: [archive-courriel.anneraud.fr]
     url: http://ix-bichon-bichon-1:8080
+    network: proxy-bichon
     internal: true
   - name: open-webui
     hosts: [discussion.anneraud.fr]
     url: http://ix-open-webui-open-webui-1:8080
+    network: proxy-open-webui
     internal: true
   - name: searxng
     hosts: [recherche.anneraud.fr]
     url: http://ix-searxng-searxng-1:8080
+    network: proxy-searxng
     internal: true
   - name: meshcentral
     hosts: [parc.anneraud.fr]
     url: http://ix-meshcentral-meshcentral-1:443
+    network: proxy-meshcentral
     # Its agents and console are only reached from the LAN and the VPN
     internal: true
 

@@ -28,6 +28,7 @@
     - role: compose_service
       vars:
         compose_service_name: vulnerabilities
+        compose_service_proxy: true
         compose_service_directories:
           - path: postgres   # Postgres (Alpine) runs as 70 and refuses a folder others can read
             owner: "70"

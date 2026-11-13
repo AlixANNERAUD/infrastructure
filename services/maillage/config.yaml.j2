@@ -23,9 +23,12 @@ server:
     cliRedirectURIs:
       - "http://localhost:53000/"
 
+  # Traefik reaches NetBird over the stack's own proxy network only
   reverseProxy:
     trustedHTTPProxies:
-      - "172.30.0.10/32"
+{% for subnet in compose_service_proxy_subnets %}
+      - "{{ subnet }}"
+{% endfor %}
 
   store:
     engine: "sqlite"

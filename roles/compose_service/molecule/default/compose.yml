@@ -15,3 +15,10 @@ services:
       - ./config/config.yml:/config.yml:ro
       - ./config/reloaded.yml:/reloaded.yml:ro
       - ./data.sqlite:/data.sqlite
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    name: "${PROXY_NETWORK}"
+    external: true

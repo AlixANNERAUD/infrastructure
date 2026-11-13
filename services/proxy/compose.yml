@@ -23,8 +23,12 @@ services:
       # (one address for every IPv6 client: shared rate limits, CrowdSec bans)
       ingress:
         gw_priority: 1
+      # Shared by the apps not yet on a network of their own; every other
+      # app has one shared only with Traefik, which the proxy playbook and
+      # each app's deploy connect it to (not listed here)
       proxy: {}
       protection: {}   # reaches CrowdSec's local API (services/protection)
+      traefik-metrics: {}   # Vigie scrapes the metrics entrypoint (Luxembourg)
     environment:
       - TZ=Europe/Paris
       - CLOUDFLARE_EMAIL=${CLOUDFLARE_EMAIL}
@@ -61,7 +65,7 @@ services:
       - "--entryPoints.web-secure-federation.address=:8448"
       - "--entryPoints.web-secure-federation.http.tls=true"
 
-      # Scraped from inside the Docker network (never published): reaching the
+      # Scraped over the traefik-metrics network (never published): reaching the
       # metrics through the public name would hairpin via Docker with a 172.x
       # source that the internal allowlist rejects
       - "--entryPoints.metrics.address=:8082"
@@ -130,4 +134,8 @@ networks:
   # without CrowdSec
   protection:
     name: protection
+    external: true
+  # Traefik and Vigie's VictoriaMetrics only, created by both playbooks
+  traefik-metrics:
+    name: traefik-metrics
     external: true

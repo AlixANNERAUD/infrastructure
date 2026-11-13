@@ -87,6 +87,10 @@
         compose_service_external_networks:
           - name: protection
             internal: true
+          # Vigie scrapes Traefik's metrics entrypoint over it (Luxembourg);
+          # empty where Vigie scrapes them through a route (Bruxelles)
+          - name: traefik-metrics
+            internal: true
         compose_service_environment:
           CLOUDFLARE_EMAIL: "{{ cloudflare_email }}"
           CLOUDFLARE_API_KEY: "{{ cloudflare_api_key }}"
@@ -101,6 +105,64 @@
             visibility: private
 
   tasks:
+    # Proxy networks of the TrueNAS Apps routed from traefik_routes (network:),
+    # which can't be created by a playbook of theirs; each app then joins its
+    # own in its TrueNAS settings. Labelled like those of compose_service
+    - name: Look up the proxy networks of the routed apps
+      community.docker.docker_network_info:
+        name: "{{ item }}"
+      loop: "{{ traefik_routes | default([]) | selectattr('network', 'defined') | map(attribute='network') | unique }}"
+      register: traefik_route_networks
+
+    # Never recreate an existing network: a driver mismatch would make the module disconnect every container
+    - name: Create the proxy networks of the routed apps
+      community.docker.docker_network:
+        name: "{{ item.item }}"
+        labels:
+          anneraud.proxy: "true"
+      loop: "{{ traefik_route_networks.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: not item.exists
+
+    # Apps that call each other (application_networks): internal, Traefik is
+    # not on them
+    - name: Look up the networks between apps
+      community.docker.docker_network_info:
+        name: "{{ item.name }}"
+      loop: "{{ application_networks | default([]) }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: traefik_application_networks
+
+    - name: Create the networks between apps
+      community.docker.docker_network:
+        name: "{{ item.item.name }}"
+        internal: true
+      loop: "{{ traefik_application_networks.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when: not item.exists
+
+    # Each routed app has a network of its own shared only with Traefik
+    # (compose_service_proxy): a recreated Traefik has lost them, so it joins
+    # every labelled network again
+    - name: List the proxy networks
+      community.docker.docker_host_info:
+        networks: true
+        networks_filters:
+          label: anneraud.proxy=true
+      register: traefik_proxy_networks
+
+    - name: Connect Traefik to every proxy network
+      community.docker.docker_network:
+        name: "{{ item.Name }}"
+        connected: [traefik]
+        appends: true
+      loop: "{{ traefik_proxy_networks.networks }}"
+      loop_control:
+        label: "{{ item.Name }}"
+
     - name: Read Traefik's networks
       ansible.builtin.command:
         argv: [docker, inspect, --format, "{{ '{{json .NetworkSettings.Networks}}' }}", traefik]

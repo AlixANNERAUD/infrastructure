@@ -16,6 +16,9 @@
     - role: compose_service
       vars:
         compose_service_name: metriques
+        # Routed by Traefik where Vigie doesn't run (metriques_host): the
+        # exporters and Vector get a proxy network of their own
+        compose_service_proxy: "{{ metriques_host is defined }}"
         compose_service_directory: "{{ metriques_directory }}"
         compose_service_directories:
           - textfile
@@ -28,7 +31,7 @@
         compose_service_environment:
           METRICS_ROUTED: "{{ (metriques_host is defined) | string | lower }}"
           METRICS_HOST: "{{ metriques_host | default('') }}"
-          METRICS_NETWORK: "{{ proxy_network if metriques_host is defined else 'metriques' }}"
+          METRICS_NETWORK: "{{ 'proxy-metriques' if metriques_host is defined else 'metriques' }}"
           METRICS_TEXTFILE_DIRECTORY: "{{ services_root }}/{{ metriques_directory }}/textfile"
         compose_service_dns_records: >-
           {{ [{'record': metriques_host, 'visibility': 'private'}] if metriques_host is defined else [] }}

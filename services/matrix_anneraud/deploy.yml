@@ -12,6 +12,7 @@
     - role: compose_service
       vars:
         compose_service_name: matrix_anneraud
+        compose_service_proxy: true
         compose_service_directory: Matrix_anneraud
         compose_service_user: 991
         compose_service_templates:
