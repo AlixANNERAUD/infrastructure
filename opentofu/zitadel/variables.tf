@@ -103,6 +103,9 @@ variable "applications" {
     authentication = optional(string, "pkce")
     # Where the owner pastes the client id and secret, for services managed outside this repository
     configured_in = optional(string)
+    # Only people with a role on the project can log in, for services that
+    # let anyone who logs in have an account
+    require_role = optional(bool, false)
   }))
   default = {}
 

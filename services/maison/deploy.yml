@@ -3,9 +3,11 @@
 # (Linky meter readings from Enedis), in one stack. Home Assistant is routed
 # by Traefik and also has its own LAN address (macvlan) for device discovery.
 # The configuration folder is Home Assistant's own, except
-# Configuration/packages/infrastructure.yaml (the recorder), rendered here. Its
-# HTTP settings are set in its UI: Settings > System > Network, with the
-# subnet of proxy-maison as trusted proxy
+# Configuration/packages/infrastructure.yaml (the recorder and the Zitadel
+# login), rendered here, and the OpenID Connect integration, installed here.
+# Its HTTP settings are set in its UI: Settings > System > Network, with the
+# subnet of proxy-maison as trusted proxy. Home Assistant's own login stays
+# available next to Zitadel's, as a fallback
 - name: Deploy Maison (Home Assistant)
   hosts: maison
   become: true
@@ -13,6 +15,13 @@
     - ../../vault/ansible/vault.yml
     - ../../vault/maison/vault.yml
     - ../../vault/cloudflare/vault.yml
+  vars:
+    maison_configuration: "{{ services_root }}/Home_assistant/Configuration"
+    # OpenID Connect integration, installed or replaced when its version
+    # differs; not followed by Dependabot, the checksum is the one GitHub lists
+    # for the release asset: https://github.com/christiaangoossens/hass-oidc-auth/releases
+    maison_oidc_version: 1.2.1
+    maison_oidc_checksum: sha256:e5badaaacaa63cfd6fe733924a05e76d75058836190398598fb24de57cd47ccd
   pre_tasks:
     # Written to .env and into the recorder's URL: no character to escape there
     - name: Check the vault values
@@ -45,6 +54,17 @@
             iprange: "{{ maison_macvlan.address }}"
       when: not maison_lan_network.exists
 
+    # Without the Zitadel credentials the client id is empty: the integration
+    # stays off and Home Assistant keeps only its own login
+    - name: Get Home Assistant's Zitadel login
+      ansible.builtin.include_role:
+        name: zitadel
+        tasks_from: login
+      vars:
+        zitadel_login_application: maison
+        zitadel_login_environment_file: "{{ services_root }}/Home_assistant/.env"
+        zitadel_login_client_id_variable: OIDC_CLIENT_ID
+
   roles:
     - role: compose_service
       vars:
@@ -74,3 +94,60 @@
           TRAEFIK_LOGIN_RATE_LIMIT_AVERAGE: "{{ traefik_login_rate_limit.average }}"
           TRAEFIK_LOGIN_RATE_LIMIT_PERIOD: "{{ traefik_login_rate_limit.period }}"
           TRAEFIK_LOGIN_RATE_LIMIT_BURST: "{{ traefik_login_rate_limit.burst }}"
+          # Kept for the next deploy, in case Zitadel provisioning fails then
+          OIDC_CLIENT_ID: "{{ zitadel_login_client_id }}"
+
+  post_tasks:
+    - name: Read the installed OpenID Connect integration
+      ansible.builtin.slurp:
+        path: "{{ maison_configuration }}/custom_components/auth_oidc/manifest.json"
+      register: maison_oidc_manifest
+      failed_when: false
+
+    - name: Install the OpenID Connect integration
+      # e30= is an empty JSON object, for a missing manifest
+      when: (maison_oidc_manifest.content | default('e30=') | b64decode | from_json).version | default('') != maison_oidc_version
+      block:
+        - name: Create the custom integrations folder
+          ansible.builtin.file:
+            path: "{{ maison_configuration }}/custom_components"
+            state: directory
+            mode: "0755"
+
+        - name: Download the OpenID Connect integration
+          ansible.builtin.get_url:
+            url: "https://github.com/christiaangoossens/hass-oidc-auth/releases/download/v{{ maison_oidc_version }}/hass-oidc-auth.zip"
+            dest: "{{ maison_configuration }}/custom_components/auth_oidc.zip"
+            checksum: "{{ maison_oidc_checksum }}"
+            mode: "0640"
+
+        # A new version replaces the whole folder: no file of the previous one is left
+        - name: Remove the previous version
+          ansible.builtin.file:
+            path: "{{ maison_configuration }}/custom_components/auth_oidc"
+            state: absent
+
+        # The release's files sit at the archive's root; the host's Python
+        # extracts it, as TrueNAS may lack unzip
+        - name: Extract the OpenID Connect integration
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -m
+              - zipfile
+              - -e
+              - "{{ maison_configuration }}/custom_components/auth_oidc.zip"
+              - "{{ maison_configuration }}/custom_components/auth_oidc"
+            creates: "{{ maison_configuration }}/custom_components/auth_oidc/manifest.json"
+
+        - name: Remove the archive
+          ansible.builtin.file:
+            path: "{{ maison_configuration }}/custom_components/auth_oidc.zip"
+            state: absent
+
+        # Integrations load at startup only
+        - name: Restart Home Assistant with the integration
+          community.docker.docker_compose_v2:
+            project_src: "{{ services_root }}/Home_assistant"
+            services: [home-assistant]
+            state: restarted
