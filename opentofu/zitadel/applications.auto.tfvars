@@ -46,10 +46,12 @@ applications = {
     redirect_uris = ["https://maison.anneraud.fr/auth/oidc/callback"]
   }
 
-  # Semaphore (deploiement.anneraud.fr): a confidential client
+  # Semaphore (deploiement.anneraud.fr): a confidential client, which reads the
+  # email from the ID token ("claim 'email' missing" otherwise)
   deploiement = {
-    project        = "Deploiement"
-    authentication = "client_secret"
-    redirect_uris  = ["https://deploiement.anneraud.fr/api/auth/oidc/zitadel/redirect"]
+    project              = "Deploiement"
+    authentication       = "client_secret"
+    userinfo_in_id_token = true
+    redirect_uris        = ["https://deploiement.anneraud.fr/api/auth/oidc/zitadel/redirect"]
   }
 }

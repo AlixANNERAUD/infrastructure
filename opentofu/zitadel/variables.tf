@@ -106,6 +106,9 @@ variable "applications" {
     # Only people with a role on the project can log in, for services that
     # let anyone who logs in have an account
     require_role = optional(bool, false)
+    # The profile (email, name) in the ID token too, for services that read it
+    # there rather than from the userinfo endpoint
+    userinfo_in_id_token = optional(bool, false)
   }))
   default = {}
 
