@@ -55,7 +55,7 @@ variable "owners" {
 }
 
 variable "aliases" {
-  description = "Existing Gitea mirror name per GitHub full name, for repositories renamed on GitHub since their mirror was made."
+  description = "Former Gitea mirror name per GitHub full name, for repositories renamed on GitHub since their mirror was made: found under it, then renamed to the GitHub name."
   type        = map(string)
   default     = {}
 }

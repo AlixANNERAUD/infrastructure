@@ -90,15 +90,19 @@ run "mirrors" {
     error_message = "A mirror's visibility does not follow its search."
   }
 
+  # Adopted mirrors keep their current name in the plan: mirrors.yml renames them
   assert {
-    condition     = gitea_repository.mirror["example/renamed"].name == "Former_name"
-    error_message = "The alias does not keep the mirror's former name."
+    condition     = gitea_repository.mirror["example/renamed"].name == "Former_name" && gitea_repository.mirror["example/tool"].name == "TOOL"
+    error_message = "An adopted mirror does not keep its existing name until it is renamed."
   }
 
-  # Existing mirrors keep their name, whatever its case
   assert {
-    condition     = gitea_repository.mirror["example/tool"].name == "TOOL" && gitea_repository.mirror["example-org/core"].name == "Core"
-    error_message = "An adopted mirror does not keep its existing name."
+    condition = local.renames == {
+      "example/tool"     = { owner = "example", from = "TOOL", to = "Tool" }
+      "example/renamed"  = { owner = "example", from = "Former_name", to = "Renamed" }
+      "example-org/core" = { owner = "Organization", from = "Core", to = "core" }
+    }
+    error_message = "The renames are not the adopted mirrors whose name differs from GitHub's, case included."
   }
 
   assert {
@@ -162,4 +166,38 @@ run "existing_repository_not_a_mirror" {
   }
 
   expect_failures = [gitea_repository.mirror]
+}
+
+# Once renamed, a mirror is found under its GitHub name, even with its alias
+# still listed, and nothing is left to rename
+run "after_renames" {
+  command = plan
+
+  override_data {
+    target = data.gitea_repositories.existing["example"]
+    values = {
+      repositories = [
+        { id = 1, name = "Tool", mirror = true, archived = false, clone_url = "", created = "", default_branch = "main", description = "", fork = false, forks = 0, full_name = "", html_url = "", open_issues = 0, private = false, size = 0, ssh_url = "", stars = 0, updated = "", watchers = 0, website = "" },
+        { id = 2, name = "Renamed", mirror = true, archived = false, clone_url = "", created = "", default_branch = "main", description = "", fork = false, forks = 0, full_name = "", html_url = "", open_issues = 0, private = false, size = 0, ssh_url = "", stars = 0, updated = "", watchers = 0, website = "" },
+        { id = 3, name = "Secret", mirror = true, archived = false, clone_url = "", created = "", default_branch = "main", description = "", fork = false, forks = 0, full_name = "", html_url = "", open_issues = 0, private = false, size = 0, ssh_url = "", stars = 0, updated = "", watchers = 0, website = "" },
+      ]
+    }
+  }
+
+  override_data {
+    target = data.gitea_repositories.existing["Organization"]
+    values = {
+      repositories = [{ id = 10, name = "core", mirror = true, archived = false, clone_url = "", created = "", default_branch = "main", description = "", fork = false, forks = 0, full_name = "", html_url = "", open_issues = 0, private = false, size = 0, ssh_url = "", stars = 0, updated = "", watchers = 0, website = "" }]
+    }
+  }
+
+  assert {
+    condition     = local.renames == {}
+    error_message = "A mirror already under its GitHub name is renamed again."
+  }
+
+  assert {
+    condition     = local.adopted["example/renamed"] == "2"
+    error_message = "A renamed mirror is not found under its GitHub name."
+  }
 }

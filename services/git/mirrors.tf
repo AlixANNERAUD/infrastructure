@@ -55,14 +55,26 @@ locals {
   candidates = {
     for key, repository in local.github_repositories : key => merge(repository, {
       gitea_owner = var.owners[repository.github_owner].gitea_owner
-      # A mirror made before a rename on GitHub keeps its old name
-      target_name = lookup(local.aliases, key, repository.name)
+      # The existing Gitea repository under the GitHub name, and under the
+      # former name of a repository renamed on GitHub since its mirror was made
+      by_name = lookup(local.existing[var.owners[repository.github_owner].gitea_owner], lower(repository.name), null)
+      by_alias = (
+        contains(keys(local.aliases), key)
+        ? lookup(local.existing[var.owners[repository.github_owner].gitea_owner], lower(local.aliases[key]), null)
+        : null
+      )
     })
   }
 
+  # A mirror under the GitHub name comes first: once renamed, the alias no
+  # longer finds anything
   mirrors = {
     for key, mirror in local.candidates : key => merge(mirror, {
-      existing = lookup(local.existing[mirror.gitea_owner], lower(mirror.target_name), null)
+      existing = (
+        try(mirror.by_name.mirror, false) ? mirror.by_name
+        : mirror.by_alias != null ? mirror.by_alias
+        : mirror.by_name
+      )
     })
   }
 
@@ -75,6 +87,18 @@ locals {
 
   # Tests turn imports off: OpenTofu cannot import with a mocked provider
   imports = var.import_existing ? local.adopted : {}
+
+  # Adopted mirrors whose Gitea name is not their GitHub name (a former name, or
+  # another case): mirrors.yml renames them through Gitea's API, since the
+  # provider resets a mirror's settings on any update
+  renames = {
+    for key, mirror in local.mirrors : key => {
+      owner = mirror.gitea_owner
+      from  = mirror.existing.name
+      to    = mirror.name
+    }
+    if contains(keys(local.adopted), key) && mirror.existing.name != mirror.name
+  }
 
   # Mirrors whose name is taken in Gitea by a repository that is not adopted
   clashes = {
@@ -93,8 +117,9 @@ resource "gitea_repository" "mirror" {
   for_each = local.mirrors
 
   username = each.value.gitea_owner
-  # An adopted mirror keeps its name, case included
-  name    = each.value.existing != null ? each.value.existing.name : each.value.target_name
+  # An adopted mirror keeps its current name here (renamed by mirrors.yml); a
+  # new one takes the GitHub name
+  name    = each.value.existing != null ? each.value.existing.name : each.value.name
   private = each.value.private
 
   mirror                       = true
@@ -160,4 +185,11 @@ resource "gitea_repository" "mirror" {
       source_template_items,
     ]
   }
+}
+
+# Renamed by mirrors.yml after the apply, so every mirror ends up with its
+# GitHub name
+output "renames" {
+  description = "Adopted mirrors whose Gitea name differs from their GitHub name: owner, from, to."
+  value       = local.renames
 }

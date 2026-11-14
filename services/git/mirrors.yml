@@ -2,7 +2,8 @@
 # Mirrors every GitHub repository (forks excepted) of the owners listed in
 # mirrors.auto.tfvars into Gitea (git.anneraud.fr), new ones included, with the
 # OpenTofu configuration next to this playbook. Existing mirrors are adopted,
-# never recreated; a repository gone from GitHub keeps its mirror, archived.
+# never recreated, then renamed to their GitHub name; a repository gone from
+# GitHub keeps its mirror, archived.
 # Runs from the owner's computer with mise (mise deploy services/git/mirrors.yml):
 # Semaphore has no OpenTofu, and Gitea is only reachable over the VPN.
 - name: Mirror the GitHub repositories into Gitea
@@ -77,3 +78,31 @@
           gitea_token: "{{ git_gitea_token }}"
           github_tokens: "{{ git_github_tokens | to_json }}"
           state_passphrase: "{{ git_state_passphrase }}"
+
+    # The provider would reset a mirror's settings to rename it: Gitea's API
+    # renames it in place, and keeps a redirect from the former name
+    - name: Give the mirrors their GitHub name
+      ansible.builtin.uri:
+        url: "{{ git_gitea_url }}/api/v1/repos/{{ item.value.owner }}/{{ item.value.from }}"
+        method: PATCH
+        headers:
+          Authorization: "token {{ git_gitea_token }}"
+        body_format: json
+        body:
+          name: "{{ item.value.to }}"
+        status_code: 200
+      loop: "{{ opentofu_apply.outputs.renames.value | dict2items }}"
+      loop_control:
+        label: "{{ item.value.owner }}/{{ item.value.from }} → {{ item.value.to }}"
+      register: git_renames
+      changed_when: true
+      failed_when: false
+
+    - name: Report the mirrors that could not be renamed
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.item.value.owner }}/{{ item.item.value.from }} could not be renamed {{ item.item.value.to }}
+          ({{ item.status | default('') }} {{ item.json.message | default(item.msg | default('')) }}): rename it in Gitea
+      loop: "{{ git_renames.results | selectattr('status', 'ne', 200) | list }}"
+      loop_control:
+        label: "{{ item.item.value.owner }}/{{ item.item.value.from }}"

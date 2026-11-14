@@ -12,7 +12,8 @@ owners = {
   }
 }
 
-# Mirrors made under a repository's former GitHub name: adopted under that name
+# Mirrors made under a repository's former GitHub name: adopted, then renamed
+# to the GitHub name by mirrors.yml (the alias can go once that is done)
 aliases = {
   "AlixANNERAUD/portfolio"        = "Web_site"
   "AlixANNERAUD/deez_nalyzer"     = "Machine_Learning_demonstrator"
