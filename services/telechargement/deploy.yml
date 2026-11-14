@@ -1,5 +1,5 @@
 ---
-- name: Deploy Téléchargement (qBittorrent)
+- name: Deploy Téléchargement (qBittorrent, Prowlarr, Radarr, Sonarr, Bazarr, Seerr)
   hosts: telechargement
   become: true
   vars_files:
@@ -14,7 +14,7 @@
         compose_service_directory: qBittorrent
         compose_service_user: 568
         compose_service_group: 3010
-        # Shared with Radarr and Sonarr (TrueNAS Apps), also created by services/proxy
+        # Shared with Jellyfin (a TrueNAS App), also created by services/proxy
         compose_service_external_networks:
           - name: liaison-telechargement
             internal: true
@@ -25,6 +25,10 @@
           VPN_TYPE: "{{ vpn_type }}"
           SERVER_COUNTRIES: "{{ vpn_server_countries }}"
           DOWNLOADS_PATH: /mnt/Donnees/Mediatheque/torrents
+          # Each app keeps the configuration folder its TrueNAS App had
+          APPLICATIONS_PATH: "{{ services_root }}"
+          BAZARR_CONFIGURATION_PATH: /mnt/Donnees/Applications/Bazarr
+          MEDIATHEQUE_PATH: /mnt/Donnees/Mediatheque
         compose_service_dns_records:
           - record: telechargement.anneraud.fr
             visibility: private
