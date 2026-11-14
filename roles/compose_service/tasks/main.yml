@@ -202,13 +202,27 @@
   loop_control:
     label: "{{ item.name }}"
 
-# Recreates containers only when their image or configuration changed
+# Recreates containers only when their image or configuration changed. In
+# check mode, Compose's dry run pulls nothing, so it cannot recreate a container
+# from an image that is not on the host yet: that is a change to come (a new
+# image), reported below rather than a failure
 - name: Start the stack
   community.docker.docker_compose_v2:
     project_src: "{{ compose_service_path }}"
     pull: always
     remove_orphans: true
     state: present
+  register: compose_service_start
+  failed_when: >-
+    compose_service_start is failed
+    and not (ansible_check_mode and 'No such image' in compose_service_start.msg | default(''))
+
+- name: Report the images a run would pull
+  ansible.builtin.debug:
+    msg: >-
+      Check mode: {{ compose_service_start.msg }}. A run would pull this image and recreate the containers
+      that use it.
+  when: ansible_check_mode and 'No such image' in compose_service_start.msg | default('')
 
 - name: Point DNS records to the host
   community.general.cloudflare_dns:
