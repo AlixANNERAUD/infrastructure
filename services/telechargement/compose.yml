@@ -19,10 +19,12 @@ services:
       - 6881:6881
       - 6881:6881/udp
     # The proxy network goes out and serves the web UI; the other apps of the
-    # download chain (Radarr, Sonarr) reach qBittorrent over liaison
+    # download chain reach qBittorrent over the chain's network
     networks:
-      - proxy
-      - liaison
+      proxy:
+      chaine:
+        # Former alias, which the apps' download client settings may still use
+        aliases: [gluetun]
     # qBittorrent's web UI, which shares this container's network
     labels:
       - traefik.enable=true
@@ -69,11 +71,171 @@ services:
     #      - 6881:6881
     #      - 6881:6881/udp
 
+  # Indexers, synced to Radarr and Sonarr; solves Cloudflare challenges with FlareSolverr
+  prowlarr:
+    image: ghcr.io/home-operations/prowlarr:3.0.1.5752@sha256:83cc967a3b7b754634e31773d4d58ea606714490b7e8592d41b608f7c249afe6
+    logging: *logging
+    restart: unless-stopped
+    user: "568:568"
+    environment:
+      TZ: "Europe/Paris"
+      UMASK: "002"
+      PROWLARR__SERVER__PORT: "8080"
+      PROWLARR__APP__INSTANCENAME: "Prowlarr"
+      PROWLARR__UPDATE__BRANCH: "develop"
+    volumes:
+      - ${APPLICATIONS_PATH}/Prowlarr:/config
+    networks:
+      proxy:
+      chaine:
+        # Former TrueNAS container name, which the apps' settings may still use
+        aliases: [ix-prowlarr-prowlarr-1]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
+      - traefik.http.routers.prowlarr.rule=Host(`prowlarr.anneraud.fr`)
+      - traefik.http.routers.prowlarr.entrypoints=web-secure
+      - traefik.http.routers.prowlarr.tls=true
+      - traefik.http.routers.prowlarr.middlewares=internal-allowlist@file
+      - traefik.http.services.prowlarr.loadbalancer.server.port=8080
+
+  # Not routed, so no proxy network: it goes out through its own
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:v3.5.2@sha256:c80ae007ce2ccdcd217a12426e4f039ef763ff90738c808d38810c3e59323767
+    logging: *logging
+    restart: unless-stopped
+    user: "1000:1000"
+    environment:
+      TZ: "Europe/Paris"
+      PORT: "8080"
+      LOG_LEVEL: "info"
+    networks:
+      chaine:
+        # Former TrueNAS container name, which the apps' settings may still use
+        aliases: [ix-flaresolverr-flaresolverr-1]
+      sortie:
+
+  radarr:
+    image: ghcr.io/home-operations/radarr:7.0.2.10888@sha256:69ea515df6e2a3ea1490cfa127ffaaf9597a9db84fffa2fa150a6fae98fe04cb
+    logging: *logging
+    restart: unless-stopped
+    user: "568:3010"
+    environment:
+      TZ: "Europe/Paris"
+      UMASK: "002"
+      RADARR__SERVER__PORT: "8080"
+      RADARR__APP__INSTANCENAME: "Radarr"
+      RADARR__UPDATE__BRANCH: "develop"
+    volumes:
+      - ${APPLICATIONS_PATH}/Radarr:/config
+      - ${MEDIATHEQUE_PATH}:/data
+    networks:
+      proxy:
+      chaine:
+        # Former TrueNAS container name, which the apps' settings may still use
+        aliases: [ix-radarr-radarr-1]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
+      - traefik.http.routers.radarr.rule=Host(`radarr.anneraud.fr`)
+      - traefik.http.routers.radarr.entrypoints=web-secure
+      - traefik.http.routers.radarr.tls=true
+      - traefik.http.routers.radarr.middlewares=internal-allowlist@file
+      - traefik.http.services.radarr.loadbalancer.server.port=8080
+
+  sonarr:
+    image: ghcr.io/home-operations/sonarr:5.0.0.2941@sha256:93b0923dd12afd43247739e19dac59d74c52a15ea12e036b7ced264cffb42574
+    logging: *logging
+    restart: unless-stopped
+    user: "568:3010"
+    environment:
+      TZ: "Europe/Paris"
+      UMASK: "002"
+      SONARR__SERVER__PORT: "8080"
+      SONARR__APP__INSTANCENAME: "Sonarr"
+      SONARR__UPDATE__BRANCH: "develop"
+    volumes:
+      - ${APPLICATIONS_PATH}/Sonarr:/config
+      - ${MEDIATHEQUE_PATH}:/data
+    networks:
+      proxy:
+      chaine:
+        # Former TrueNAS container name, which the apps' settings may still use
+        aliases: [ix-sonarr-sonarr-1]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
+      - traefik.http.routers.sonarr.rule=Host(`sonarr.anneraud.fr`)
+      - traefik.http.routers.sonarr.entrypoints=web-secure
+      - traefik.http.routers.sonarr.tls=true
+      - traefik.http.routers.sonarr.middlewares=internal-allowlist@file
+      - traefik.http.services.sonarr.loadbalancer.server.port=8080
+
+  # Subtitles for Radarr's and Sonarr's media; its configuration is still on
+  # the unencrypted dataset (Donnees/Applications)
+  bazarr:
+    image: ghcr.io/home-operations/bazarr:1.6.2@sha256:b8434a7339ebd9c2bfe4464c28db79944e0f52f47da85345fc7e0563c19f83ac
+    logging: *logging
+    restart: unless-stopped
+    user: "568:3010"
+    environment:
+      TZ: "Europe/Paris"
+      UMASK: "002"
+      BAZARR__PORT: "8080"
+    volumes:
+      - ${BAZARR_CONFIGURATION_PATH}:/config
+      - ${MEDIATHEQUE_PATH}:/media
+    networks:
+      proxy:
+      chaine:
+        # Former TrueNAS container name, which the apps' settings may still use
+        aliases: [ix-bazarr-bazarr-1]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
+      - traefik.http.routers.bazarr.rule=Host(`bazarr.anneraud.fr`)
+      - traefik.http.routers.bazarr.entrypoints=web-secure
+      - traefik.http.routers.bazarr.tls=true
+      - traefik.http.routers.bazarr.middlewares=internal-allowlist@file
+      - traefik.http.services.bazarr.loadbalancer.server.port=8080
+
+  # Requests, sent to Radarr and Sonarr; reads Jellyfin (a TrueNAS App) over liaison
+  seerr:
+    image: ghcr.io/seerr-team/seerr:v3.5.2@sha256:aadee014b40e28cf9aa4928bc9d1183a6eb08f8c44d543cddc9efdcb16549be2
+    logging: *logging
+    restart: unless-stopped
+    user: "568:568"
+    environment:
+      TZ: "Europe/Paris"
+      PORT: "8080"
+    volumes:
+      - ${APPLICATIONS_PATH}/Jellyseerr:/app/config
+    networks:
+      proxy:
+      chaine:
+        # Former TrueNAS container name, which the apps' settings may still use
+        aliases: [ix-seerr-seerr-1]
+      liaison:
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
+      - traefik.http.routers.seerr.rule=Host(`jellyseerr.anneraud.fr`)
+      - traefik.http.routers.seerr.entrypoints=web-secure
+      - traefik.http.routers.seerr.tls=true
+      - traefik.http.routers.seerr.middlewares=internal-allowlist@file
+      - traefik.http.services.seerr.loadbalancer.server.port=8080
+
 networks:
   proxy:
     name: "${PROXY_NETWORK}"
     external: true
-  # The download chain only (inventory/host_vars/bruxelles/applications.yml)
+  # The apps of the chain, calling each other by name: no way out (the routed
+  # apps go out through the proxy network)
+  chaine:
+    internal: true
+  # FlareSolverr's way out to the sites it solves
+  sortie:
+  # Seerr and Jellyfin, a TrueNAS App (inventory/host_vars/bruxelles/applications.yml)
   liaison:
     name: liaison-telechargement
     external: true

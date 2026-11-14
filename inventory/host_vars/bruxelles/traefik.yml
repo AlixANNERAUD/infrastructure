@@ -103,16 +103,6 @@ traefik_routes:
     rate_limit:
       <<: *login_rate_limit
       prefixes: [/Users/Authenticate]
-  - name: radarr
-    hosts: [radarr.anneraud.fr]
-    url: http://ix-radarr-radarr-1:8080
-    network: proxy-radarr
-    internal: true
-  - name: sonarr
-    hosts: [sonarr.anneraud.fr]
-    url: http://ix-sonarr-sonarr-1:8080
-    network: proxy-sonarr
-    internal: true
   - name: router
     hosts: [berlin.anneraud.fr]
     url: http://192.168.0.1:80
@@ -147,21 +137,6 @@ traefik_routes:
     url: http://ix-umami-umami-1:8080
     network: proxy-umami
     internal: false
-  - name: prowlarr
-    hosts: [prowlarr.anneraud.fr]
-    url: http://ix-prowlarr-prowlarr-1:8080
-    network: proxy-prowlarr
-    internal: true
-  - name: seerr
-    hosts: [jellyseerr.anneraud.fr]
-    url: http://ix-seerr-seerr-1:8080
-    network: proxy-seerr
-    internal: true
-  - name: bazarr
-    hosts: [bazarr.anneraud.fr]
-    url: http://ix-bazarr-bazarr-1:8080
-    network: proxy-bazarr
-    internal: true
   - name: n8n
     hosts: [automatisation.anneraud.fr]
     url: http://ix-n8n-n8n-1:8080
