@@ -48,6 +48,16 @@ resource "netbird_group" "client" {
   }
 }
 
+# The exit node through Proton VPN (services/sortie): its peer joins through
+# the sortie setup key
+resource "netbird_group" "sortie" {
+  name = "Sortie"
+
+  lifecycle {
+    ignore_changes = [peers, resources]
+  }
+}
+
 # Empty
 resource "netbird_group" "paris" {
   name = "paris"
