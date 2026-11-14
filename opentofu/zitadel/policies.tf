@@ -1,13 +1,16 @@
 # The organization's own policies: the instance defaults stay untouched, so
 # a mistake here never locks out the ZITADEL organization's admin
 
+# A second factor is required: a Zitadel account opens NetBird, and the VPN is
+# one of the internal networks every private route trusts. A user without one
+# sets it up at their next login (passkeys count as the second factor)
 resource "zitadel_login_policy" "organization" {
   org_id = zitadel_org.organization.id
 
   user_login                    = true
   allow_register                = false
   allow_external_idp            = false
-  force_mfa                     = false
+  force_mfa                     = true
   force_mfa_local_only          = false
   passwordless_type             = "PASSWORDLESS_TYPE_ALLOWED"
   second_factors                = ["SECOND_FACTOR_TYPE_OTP", "SECOND_FACTOR_TYPE_U2F"]
