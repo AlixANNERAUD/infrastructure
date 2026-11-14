@@ -93,7 +93,11 @@ services:
   # Linky meter readings from Enedis, written to Home Assistant's statistics
   # over its websocket, inside the stack
   ha-linky:
-    image: ghcr.io/alixanneraud/ha-linky-standalone:latest@sha256:7035e0385337577b4124ed708abc0594ee73b252d50c82f182791d21cb351ed7
+    image: ghcr.io/bokub/ha-linky-amd64:1.9.0
+    # The image starts with /init (Home Assistant's s6-overlay), which only
+    # works under HAOS: run the app directly (the image's workdir is /linky,
+    # and setting the entrypoint also clears its command, ./run.sh)
+    entrypoint: ["node", "dist/index.js"]
     logging: *logging
     restart: unless-stopped
     volumes:
