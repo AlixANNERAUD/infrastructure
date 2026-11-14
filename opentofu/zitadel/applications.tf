@@ -25,6 +25,9 @@ resource "zitadel_project" "project" {
 
   name   = each.value
   org_id = zitadel_org.organization.id
+
+  # Zitadel refuses the login of someone without a role on the project
+  project_role_check = anytrue([for application in values(var.applications) : application.require_role if application.project == each.value])
 }
 
 resource "zitadel_project_role" "role" {

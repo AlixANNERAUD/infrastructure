@@ -36,6 +36,16 @@ applications = {
     post_logout_uris = ["https://netbird.anneraud.fr/oauth2/logout/callback"]
   }
 
+  # Home Assistant (maison.anneraud.fr), through the OpenID Connect integration
+  # installed by services/maison: a public client. Home Assistant creates an
+  # account for anyone who logs in, so only people with the maison role can
+  maison = {
+    project       = "Maison"
+    roles         = [{ key = "maison", display_name = "Home Assistant" }]
+    require_role  = true
+    redirect_uris = ["https://maison.anneraud.fr/auth/oidc/callback"]
+  }
+
   # Semaphore (deploiement.anneraud.fr): a confidential client
   deploiement = {
     project        = "Deploiement"

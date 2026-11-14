@@ -8,3 +8,17 @@ recorder:
   purge_keep_days: 30
   commit_interval: 3
   db_url: "postgresql://home-assistant:{{ maison_database_password }}@postgres:5432/home-assistant?sslmode=disable"
+{% if zitadel_login_client_id | default('') | length > 0 %}
+
+# Login through Zitadel (OpenID Connect integration, a public client with
+# PKCE). Accounts are created at the first login, as users: administrators are
+# promoted by hand, Zitadel's roles don't reach Home Assistant's
+auth_oidc:
+  client_id: "{{ zitadel_login_client_id }}"
+  discovery_url: https://authentification.anneraud.fr/.well-known/openid-configuration
+  display_name: Zitadel
+  # Zitadel's roles are not a list of groups: don't ask for them
+  features:
+    include_groups_scope: false
+    automatic_user_linking: {{ maison_oidc_link_users | bool | lower }}
+{% endif %}
