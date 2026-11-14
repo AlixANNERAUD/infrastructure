@@ -80,8 +80,11 @@
     - name: Store the token of the vault repository
       ansible.builtin.copy:
         dest: "{{ compose_service_path }}/git-credentials"
-        content: >-
-          {{ ('https://x-access-token:' ~ deploiement_vault_repository_token ~ '@github.com/AlixANNERAUD/Infrastructure_vault.git' ~ '\n')
+        # A literal block: its line ends with a real newline. A '\n' inside the
+        # expression was written as a backslash and an n, which git read as
+        # part of the URL, so it never found the token
+        content: |
+          {{ ('https://x-access-token:' ~ deploiement_vault_repository_token ~ '@github.com/AlixANNERAUD/Infrastructure_vault.git')
              if deploiement_vault_repository_token | default('') | length > 0 else '' }}
         mode: "0600"
         owner: "{{ compose_service_user }}"
