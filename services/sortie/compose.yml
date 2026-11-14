@@ -1,0 +1,59 @@
+# Exit node through Proton VPN: a NetBird peer whose traffic goes out through
+# Gluetun's WireGuard tunnel. A NetBird client picks it in its exit node menu
+# (opentofu/netbird/routes.tf); Gluetun's firewall drops everything that
+# doesn't go through the tunnel, so traffic never leaves with the host's
+# address when the VPN is down.
+
+# Container logs are unbounded by default and would fill the disk
+x-logging: &logging
+  driver: local
+  options:
+    max-size: "20m"
+    max-file: "3"
+
+services:
+  gluetun:
+    image: qmcgaw/gluetun:v3.41.3
+    logging: *logging
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    # Forwarding between NetBird's interface and the tunnel, in this network
+    # namespace only (NetBird masquerades the traffic it forwards)
+    sysctls:
+      net.ipv4.ip_forward: 1
+    volumes:
+      # Lets the forwarded traffic through Gluetun's firewall (FORWARD drops by default)
+      - ./iptables/post-rules.txt:/iptables/post-rules.txt:ro
+    environment:
+      - VPN_SERVICE_PROVIDER=protonvpn
+      - VPN_TYPE=wireguard
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - SERVER_COUNTRIES=${SERVER_COUNTRIES}
+      - UPDATER_PERIOD=24h
+
+  # NetBird peer sharing Gluetun's network: its interface (wt0) and its own
+  # traffic to the management server and the relay go through the tunnel
+  netbird:
+    image: netbirdio/netbird:0.82.1
+    logging: *logging
+    restart: unless-stopped
+    network_mode: "service:gluetun"
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_RESOURCE
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - NB_MANAGEMENT_URL=https://netbird.anneraud.fr
+      - NB_SETUP_KEY=${NETBIRD_SETUP_KEY}
+      - NB_HOSTNAME=sortie
+    volumes:
+      # The peer's identity: kept, so it doesn't join again at each start
+      - ./Netbird:/var/lib/netbird

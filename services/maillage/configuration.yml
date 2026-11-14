@@ -39,3 +39,24 @@
           netbird_token: "{{ netbird_automation_token }}"
           state_passphrase: "{{ netbird_state_passphrase }}"
           zitadel_client_secret: "{{ zitadel_client_secrets.netbird }}"
+
+    # The exit node through Proton VPN (services/sortie) joins with this key:
+    # the owner pastes it into vault/sortie/vault.yml
+    - name: Create the folder for NetBird's setup keys
+      ansible.builtin.file:
+        path: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/infrastructure/netbird"
+        state: directory
+        mode: "0700"
+
+    - name: Write the exit node's setup key
+      ansible.builtin.copy:
+        dest: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/infrastructure/netbird/sortie.setup-key"
+        content: "{{ opentofu_apply.outputs.sortie_setup_key.value }}"
+        mode: "0600"
+      no_log: true
+
+    - name: Show where the exit node's setup key is
+      ansible.builtin.debug:
+        msg: >-
+          Setup key of the exit node: ~/.config/infrastructure/netbird/sortie.setup-key, to paste as
+          sortie_netbird_setup_key into vault/sortie/vault.yml (mise vault vault/sortie/vault.yml)

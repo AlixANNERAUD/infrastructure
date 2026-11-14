@@ -1,3 +1,17 @@
+# The exit node through Proton VPN (services/sortie). Reusable so that the
+# peer can join again if its state is lost; services/maillage/configuration.yml
+# writes it to ~/.config/infrastructure/netbird/sortie.setup-key, for the vault
+resource "netbird_setup_key" "sortie" {
+  name                   = "sortie"
+  type                   = "reusable"
+  auto_groups            = [netbird_group.sortie.id]
+  usage_limit            = 0
+  ephemeral              = false
+  allow_extra_dns_labels = false
+  revoked                = false
+  expiry_seconds         = 0
+}
+
 # GitHub Actions runners of the Xila project join as ephemeral peers
 resource "netbird_setup_key" "github_xila" {
   name                   = "github_xila"

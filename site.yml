@@ -38,6 +38,8 @@
   ansible.builtin.import_playbook: services/assistant/deploy.yml
 - name: Replication
   ansible.builtin.import_playbook: hosts/replication.yml
+- name: Exit node through Proton VPN
+  ansible.builtin.import_playbook: services/sortie/deploy.yml
 - name: Star History
   ansible.builtin.import_playbook: services/star_history/deploy.yml
 - name: Téléchargement

@@ -22,6 +22,22 @@ resource "netbird_route" "exit_node" {
   description = ""
 }
 
+# Exit node through Proton VPN (services/sortie): only used when a peer picks
+# it in its client (skip_auto_apply). Its peer is found through its group, so
+# the route exists before the peer first joins
+resource "netbird_route" "sortie" {
+  network_id      = "Exit Node (Proton VPN)"
+  network         = "0.0.0.0/0"
+  peer_groups     = [netbird_group.sortie.id]
+  groups          = [netbird_group.anneraud.id, netbird_group.client.id]
+  masquerade      = true
+  metric          = 9999
+  enabled         = true
+  keep_route      = false
+  skip_auto_apply = true
+  description     = "All traffic out through Proton VPN"
+}
+
 resource "netbird_route" "pristina_loopback" {
   network_id  = "Pristina loopback"
   network     = "192.168.0.22/32"

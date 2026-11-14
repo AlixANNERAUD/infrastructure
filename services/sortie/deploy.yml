@@ -1,0 +1,39 @@
+---
+# Exit node through Proton VPN for the NetBird peers (see compose.yml). Its
+# WireGuard key comes from the Proton account (Downloads > WireGuard
+# configuration: GNU/Linux, Moderate NAT, no NAT-PMP), valid for a year; its
+# setup key from services/maillage/configuration.yml
+- name: Deploy the exit node
+  hosts: sortie
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+    - ../../vault/sortie/vault.yml
+    - ../../vault/cloudflare/vault.yml
+  pre_tasks:
+    - name: Check the vault values
+      ansible.builtin.assert:
+        that:
+          - sortie_wireguard_private_key | default('') | length > 0
+          - sortie_netbird_setup_key | default('') | length > 0
+        fail_msg: >-
+          vault/sortie/vault.yml needs sortie_wireguard_private_key (PrivateKey of a Proton WireGuard
+          configuration) and sortie_netbird_setup_key (written by services/maillage/configuration.yml to
+          ~/.config/infrastructure/netbird/sortie.setup-key)
+        quiet: true
+
+  roles:
+    - role: compose_service
+      vars:
+        compose_service_name: sortie
+        compose_service_directories:
+          - path: Netbird
+            mode: "0700"
+          - iptables
+        compose_service_files:
+          - source: iptables/post-rules.txt
+            destination: iptables/post-rules.txt
+        compose_service_environment:
+          WIREGUARD_PRIVATE_KEY: "{{ sortie_wireguard_private_key }}"
+          NETBIRD_SETUP_KEY: "{{ sortie_netbird_setup_key }}"
+          SERVER_COUNTRIES: "{{ sortie_server_countries | default('France') }}"
