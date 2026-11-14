@@ -25,36 +25,40 @@
         deploiement_oidc_client_id: "{{ zitadel_login_client_id }}"
         deploiement_oidc_client_secret: "{{ zitadel_login_client_secret }}"
 
+  # Play variables rather than role parameters: the tasks below use the
+  # role's paths and owner, and role parameters stay inside the role
+  vars:
+    compose_service_name: deploiement
+    compose_service_proxy: true
+    compose_service_directory: Deploiement
+    # UID of the semaphore user in the official image
+    compose_service_user: 1001
+    compose_service_directories:
+      - data
+      - config
+      - keys
+    # Git configuration of the container, written below: it must exist when the stack starts
+    compose_service_mounted_files:
+      - gitconfig
+      - git-credentials
+    compose_service_environment:
+      SEMAPHORE_ADMIN: "{{ deploiement_admin_login }}"
+      SEMAPHORE_ADMIN_NAME: "{{ deploiement_admin_name }}"
+      SEMAPHORE_ADMIN_EMAIL: "{{ deploiement_admin_email }}"
+      SEMAPHORE_ADMIN_PASSWORD: "{{ deploiement_admin_password }}"
+      SEMAPHORE_ACCESS_KEY_ENCRYPTION: "{{ deploiement_access_key_encryption }}"
+      SEMAPHORE_WEB_ROOT: https://deploiement.anneraud.fr
+      # Kept separately so a failed provisioning can reuse them (zitadel role, login)
+      OIDC_CLIENT_ID: "{{ zitadel_login_client_id }}"
+      OIDC_CLIENT_SECRET: "{{ zitadel_login_client_secret }}"
+      SEMAPHORE_OIDC_PROVIDERS: "{{ deploiement_oidc_providers }}"
+    compose_service_dns_records:
+      - record: deploiement.anneraud.fr
+        visibility: private
+
   roles:
     - role: compose_service
-      vars:
-        compose_service_name: deploiement
-        compose_service_proxy: true
-        compose_service_directory: Deploiement
-        # UID of the semaphore user in the official image
-        compose_service_user: 1001
-        compose_service_directories:
-          - data
-          - config
-          - keys
-        # Git configuration of the container, written below: it must exist when the stack starts
-        compose_service_mounted_files:
-          - gitconfig
-          - git-credentials
-        compose_service_environment:
-          SEMAPHORE_ADMIN: "{{ deploiement_admin_login }}"
-          SEMAPHORE_ADMIN_NAME: "{{ deploiement_admin_name }}"
-          SEMAPHORE_ADMIN_EMAIL: "{{ deploiement_admin_email }}"
-          SEMAPHORE_ADMIN_PASSWORD: "{{ deploiement_admin_password }}"
-          SEMAPHORE_ACCESS_KEY_ENCRYPTION: "{{ deploiement_access_key_encryption }}"
-          SEMAPHORE_WEB_ROOT: https://deploiement.anneraud.fr
-          # Kept separately so a failed provisioning can reuse them (zitadel role, login)
-          OIDC_CLIENT_ID: "{{ zitadel_login_client_id }}"
-          OIDC_CLIENT_SECRET: "{{ zitadel_login_client_secret }}"
-          SEMAPHORE_OIDC_PROVIDERS: "{{ deploiement_oidc_providers }}"
-        compose_service_dns_records:
-          - record: deploiement.anneraud.fr
-            visibility: private
+
   tasks:
     # The vault submodule is private: git hands the token over, through a
     # credential helper (not in a URL, so it stays out of logs), for that
@@ -76,8 +80,11 @@
     - name: Store the token of the vault repository
       ansible.builtin.copy:
         dest: "{{ compose_service_path }}/git-credentials"
-        content: >-
-          {{ ('https://x-access-token:' ~ deploiement_vault_repository_token ~ '@github.com/AlixANNERAUD/Infrastructure_vault.git' ~ '\n')
+        # A literal block: its line ends with a real newline. A '\n' inside the
+        # expression was written as a backslash and an n, which git read as
+        # part of the URL, so it never found the token
+        content: |
+          {{ ('https://x-access-token:' ~ deploiement_vault_repository_token ~ '@github.com/AlixANNERAUD/Infrastructure_vault.git')
              if deploiement_vault_repository_token | default('') | length > 0 else '' }}
         mode: "0600"
         owner: "{{ compose_service_user }}"
@@ -136,5 +143,5 @@
           - "1. Add it to automation_additional_public_keys in inventory/group_vars/all.yml, then run: mise deploy hosts/bootstrap.yml"
           - "2. TrueNAS: add it as a line of Credentials > Users > {{ automation_user }} > Authorized Keys (bootstrap prints the exact lines)."
           - "   Those lines include the current subnet of the proxy network: redo this step if that network is ever recreated."
-          - "3. In Semaphore, store the private key {{ compose_service_path }}/keys/ansible as an SSH key with the user {{ automation_user }}."
+          - "3. Then configure Semaphore's project, which stores the private key: mise deploy services/deploiement/configuration.yml"
           - "The full one-time setup of the project: https://www.anneraud.fr/documentation/deploiement#semaphore-mise-en-place"

@@ -46,12 +46,13 @@ resource "zitadel_application_oidc" "application" {
   project_id = zitadel_project.project[each.value.project].id
   name       = each.key
 
-  app_type                  = "OIDC_APP_TYPE_WEB"
-  response_types            = ["OIDC_RESPONSE_TYPE_CODE"]
-  grant_types               = ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"]
-  auth_method_type          = local.authentication_methods[each.value.authentication]
-  redirect_uris             = each.value.redirect_uris
-  post_logout_redirect_uris = each.value.post_logout_uris
+  app_type                    = "OIDC_APP_TYPE_WEB"
+  response_types              = ["OIDC_RESPONSE_TYPE_CODE"]
+  grant_types                 = ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"]
+  auth_method_type            = local.authentication_methods[each.value.authentication]
+  redirect_uris               = each.value.redirect_uris
+  id_token_userinfo_assertion = each.value.userinfo_in_id_token
+  post_logout_redirect_uris   = each.value.post_logout_uris
   # Zitadel only accepts plain-HTTP redirects in development mode
   dev_mode = alltrue([for uri in each.value.redirect_uris : startswith(uri, "http://localhost")])
 }
