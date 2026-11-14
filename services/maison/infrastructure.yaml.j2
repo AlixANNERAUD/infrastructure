@@ -20,4 +20,5 @@ auth_oidc:
   # Zitadel's roles are not a list of groups: don't ask for them
   features:
     include_groups_scope: false
+    automatic_user_linking: {{ maison_oidc_link_users | bool | lower }}
 {% endif %}

@@ -22,6 +22,11 @@
     # for the release asset: https://github.com/christiaangoossens/hass-oidc-auth/releases
     maison_oidc_version: 1.2.1
     maison_oidc_checksum: sha256:e5badaaacaa63cfd6fe733924a05e76d75058836190398598fb24de57cd47ccd
+    # Links a first Zitadel login to the Home Assistant account whose username
+    # is the Zitadel login name (alix@anneraud.fr). Only for one deploy, with
+    # -e maison_oidc_link_users=true: anyone with that login name gets the
+    # account, its rights included, and its multi-factor login is skipped
+    maison_oidc_link_users: false
   pre_tasks:
     # Written to .env and into the recorder's URL: no character to escape there
     - name: Check the vault values
