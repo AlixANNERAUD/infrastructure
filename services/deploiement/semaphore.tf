@@ -23,8 +23,10 @@ locals {
     }
   }
 
+  # No arguments is null, not an empty list: the provider reads an empty list
+  # back as null and fails the apply ("inconsistent result after apply")
   modes = {
-    run     = { suffix = "", arguments = [] }
+    run     = { suffix = "", arguments = null }
     preview = { suffix = " (aperçu)", arguments = ["--check", "--diff"] }
   }
 

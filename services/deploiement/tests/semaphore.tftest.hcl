@@ -34,7 +34,7 @@ run "templates" {
       semaphoreui_project_template.playbook["site.yml/preview"].name == "site (aperçu)"
       && join(" ", semaphoreui_project_template.playbook["site.yml/preview"].arguments) == "--check --diff"
       && semaphoreui_project_template.playbook["services/maison/deploy.yml/run"].name == "maison"
-      && length(semaphoreui_project_template.playbook["services/maison/deploy.yml/run"].arguments) == 0
+      && semaphoreui_project_template.playbook["services/maison/deploy.yml/run"].arguments == null
       && semaphoreui_project_template.playbook["hosts/luxembourg/update.yml/run"].name == "hosts/luxembourg/update"
     )
     error_message = "The templates are not named after their playbook, or the preview is not --check --diff."
