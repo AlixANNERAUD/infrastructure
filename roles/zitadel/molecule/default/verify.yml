@@ -82,7 +82,7 @@
           - login.isDefault | default(false) == false
           - login.allowRegister | default(false) == false
           - login.allowExternalIdp | default(false) == false
-          - login.forceMfa | default(false) == false
+          - login.forceMfa | default(false)
           - login.passwordlessType == 'PASSWORDLESS_TYPE_ALLOWED'
           - login.ignoreUnknownUsernames | default(false)
           - complexity.isDefault | default(false) == false
