@@ -80,6 +80,15 @@
       changed_when: false
       check_mode: false   # only reads: also runs in --check
 
+    # Before the password is locked below: a host where Ansible still sudoes
+    # with the vault's password would otherwise lose sudo halfway through
+    - name: Allow passwordless sudo
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/{{ automation_user }}"
+        content: "{{ automation_user }} ALL=(ALL) NOPASSWD: ALL\n"
+        mode: "0440"
+        validate: /usr/sbin/visudo -cf %s
+
     - name: Create the ansible group
       ansible.builtin.group:
         name: "{{ automation_user }}"
@@ -93,13 +102,6 @@
         create_home: true
         password_lock: true
         state: present
-
-    - name: Allow passwordless sudo
-      ansible.builtin.copy:
-        dest: "/etc/sudoers.d/{{ automation_user }}"
-        content: "{{ automation_user }} ALL=(ALL) NOPASSWD: ALL\n"
-        mode: "0440"
-        validate: /usr/sbin/visudo -cf %s
 
     - name: Authorize only the Ansible keys, from the LAN and VPN
       ansible.posix.authorized_key:
