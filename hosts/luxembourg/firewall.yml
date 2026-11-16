@@ -27,6 +27,7 @@
       become: false
       register: host_firewall_ssh_client
       changed_when: false
+      check_mode: false   # only reads: also runs in --check
 
     # SSH from the internet is closed: a run from elsewhere would cut itself off
     - name: Check that this connection comes through the VPN
@@ -39,6 +40,7 @@
           - "{{ host_firewall_vpn_network }}"
       become: false
       changed_when: false
+      check_mode: false   # only reads: also runs in --check
 
     - name: Gather the installed packages
       ansible.builtin.package_facts:

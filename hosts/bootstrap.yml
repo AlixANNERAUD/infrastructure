@@ -46,6 +46,7 @@
       become: false
       register: bootstrap_sudo
       changed_when: false
+      check_mode: false   # only reads: also runs in --check
       failed_when: false
 
     - name: Explain how to provide sudo
@@ -64,6 +65,7 @@
       become: false
       register: bootstrap_ssh_client
       changed_when: false
+      check_mode: false   # only reads: also runs in --check
 
     # Restricting the key to networks this connection isn't from would lock Ansible out
     - name: Check that this connection comes from an allowed network
@@ -76,6 +78,7 @@
           sys.exit(0 if any(address in ipaddress.ip_network(network) for network in sys.argv[2:]) else 1)
       become: false
       changed_when: false
+      check_mode: false   # only reads: also runs in --check
 
     - name: Create the ansible group
       ansible.builtin.group:
@@ -193,6 +196,7 @@
       ansible.builtin.command: sudo -n true
       register: bootstrap_sudo
       changed_when: false
+      check_mode: false   # only reads: also runs in --check
       failed_when: false
       when: not bootstrap_connection.unreachable | default(false)
 
@@ -200,6 +204,7 @@
       ansible.builtin.command: cat /home/{{ automation_user }}/.ssh/authorized_keys
       register: bootstrap_authorized_keys
       changed_when: false
+      check_mode: false   # only reads: also runs in --check
       failed_when: false
       when: not bootstrap_connection.unreachable | default(false)
 
@@ -207,6 +212,7 @@
       ansible.builtin.command: sudo -n sshd -T
       register: bootstrap_sshd
       changed_when: false
+      check_mode: false   # only reads: also runs in --check
       failed_when: false
       when: bootstrap_sudo.rc | default(1) == 0
 
