@@ -26,19 +26,19 @@ protection_directory: protection
 # IPv4-only stacks are the exception, received by docker-proxy, a host
 # process: every published port is listed here too
 host_firewall_public_ports:
-  - {port: "80", protocol: tcp, service: Traefik}
-  - {port: "443", protocol: tcp, service: Traefik}
-  - {port: "8448", protocol: tcp, service: Matrix federation (Traefik)}
-  - {port: "3478", protocol: udp, service: NetBird STUN}
-  - {port: "7881", protocol: tcp, service: LiveKit (services/appels)}
-  - {port: "7882", protocol: udp, service: LiveKit (services/appels)}
-  - {port: "3479", protocol: tcp, service: coturn (services/appels)}
-  - {port: "3479", protocol: udp, service: coturn (services/appels)}
-  - {port: "49160:49200", protocol: udp, service: coturn relays (services/appels)}
+  - {port: 80, protocol: tcp, service: Traefik}
+  - {port: 443, protocol: tcp, service: Traefik}
+  - {port: 8448, protocol: tcp, service: Matrix federation (Traefik)}
+  - {port: 3478, protocol: udp, service: NetBird STUN}
+  - {port: 7881, protocol: tcp, service: LiveKit (services/appels)}
+  - {port: 7882, protocol: udp, service: LiveKit (services/appels)}
+  - {port: 3479, protocol: tcp, service: coturn (services/appels)}
+  - {port: 3479, protocol: udp, service: coturn (services/appels)}
+  - {port: 49160, last_port: 49200, protocol: udp, service: coturn relays (services/appels)}
 # SSH only through the VPN; Oracle's serial console is the way in when
 # NetBird is down
 host_firewall_public_ssh: false
 # Host services that containers reach through host.docker.internal
 host_firewall_docker_networks: [172.16.0.0/12]
 host_firewall_docker_ports:
-  - {port: "9090", protocol: tcp, service: "Cockpit (Traefik, Gatus)"}
+  - {port: 9090, protocol: tcp, service: "Cockpit (Traefik, Gatus)"}

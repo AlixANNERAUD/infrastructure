@@ -30,7 +30,7 @@
 {% endif %}
 {% for entry in host_firewall_public_ports %}
 # {{ entry.service }}
--A HOST-INPUT -p {{ entry.protocol }} --dport {{ entry.port }} -j ACCEPT
+-A HOST-INPUT -p {{ entry.protocol }} --dport {{ entry.port }}{{ (':' ~ entry.last_port) if entry.last_port is defined else '' }} -j ACCEPT
 {% endfor %}
 {% if host_firewall_public_ssh %}
 -A HOST-INPUT -p tcp --dport 22 -j ACCEPT
