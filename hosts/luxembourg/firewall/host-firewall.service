@@ -1,0 +1,18 @@
+# Managed by Ansible (hosts/luxembourg/firewall.yml)
+[Unit]
+Description=Host firewall (HOST-INPUT chains)
+# Before any network comes up, as ufw did; Docker and NetBird add their own
+# rules afterwards
+DefaultDependencies=no
+Wants=network-pre.target local-fs.target
+Before=network-pre.target shutdown.target
+After=local-fs.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart=/usr/local/sbin/host-firewall-load
+
+[Install]
+WantedBy=multi-user.target
