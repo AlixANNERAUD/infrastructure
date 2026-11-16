@@ -54,6 +54,14 @@ matrix_rtc:
   transports:
     - type: livekit
       livekit_service_url: https://appels.anneraud.fr/livekit/jwt
+# Clients older than the stable endpoint ask the unstable one, then the
+# well-known file
+experimental_features:
+  msc4143_enabled: true
+extra_well_known_client_content:
+  org.matrix.msc4143.rtc_foci:
+    - type: livekit
+      livekit_service_url: https://appels.anneraud.fr/livekit/jwt
 # Element Call's own settings: delayed events end a call left without hanging
 # up, and its state updates need more than the default message rate
 max_event_delay_duration: 24h
