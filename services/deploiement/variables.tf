@@ -56,6 +56,8 @@ variable "excluded_playbooks" {
   default = [
     # Provisions a TrueNAS App's Zitadel login with OpenTofu, and prints it
     "services/archive/deploy.yml",
+    # Oracle's security list, applied with OpenTofu from the controller
+    "hosts/luxembourg/oracle.yml",
   ]
 }
 
