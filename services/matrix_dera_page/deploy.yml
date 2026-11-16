@@ -7,6 +7,7 @@
   vars_files:
     - ../../vault/ansible/vault.yml
     - ../../vault/matrix_dera_page/vault.yml
+    - ../../vault/appels/vault.yml   # turn_shared_secret, shared with coturn
     - ../../vault/cloudflare/vault.yml
   roles:
     - role: compose_service

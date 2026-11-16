@@ -1,0 +1,103 @@
+# Container logs are unbounded by default and would fill the disk
+x-logging: &logging
+  driver: local
+  options:
+    max-size: "20m"
+    max-file: "3"
+
+services:
+  # The SFU of Element Call (MatrixRTC): every participant sends its streams
+  # here once, and LiveKit forwards them to the others. Signalling goes
+  # through Traefik (/livekit/sfu); the media comes straight to the ports
+  # below, published on purpose: they must be reachable from the internet
+  livekit:
+    image: docker.io/livekit/livekit-server:v1.13.11
+    logging: *logging
+    restart: unless-stopped
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    # Same numbers inside and out: LiveKit advertises its own port numbers
+    # with the public address it found
+    ports:
+      - "7881:7881/tcp"   # ICE over TCP, for networks that block UDP
+      - "7882:7882/udp"   # every UDP stream, multiplexed on one port
+    networks:
+      - proxy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7880/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
+      - traefik.http.routers.appels-sfu.rule=Host(`${HOST}`) && PathPrefix(`/livekit/sfu`)
+      - traefik.http.routers.appels-sfu.entrypoints=web-secure
+      - traefik.http.routers.appels-sfu.tls=true
+      - traefik.http.routers.appels-sfu.tls.certresolver=letsencrypt
+      - traefik.http.routers.appels-sfu.middlewares=appels-sfu-prefix
+      - traefik.http.routers.appels-sfu.service=appels-sfu
+      - traefik.http.middlewares.appels-sfu-prefix.stripprefix.prefixes=/livekit/sfu
+      - traefik.http.services.appels-sfu.loadbalancer.server.port=7880
+
+  # Hands out LiveKit tokens to Matrix users: it checks each one with their
+  # homeserver (OpenID), so only the homeservers in HOMESERVERS can open a
+  # call; users of other servers can join one already open
+  jwt:
+    image: ghcr.io/element-hq/lk-jwt-service:0.10.0
+    logging: *logging
+    restart: unless-stopped
+    environment:
+      # Given to clients, and used to create LiveKit rooms (through Traefik)
+      LIVEKIT_URL: wss://${HOST}/livekit/sfu
+      LIVEKIT_KEY: ${LIVEKIT_KEY}
+      LIVEKIT_SECRET: ${LIVEKIT_SECRET}
+      LIVEKIT_FULL_ACCESS_HOMESERVERS: ${HOMESERVERS}
+    networks:
+      - proxy
+    healthcheck:
+      test: ["CMD", "/lk-jwt-service-healthcheck"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
+      - traefik.http.routers.appels-jwt.rule=Host(`${HOST}`) && PathPrefix(`/livekit/jwt`)
+      - traefik.http.routers.appels-jwt.entrypoints=web-secure
+      - traefik.http.routers.appels-jwt.tls=true
+      - traefik.http.routers.appels-jwt.tls.certresolver=letsencrypt
+      - traefik.http.routers.appels-jwt.middlewares=appels-jwt-prefix
+      - traefik.http.routers.appels-jwt.service=appels-jwt
+      - traefik.http.middlewares.appels-jwt-prefix.stripprefix.prefixes=/livekit/jwt
+      - traefik.http.services.appels-jwt.loadbalancer.server.port=8080
+
+  # TURN relay for the older one-to-one Matrix calls, which go peer to peer
+  # and need a relay when one side is behind a strict NAT (mobile networks).
+  # Synapse hands out credentials derived from the shared secret
+  turn:
+    image: docker.io/coturn/coturn:4.19.1
+    logging: *logging
+    restart: unless-stopped
+    # The image finds the public address itself; port 3478 is NetBird's STUN
+    command:
+      - "-c"
+      - "/etc/coturn/turnserver.conf"
+      - "--log-file=stdout"
+      - "--external-ip=$$(detect-external-ip)"
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+    ports:
+      - "3479:3479/udp"
+      - "3479:3479/tcp"
+      - "49160-49200:49160-49200/udp"   # relayed streams
+    networks:
+      - relais
+
+networks:
+  proxy:
+    name: "${PROXY_NETWORK}"
+    external: true
+  # coturn alone: it relays to the internet, not through Traefik
+  relais: {}

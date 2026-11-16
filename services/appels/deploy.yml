@@ -1,0 +1,51 @@
+---
+# Audio and video calls for both Matrix homeservers (anneraud.fr, dera.page):
+# LiveKit and lk-jwt-service for Element Call (Element X, group calls), coturn
+# for the older one-to-one calls. On Luxembourg for its public address; the
+# homeservers advertise it (matrix_rtc and turn_uris in their homeserver.yaml).
+# Oracle's security list must let in TCP 7881, UDP 7882, TCP and UDP 3479,
+# and UDP 49160-49200.
+- name: Deploy calls (LiveKit, coturn)
+  hosts: appels
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+    - ../../vault/appels/vault.yml
+    - ../../vault/cloudflare/vault.yml
+  vars:
+    appels_host: appels.anneraud.fr
+    # Homeservers whose users can open a call; the others can only join one
+    appels_homeservers: [anneraud.fr, dera.page]
+  pre_tasks:
+    - name: Check the call secrets
+      ansible.builtin.assert:
+        that:
+          - livekit_api_key | default('') is match('^[A-Za-z0-9]{12,}$')
+          - livekit_api_secret | default('') is match('^[A-Za-z0-9]{32,}$')
+          - turn_shared_secret | default('') is match('^[A-Za-z0-9]{32,}$')
+        fail_msg: >-
+          vault/appels/vault.yml needs livekit_api_key (letters and digits, at least 12:
+          openssl rand -hex 8), livekit_api_secret and turn_shared_secret (letters and
+          digits, at least 32: openssl rand -hex 32). turn_shared_secret is also read by
+          both Matrix playbooks.
+        quiet: true
+
+  roles:
+    - role: compose_service
+      vars:
+        compose_service_name: appels
+        compose_service_proxy: true
+        # coturn runs as nobody and reads its configuration, which holds the secret
+        compose_service_user: 65534
+        compose_service_templates:
+          - source: livekit.yaml.j2
+            destination: livekit.yaml
+          - source: turnserver.conf.j2
+            destination: turnserver.conf
+        compose_service_environment:
+          HOST: "{{ appels_host }}"
+          HOMESERVERS: "{{ appels_homeservers | join(',') }}"
+          LIVEKIT_KEY: "{{ livekit_api_key }}"
+          LIVEKIT_SECRET: "{{ livekit_api_secret }}"
+        compose_service_dns_records:
+          - record: "{{ appels_host }}"

@@ -1,0 +1,24 @@
+# LiveKit, the SFU behind Element Call. Reference:
+# https://github.com/livekit/livekit/blob/master/config-sample.yaml
+port: 7880
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  # Asks public STUN servers for the VM's address (Oracle maps it to the
+  # private one), so it is never written here
+  use_external_ip: true
+  # The check sends a packet to that address from inside the container, which
+  # depends on hairpinning through Oracle's NAT; Docker publishes the ports
+  skip_external_ip_validation: true
+room:
+  # Rooms are only created through lk-jwt-service, for allowed homeservers
+  auto_create: false
+keys:
+  "{{ livekit_api_key }}": "{{ livekit_api_secret }}"
+# Tells lk-jwt-service when participants leave, for Matrix's delayed leave events
+webhook:
+  api_key: "{{ livekit_api_key }}"
+  urls:
+    - http://jwt:8080/sfu_webhook
+logging:
+  level: info

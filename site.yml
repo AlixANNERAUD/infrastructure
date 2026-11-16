@@ -12,6 +12,8 @@
 - name: Cockpit
   ansible.builtin.import_playbook: services/cockpit/deploy.yml
 
+- name: Appels (LiveKit, coturn)
+  ansible.builtin.import_playbook: services/appels/deploy.yml
 - name: Deployment (Semaphore)
   ansible.builtin.import_playbook: services/deploiement/deploy.yml
 - name: Gatus
