@@ -1,0 +1,47 @@
+---
+# Oracle's security list in front of Luxembourg, described in opentofu/oracle
+# from the same port list as the host's iptables (host_firewall_public_ports in
+# inventory/host_vars/luxembourg.yml). OpenTofu owns every rule of the list:
+# edit the code, never the console. It runs on the controller, which holds the
+# vault and the encrypted state:
+#   mise deploy hosts/luxembourg/oracle.yml
+#
+# vault/oracle/vault.yml holds the API key of opentofu-reseau, a user whose
+# group may only manage the network's security lists (see the documentation's
+# Sécurité page), and the state's passphrase.
+- name: Configure Oracle's security list
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../../vault/oracle/vault.yml
+  tasks:
+    - name: Check Oracle's credentials
+      ansible.builtin.assert:
+        that:
+          - oracle_tenancy_ocid | default('') is match('^ocid1\.tenancy\.')
+          - oracle_user_ocid | default('') is match('^ocid1\.user\.')
+          - oracle_fingerprint | default('') is match('^([0-9a-f]{2}:){15}[0-9a-f]{2}$')
+          - oracle_private_key | default('') is search('BEGIN RSA PRIVATE KEY')
+          - oracle_region | default('') | length > 0
+          - oracle_state_passphrase | default('') | length >= 16
+        fail_msg: >-
+          vault/oracle/vault.yml needs oracle_tenancy_ocid, oracle_user_ocid, oracle_fingerprint and
+          oracle_region (the [INFRASTRUCTURE] profile of ~/.oci/config), oracle_private_key (the key in
+          PEM, PKCS#1: openssl rsa -traditional), and oracle_state_passphrase (openssl rand -base64 32)
+        quiet: true
+
+    - name: Apply Oracle's security list
+      ansible.builtin.include_role:
+        name: opentofu
+      vars:
+        opentofu_project_path: "{{ playbook_dir }}/../../opentofu/oracle"
+        opentofu_state_path: "{{ playbook_dir }}/../../vault/oracle/opentofu.tfstate"
+        opentofu_variables:
+          public_ports: "{{ hostvars['luxembourg'].host_firewall_public_ports }}"
+          region: "{{ oracle_region }}"
+        opentofu_secret_variables:
+          tenancy_ocid: "{{ oracle_tenancy_ocid }}"
+          user_ocid: "{{ oracle_user_ocid }}"
+          fingerprint: "{{ oracle_fingerprint }}"
+          private_key: "{{ oracle_private_key }}"
+          state_passphrase: "{{ oracle_state_passphrase }}"
