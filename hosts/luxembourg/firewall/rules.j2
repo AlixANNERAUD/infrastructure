@@ -1,0 +1,58 @@
+# Managed by Ansible (hosts/luxembourg/firewall.yml), IPv{{ host_firewall_family }}.
+# Loaded with --noflush: only the HOST-INPUT chain and the policies change,
+# Docker's and NetBird's own rules stay. Docker sets FORWARD to DROP as well
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+:HOST-INPUT - [0:0]
+-F HOST-INPUT
+-A HOST-INPUT -i lo -j ACCEPT
+-A HOST-INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+-A HOST-INPUT -m conntrack --ctstate INVALID -j DROP
+# The VPN (SSH, NetBird's DNS): NetBird's policies decide which peers get here
+-A HOST-INPUT -i {{ host_firewall_vpn_interface }} -j ACCEPT
+{% if host_firewall_family == 4 %}
+-A HOST-INPUT -p icmp -j ACCEPT
+# Address from Oracle's DHCP
+-A HOST-INPUT -p udp --sport 67 --dport 68 -j ACCEPT
+{% for network in host_firewall_docker_networks %}
+{% for entry in host_firewall_docker_ports %}
+# {{ entry.service }}
+-A HOST-INPUT -s {{ network }} -p {{ entry.protocol }} --dport {{ entry.port }} -j ACCEPT
+{% endfor %}
+{% endfor %}
+{% else %}
+# Neighbour discovery and router advertisements: IPv6 breaks without them
+-A HOST-INPUT -p ipv6-icmp -j ACCEPT
+# Address from Oracle's DHCPv6
+-A HOST-INPUT -s fe80::/10 -p udp --sport 547 --dport 546 -j ACCEPT
+{% endif %}
+{% for entry in host_firewall_public_ports %}
+# {{ entry.service }}
+-A HOST-INPUT -p {{ entry.protocol }} --dport {{ entry.port }}{{ (':' ~ entry.last_port) if entry.last_port is defined else '' }} -j ACCEPT
+{% endfor %}
+{% if host_firewall_public_ssh %}
+-A HOST-INPUT -p tcp --dport 22 -j ACCEPT
+{% endif %}
+-A HOST-INPUT -j DROP
+{% if host_firewall_family == 4 %}
+# Oracle's essential rule: only root reaches the iSCSI volume targets, and
+# 169.254.0.2 is never blocked for it (docs.oracle.com, Compute, Images,
+# "Essential Firewall Rules"); DNS, NTP and metadata stay open to the host.
+# OUTPUT jumps here for 169.254.0.0/16 (host-firewall-load)
+:InstanceServices - [0:0]
+-F InstanceServices
+-A InstanceServices -d 169.254.0.2/32 -p tcp --dport 3260 -m owner --uid-owner 0 -j ACCEPT
+-A InstanceServices -d 169.254.2.0/24 -p tcp --dport 3260 -m owner --uid-owner 0 -j ACCEPT
+-A InstanceServices -p tcp --dport 3260 -j REJECT --reject-with tcp-reset
+# Forwarded traffic (containers, VPN peers) never reaches the volumes or the
+# instance metadata: an app tricked into fetching URLs can't read them.
+# Docker jumps here first from FORWARD and leaves the chain to us
+:DOCKER-USER - [0:0]
+-F DOCKER-USER
+-A DOCKER-USER -d 169.254.0.0/16 -p tcp --dport 3260 -j REJECT --reject-with tcp-reset
+-A DOCKER-USER -d 169.254.169.254/32 -p tcp --dport 80 -j REJECT --reject-with tcp-reset
+-A DOCKER-USER -j RETURN
+{% endif %}
+COMMIT

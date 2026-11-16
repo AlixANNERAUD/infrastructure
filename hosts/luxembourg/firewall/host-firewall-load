@@ -1,0 +1,11 @@
+#!/bin/sh
+# Managed by Ansible (hosts/luxembourg/firewall.yml). Loads our chains
+# without flushing the tables, then adds the jumps to them once
+set -eu
+iptables-restore --noflush /etc/host-firewall/rules.v4
+ip6tables-restore --noflush /etc/host-firewall/rules.v6
+for command in iptables ip6tables; do
+    "$command" -C INPUT -j HOST-INPUT 2>/dev/null || "$command" -I INPUT 1 -j HOST-INPUT
+done
+iptables -C OUTPUT -d 169.254.0.0/16 -j InstanceServices 2>/dev/null \
+    || iptables -I OUTPUT 1 -d 169.254.0.0/16 -j InstanceServices

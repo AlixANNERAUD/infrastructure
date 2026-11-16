@@ -1,0 +1,214 @@
+---
+# Luxembourg's host firewall, in iptables without ufw: Oracle warns that ufw
+# can keep its Ubuntu instances from booting. Our own chains (HOST-INPUT,
+# Oracle's InstanceServices, DOCKER-USER) are loaded with iptables-restore
+# --noflush, at boot (host-firewall.service) and on change, so Docker's and
+# NetBird's rules are never touched. It filters what reaches the host itself;
+# the ports Docker publishes are filtered by Oracle's security list. What is
+# open lives in inventory/host_vars/luxembourg.yml.
+#
+# Runs over the VPN only, since SSH from the internet is closed. Before a
+# change it saves the current rules and restores them after 10 minutes
+# unless the run gets through its checks, so a mistake can't lock the host
+# out for good.
+#   mise deploy hosts/luxembourg/firewall.yml
+- name: Host firewall (Luxembourg)
+  hosts: luxembourg
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+  vars:
+    host_firewall_vpn_interface: wt0
+    host_firewall_vpn_network: 100.64.0.0/16
+    host_firewall_rollback: host-firewall-rollback
+  tasks:
+    - name: Read where this connection comes from
+      ansible.builtin.command: printenv SSH_CLIENT
+      become: false
+      register: host_firewall_ssh_client
+      changed_when: false
+      check_mode: false   # only reads: also runs in --check
+
+    # SSH from the internet is closed: a run from elsewhere would cut itself off
+    - name: Check that this connection comes through the VPN
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - import ipaddress, sys; sys.exit(0 if ipaddress.ip_address(sys.argv[1]) in ipaddress.ip_network(sys.argv[2]) else 1)
+          - "{{ host_firewall_ssh_client.stdout.split()[0] }}"
+          - "{{ host_firewall_vpn_network }}"
+      become: false
+      changed_when: false
+      check_mode: false   # only reads: also runs in --check
+
+    - name: Gather the installed packages
+      ansible.builtin.package_facts:
+
+    - name: Create the rules folder
+      ansible.builtin.file:
+        path: /etc/host-firewall
+        state: directory
+        mode: "0700"
+
+    - name: Write the IPv4 rules
+      ansible.builtin.template:
+        src: firewall/rules.j2
+        dest: /etc/host-firewall/rules.v4
+        mode: "0600"
+        validate: iptables-restore --test --noflush %s
+      vars:
+        host_firewall_family: 4
+      register: host_firewall_rules_v4
+
+    - name: Write the IPv6 rules
+      ansible.builtin.template:
+        src: firewall/rules.j2
+        dest: /etc/host-firewall/rules.v6
+        mode: "0600"
+        validate: ip6tables-restore --test --noflush %s
+      vars:
+        host_firewall_family: 6
+      register: host_firewall_rules_v6
+
+    - name: Install the loader
+      ansible.builtin.copy:
+        src: firewall/host-firewall-load
+        dest: /usr/local/sbin/host-firewall-load
+        mode: "0755"
+      register: host_firewall_loader
+
+    - name: Install the boot service
+      ansible.builtin.copy:
+        src: firewall/host-firewall.service
+        dest: /etc/systemd/system/host-firewall.service
+        mode: "0644"
+      register: host_firewall_unit
+
+    # In a preview, the service doesn't exist until its first real run
+    - name: Enable the boot service
+      ansible.builtin.systemd:
+        name: host-firewall.service
+        enabled: true
+        daemon_reload: "{{ host_firewall_unit is changed }}"
+      when: not (ansible_check_mode and host_firewall_unit is changed)
+
+    - name: Decide whether the rules change
+      ansible.builtin.set_fact:
+        host_firewall_changes: >-
+          {{ host_firewall_rules_v4 is changed or host_firewall_rules_v6 is changed
+             or host_firewall_loader is changed or 'ufw' in ansible_facts.packages }}
+
+    - name: Apply the rules behind a rollback
+      when: host_firewall_changes | bool and not ansible_check_mode
+      block:
+        - name: Save the current rules
+          ansible.builtin.shell: |
+            set -e
+            iptables-save > /root/host-firewall-before.v4
+            ip6tables-save > /root/host-firewall-before.v6
+          changed_when: true
+
+        # A rollback left from an interrupted run would make systemd-run fail
+        - name: Clear a former rollback
+          ansible.builtin.systemd:
+            name: "{{ host_firewall_rollback }}.timer"
+            state: stopped
+          failed_when: false
+
+        - name: Restore the saved rules in 10 minutes unless this run finishes
+          ansible.builtin.command:
+            argv:
+              - systemd-run
+              - --unit={{ host_firewall_rollback }}
+              - --on-active=10min
+              - /bin/sh
+              - -c
+              - iptables-restore /root/host-firewall-before.v4; ip6tables-restore /root/host-firewall-before.v6
+          changed_when: true
+
+        - name: Load the rules
+          ansible.builtin.systemd:
+            name: host-firewall.service
+            state: restarted
+
+        # ufw disable resets the policies to ACCEPT: load ours again after it
+        - name: Turn ufw off
+          ansible.builtin.command: ufw disable
+          changed_when: true
+          when: "'ufw' in ansible_facts.packages"
+
+        - name: Remove ufw
+          ansible.builtin.apt:
+            name: ufw
+            state: absent
+            purge: true
+          when: "'ufw' in ansible_facts.packages"
+
+        - name: Load the rules after ufw
+          ansible.builtin.systemd:
+            name: host-firewall.service
+            state: restarted
+          when: "'ufw' in ansible_facts.packages"
+
+        # A new SSH connection, not the one already open, proves the VPN still gets in
+        - name: Drop the current connection
+          ansible.builtin.meta: reset_connection
+
+        - name: Connect again through the VPN
+          ansible.builtin.wait_for_connection:
+            timeout: 60
+
+        - name: Check that the web is still served from the internet
+          ansible.builtin.wait_for:
+            host: "{{ global_dns_host }}"
+            port: 443
+            timeout: 15
+          delegate_to: localhost
+          become: false
+
+        - name: Cancel the rollback
+          ansible.builtin.systemd:
+            name: "{{ host_firewall_rollback }}.timer"
+            state: stopped
+
+    - name: Make sure the rules are loaded
+      ansible.builtin.systemd:
+        name: host-firewall.service
+        state: started
+      when: not (ansible_check_mode and host_firewall_unit is changed)
+
+# Listening on every address with nothing using them: rpcbind (NFS), the
+# rsync daemon (a writable module left from a migration), Performance
+# Co-Pilot (Vigie collects the metrics) and Tailscale (replaced by NetBird)
+- name: Stop the services nobody uses (Luxembourg)
+  hosts: luxembourg
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+  tasks:
+    - name: Gather the services
+      ansible.builtin.service_facts:
+
+    - name: Stop and mask the unused services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+        masked: true
+      loop:
+        - rpcbind.socket
+        - rpcbind.service
+        - rsync.service
+        - pmcd.service
+        - pmproxy.service
+        - pmlogger.service
+        - pmie.service
+      # Sockets are not among the gathered services
+      when: item in ansible_facts.services or item.endswith('.socket')
+
+    - name: Remove Tailscale
+      ansible.builtin.apt:
+        name: tailscale
+        state: absent
+        purge: true

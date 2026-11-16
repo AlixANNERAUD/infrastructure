@@ -12,8 +12,8 @@ ssh_administrators:
   - alix_anneraud
 
 # Account Ansible connects with, and the keys authorized for it: the laptop's,
-# plus the other controllers' (Semaphore's public key, printed by
-# services/deploiement/deploy.yml), which run on Bruxelles. Only these keys are
+# the owner's other computers' and Semaphore's (its public key is printed by
+# services/deploiement/deploy.yml; it runs on Bruxelles). Only these keys are
 # accepted. Every key works from automation_ssh_sources; on TrueNAS (Bruxelles)
 # the controllers' keys also work from Semaphore's proxy network
 # (automation_controller_network), where its container connects from (see
@@ -25,6 +25,9 @@ automation_laptop_public_key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH2a6tQP6NqnRv
 automation_additional_public_keys:
   # Semaphore (services/deploiement), on Bruxelles
   - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGf46tgEfkJ2AcNWOJO32t45Wn9Mq3640X4vFYIStpez semaphore
+  # The owner's other computers, which run playbooks too
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOoIfD6375pQHqfZVM3dVZo/pS7nI+WG8pv1BJJYpsPV alix_anneraud@paris
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK4EhGTu0Y/Uo+yJIO1G7UXgf4gVb4RxUTdzq17vwhO0 alix_anneraud@londres
 automation_public_keys: "{{ [automation_laptop_public_key] + automation_additional_public_keys }}"
 # Their authorized_keys lines on the managed hosts, restricted to the networks above
 automation_authorized_keys: >-
