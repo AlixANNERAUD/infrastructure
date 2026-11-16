@@ -35,7 +35,7 @@ Bruxelles backs up chosen datasets to Google Drive every night (`services/sauveg
 
 ## Tooling
 
-Tools are pinned with uv (`pyproject.toml`, `uv.lock`), OpenTofu with mise (`mise.toml`) and Ansible collections in `requirements.yml`. `mise.toml` also holds the owner's shortcuts (`mise deploy <playbook>` = `mise exec -- uv run ansible-playbook`, `mise preview`, `mise lint`, `mise test`, `mise vault`); keep them in sync when a command below changes.
+Tools are pinned with uv (`pyproject.toml`, `uv.lock`), OpenTofu with mise (`mise.toml`) and Ansible collections in `requirements.yml`. `mise.toml` also holds the owner's shortcuts (`mise deploy <playbook>` = `mise exec -- uv run ansible-playbook`, `mise preview`, `mise lint`, `mise test`, `mise vault`, `mise oracle` for Oracle's CLI (`oci`)); keep them in sync when a command below changes.
 
 ```bash
 uv sync
