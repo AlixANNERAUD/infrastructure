@@ -3,8 +3,8 @@
 # LiveKit and lk-jwt-service for Element Call (Element X, group calls), coturn
 # for the older one-to-one calls. On Luxembourg for its public address; the
 # homeservers advertise it (matrix_rtc and turn_uris in their homeserver.yaml).
-# Oracle's security list must let in TCP 7881, UDP 7882, TCP and UDP 3479,
-# and UDP 49160-49200.
+# Its ports are opened in Oracle's security list and on the host from
+# host_firewall_public_ports (inventory/host_vars/luxembourg.yml).
 - name: Deploy calls (LiveKit, coturn)
   hosts: appels
   become: true
