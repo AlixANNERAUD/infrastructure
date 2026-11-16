@@ -1,0 +1,22 @@
+# CrowdSec's profiles: what a detection turns into. As the image's defaults (a
+# ban for an address or a range the scenario flags), but longer each time the
+# same address comes back: 4h, then 16h, 36h, 64h... ((n + 1)² × 4h, n being
+# the decisions it already has, which CrowdSec keeps a week). A scanner then
+# no longer starts over every four hours
+name: default_ip_remediation
+filters:
+  - Alert.Remediation == true && Alert.GetScope() == "Ip"
+decisions:
+  - type: ban
+    duration: 4h
+duration_expr: Sprintf('%dh', (GetDecisionsCount(Alert.GetValue()) + 1) * (GetDecisionsCount(Alert.GetValue()) + 1) * 4)
+on_success: break
+---
+name: default_range_remediation
+filters:
+  - Alert.Remediation == true && Alert.GetScope() == "Range"
+decisions:
+  - type: ban
+    duration: 4h
+duration_expr: Sprintf('%dh', (GetDecisionsCount(Alert.GetValue()) + 1) * (GetDecisionsCount(Alert.GetValue()) + 1) * 4)
+on_success: break

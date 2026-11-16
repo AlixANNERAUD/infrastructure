@@ -26,7 +26,7 @@
     "protection"
   ],
   "time": {
-    "from": "now-6h",
+    "from": "now-24h",
     "to": "now"
   },
   "timepicker": {},
@@ -356,6 +356,169 @@
       ]
     },
     {
+      "id": 6,
+      "type": "table",
+      "title": "User agents",
+      "description": "User agents of the selected requests: a scanner often gives itself away by changing them, or by a bare curl or Mozilla/5.0",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "editorMode": "code",
+          "expr": "{container_name=\"traefik\"} host:$host ClientHost:$client RequestHost:$domain DownstreamStatus:$status | stats by (\"request_User-Agent\") count() requests | sort by (requests desc) | limit 20",
+          "queryType": "stats"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "labelsToFields": true
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Field": true
+            },
+            "renameByName": {
+              "Last *": "Requests",
+              "request_User-Agent": "User agent"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Requests",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Write requests",
+      "description": "POST, PUT, PATCH and DELETE requests: logins, registrations, uploads",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "editorMode": "code",
+          "expr": "{container_name=\"traefik\"} host:$host ClientHost:$client RequestHost:$domain DownstreamStatus:$status RequestMethod:in(\"POST\",\"PUT\",\"PATCH\",\"DELETE\") | stats by (ClientHost, RequestHost, RequestMethod, RequestPath, DownstreamStatus) count() requests | sort by (requests desc) | limit 20",
+          "queryType": "stats"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "lastNotNull"
+            ],
+            "labelsToFields": true
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Field": true
+            },
+            "renameByName": {
+              "Last *": "Requests"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Requests",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "logs",
+      "title": "CrowdSec bans",
+      "description": "Decisions of CrowdSec on the selected host, with the banned address in ClientHost: filter on a client to see when and why it was banned (the domain and status filters don't apply)",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 38
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "editorMode": "code",
+          "expr": "{container_name=\"crowdsec\"} host:$host ClientHost:$client",
+          "queryType": "instant"
+        }
+      ]
+    },
+    {
       "id": 5,
       "type": "logs",
       "title": "Requests",
@@ -368,7 +531,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 48
       },
       "targets": [
         {
