@@ -42,3 +42,32 @@ trusted_key_servers:
   
 enable_registration: True
 registration_requires_token: True
+
+# Calls (services/appels, on Luxembourg). Element Call (Element X, group
+# calls) finds LiveKit through /_matrix/client/v1/rtc/transports; the type
+# livekit with livekit_service_url talks to lk-jwt-service directly (m.livekit
+# and url need it registered as an application service)
+matrix_rtc:
+  transports:
+    - type: livekit
+      livekit_service_url: https://appels.anneraud.fr/livekit/jwt
+# Clients older than the stable endpoint ask the unstable one, then the
+# well-known file
+experimental_features:
+  msc4143_enabled: true
+# Element Call's own settings: delayed events end a call left without hanging
+# up, and its state updates need more than the default message rate
+max_event_delay_duration: 24h
+rc_message:
+  per_second: 0.5
+  burst_count: 30
+rc_delayed_event_mgmt:
+  per_second: 1
+  burst_count: 20
+# One-to-one calls go peer to peer, through coturn when NAT gets in the way
+turn_uris:
+  - "turn:appels.anneraud.fr:3479?transport=udp"
+  - "turn:appels.anneraud.fr:3479?transport=tcp"
+turn_shared_secret: "{{ turn_shared_secret }}"
+turn_user_lifetime: 1h
+turn_allow_guests: false
