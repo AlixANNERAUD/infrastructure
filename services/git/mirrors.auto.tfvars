@@ -10,6 +10,10 @@ owners = {
     type        = "org"
     gitea_owner = "Xila"
   }
+  MiniTrainStore = {
+    type        = "org"
+    gitea_owner = "MiniTrainStore"
+  }
 }
 
 # Mirrors made under a repository's former GitHub name: adopted, then renamed

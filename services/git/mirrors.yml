@@ -40,12 +40,12 @@
                 with repository Read and Write, organization Read and Write and user Read"
               - "2. GitHub (https://github.com/settings/personal-access-tokens/new): one fine-grained token per owner in
                 mirrors.auto.tfvars, each with that owner as Resource owner, All repositories, and Repository permissions
-                Contents Read-only (Metadata Read-only comes with it). The xila-project organization may have to approve its token.
+                Contents Read-only (Metadata Read-only comes with it). The organizations may have to approve their token.
                 Gitea keeps the token in each private mirror: when it expires, those mirrors stop pulling until it is updated
                 in their Gitea settings"
               - "3. mkdir -p vault/git, then mise vault:create vault/git/vault.yml (mise vault vault/git/vault.yml when it exists), with:
                 git_gitea_token (the Gitea token), git_github_tokens (a map: GitHub owner → its token, e.g.
-                {AlixANNERAUD: github_pat_…, xila-project: github_pat_…}) and git_state_passphrase
+                {AlixANNERAUD: github_pat_…, xila-project: github_pat_…, MiniTrainStore: github_pat_…}) and git_state_passphrase
                 (a new random passphrase of at least 16 characters: openssl rand -base64 32)"
               - "4. Commit vault/git/vault.yml in the vault repository and push it, then point the submodule at that commit"
 
