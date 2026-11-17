@@ -19,9 +19,8 @@ owners = {
 # Mirrors made under a repository's former GitHub name: adopted, then renamed
 # to the GitHub name by mirrors.yml (the alias can go once that is done)
 aliases = {
-  "AlixANNERAUD/portfolio"        = "Web_site"
-  "AlixANNERAUD/deez_nalyzer"     = "Machine_Learning_demonstrator"
-  "AlixANNERAUD/mini_train_store" = "MiniTrainStore"
+  "AlixANNERAUD/portfolio"    = "Web_site"
+  "AlixANNERAUD/deez_nalyzer" = "Machine_Learning_demonstrator"
 }
 
 # Gitea repositories that have a mirror's name but are not its mirror: never
