@@ -1,0 +1,191 @@
+# Mini Train Store's shop (Vendure), from the images of the private repository
+# MiniTrainStore/boutique, on the model of its docker-compose.example.yml.
+# The test site test.minitrainstore.fr is private for now (LAN and VPN only):
+# its APIs, Dashboard, photos and invoices go to the server, every other path
+# to the storefront. Its MCP server (/mcp/admin, OAuth) is never served there:
+# only on its own private host, boutique-mcp.anneraud.fr, its OAuth issuer.
+
+# Container logs are unbounded by default and would fill the disk
+x-logging: &logging
+  driver: local
+  options:
+    max-size: "20m"
+    max-file: "3"
+
+# Server and worker share the image and the settings
+x-server: &server
+  image: ghcr.io/minitrainstore/server:sha-1d69f88
+  logging: *logging
+  restart: unless-stopped
+  environment:
+    DB_HOST: postgres
+    DB_PORT: "5432"
+    DB_NAME: ${POSTGRES_DB}
+    DB_USERNAME: ${POSTGRES_USER}
+    DB_PASSWORD: ${POSTGRES_PASSWORD}
+    DB_SCHEMA: public
+    STOREFRONT_INTERNAL_URL: http://storefront:3001
+    SERVER_PUBLIC_URL: ${SERVER_PUBLIC_URL}
+    STOREFRONT_URL: ${STOREFRONT_URL}
+    CORS_ORIGINS: ${CORS_ORIGINS}
+    ASSET_URL_PREFIX: ${ASSET_URL_PREFIX}
+    COOKIE_SECRET: ${COOKIE_SECRET}
+    REVALIDATION_SECRET: ${REVALIDATION_SECRET}
+    # The MCP server's OAuth: the issuer is the private host, the secret hashes
+    # the tokens stored in the database (empty: /mcp/admin refuses everyone)
+    MCP_PUBLIC_URL: ${MCP_PUBLIC_URL}
+    MCP_OAUTH_TOKEN_SECRET: ${MCP_OAUTH_TOKEN_SECRET}
+    SUPERADMIN_USERNAME: ${SUPERADMIN_USERNAME}
+    SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD}
+    # Optional integrations, empty until set in the vault
+    SMTP_HOST: ${SMTP_HOST}
+    SMTP_PORT: ${SMTP_PORT}
+    SMTP_SECURE: ${SMTP_SECURE}
+    SMTP_USER: ${SMTP_USER}
+    SMTP_PASSWORD: ${SMTP_PASSWORD}
+    STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+    STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+    TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY}
+    MONDIAL_RELAY_API_LOGIN: ${MONDIAL_RELAY_API_LOGIN}
+    MONDIAL_RELAY_API_PASSWORD: ${MONDIAL_RELAY_API_PASSWORD}
+    MONDIAL_RELAY_CUSTOMER_ID: ${MONDIAL_RELAY_CUSTOMER_ID}
+    MONDIAL_RELAY_API_URL: ${MONDIAL_RELAY_API_URL}
+    MONDIAL_RELAY_BRAND_CODE: ${MONDIAL_RELAY_BRAND_CODE}
+    MONDIAL_RELAY_PERMALINK_ENS: ${MONDIAL_RELAY_PERMALINK_ENS}
+    MONDIAL_RELAY_SENDER_PHONE: ${MONDIAL_RELAY_SENDER_PHONE}
+    VENDEUR_EMAIL: ${VENDEUR_EMAIL}
+    VENDEUR_PASSWORD: ${VENDEUR_PASSWORD}
+  # The image runs as node (1000), which owns these folders (deploy.yml)
+  volumes:
+    - ./Assets:/app/server/static/assets
+    - ./Assets_originals:/app/server/static/assets-originals
+    - ./Invoices:/app/server/static/invoices/generated
+    - ./Labels:/app/server/static/labels
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    logging: *logging
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - ./Postgres:/var/lib/postgresql
+    networks:
+      - internal
+      - databases   # backed up by Databasus
+
+  # APIs, Dashboard and MCP server. Runs the database migrations on start.
+  # trustProxy is 1 in the image: Traefik is the only hop in front of it
+  server:
+    <<: *server
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    # proxy is also its way out (Stripe, SMTP, Mondial Relay)
+    networks:
+      - internal
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
+      - traefik.http.services.boutique-server.loadbalancer.server.port=3000
+      # The test site's server paths; /mcp and /.well-known/oauth-* stay off it
+      # yamllint disable-line rule:line-length
+      - traefik.http.routers.boutique-server.rule=Host(`test.minitrainstore.fr`) && (PathPrefix(`/shop-api`) || PathPrefix(`/admin-api`) || PathPrefix(`/dashboard`) || PathPrefix(`/assets`) || PathPrefix(`/invoices`) || PathPrefix(`/mailbox`) || PathPrefix(`/payments`))
+      - traefik.http.routers.boutique-server.entrypoints=web-secure
+      - traefik.http.routers.boutique-server.tls=true
+      - traefik.http.routers.boutique-server.middlewares=internal-allowlist@file
+      - traefik.http.routers.boutique-server.service=boutique-server
+      # The MCP server's host, the OAuth issuer: the whole server (MCP, OAuth,
+      # /.well-known, and the consent page in the Dashboard), LAN and VPN only
+      - traefik.http.routers.boutique-mcp.rule=Host(`boutique-mcp.anneraud.fr`)
+      - traefik.http.routers.boutique-mcp.entrypoints=web-secure
+      - traefik.http.routers.boutique-mcp.tls=true
+      - traefik.http.routers.boutique-mcp.middlewares=internal-allowlist@file
+      - traefik.http.routers.boutique-mcp.service=boutique-server
+      # MCPHub, on this host, reaches that name through the LAN address: Docker
+      # sends it back to Traefik from a 172.x gateway, which the allowlist
+      # refuses. Containers of this host only: OAuth still guards the MCP
+      - traefik.http.routers.boutique-mcp-conteneurs.rule=Host(`boutique-mcp.anneraud.fr`) && ClientIP(`172.16.0.0/12`)
+      - traefik.http.routers.boutique-mcp-conteneurs.entrypoints=web-secure
+      - traefik.http.routers.boutique-mcp-conteneurs.tls=true
+      - traefik.http.routers.boutique-mcp-conteneurs.service=boutique-server
+
+  # Job queue: e-mails, invoice PDFs, search index
+  worker:
+    <<: *server
+    command: ["node", "dist/index-worker.js"]
+    networks:
+      - internal
+      - sortie
+    depends_on:
+      server:
+        condition: service_healthy
+
+  # Initial configuration (countries, taxes, shipping and payment methods, the
+  # « Agent LLM » role), idempotent; run by hand, see the documentation
+  seed:
+    <<: *server
+    profiles: ["seed"]
+    restart: "no"
+    command: ["node", "dist/scripts/seed.js"]
+    networks:
+      - internal
+    depends_on:
+      server:
+        condition: service_healthy
+
+  storefront:
+    image: ghcr.io/minitrainstore/storefront:sha-1d69f88
+    logging: *logging
+    restart: unless-stopped
+    environment:
+      VENDURE_SHOP_API_URL: http://server:3000/shop-api
+      VENDURE_PUBLIC_URL: ${SERVER_PUBLIC_URL}
+      REVALIDATION_SECRET: ${REVALIDATION_SECRET}
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3001/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    networks:
+      - internal
+      - proxy
+    depends_on:
+      server:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
+      - traefik.http.routers.boutique.rule=Host(`test.minitrainstore.fr`)
+      - traefik.http.routers.boutique.entrypoints=web-secure
+      - traefik.http.routers.boutique.tls=true
+      - traefik.http.routers.boutique.middlewares=internal-allowlist@file
+      - traefik.http.services.boutique.loadbalancer.server.port=3001
+
+networks:
+  # Between the shop's containers only: no route out of the Docker network
+  internal:
+    internal: true
+  # The worker's way out (SMTP, Stripe, Mondial Relay), shared with nothing
+  sortie: {}
+  databases:
+    external: true
+  proxy:
+    name: "${PROXY_NETWORK}"
+    external: true

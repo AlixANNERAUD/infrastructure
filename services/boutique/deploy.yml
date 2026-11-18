@@ -1,0 +1,145 @@
+---
+# Mini Train Store's shop (Vendure): server, worker and storefront from the
+# private images of MiniTrainStore/boutique, on the private test site
+# test.minitrainstore.fr, with its MCP server on the private host
+# boutique-mcp.anneraud.fr (MCPHub connects to it with OAuth). The secrets are
+# in vault/boutique/vault.yml; see the documentation's Assistants page.
+- name: Deploy the shop
+  hosts: boutique
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+    - ../../vault/boutique/vault.yml
+    - ../../vault/cloudflare/vault.yml
+  vars:
+    # Compose reads the values from .env, where $ and quotes would be interpreted
+    boutique_value_pattern: '^[A-Za-z0-9._~:/+=@!,-]*$'
+    # Optional integrations (SMTP, Stripe, Turnstile, Mondial Relay, the
+    # « Vendeur » account of the seed): empty until set in the vault
+    boutique_integration_names:
+      - SMTP_HOST
+      - SMTP_PORT
+      - SMTP_SECURE
+      - SMTP_USER
+      - SMTP_PASSWORD
+      - STRIPE_SECRET_KEY
+      - STRIPE_WEBHOOK_SECRET
+      - TURNSTILE_SECRET_KEY
+      - MONDIAL_RELAY_API_LOGIN
+      - MONDIAL_RELAY_API_PASSWORD
+      - MONDIAL_RELAY_CUSTOMER_ID
+      - MONDIAL_RELAY_API_URL
+      - MONDIAL_RELAY_BRAND_CODE
+      - MONDIAL_RELAY_PERMALINK_ENS
+      - MONDIAL_RELAY_SENDER_PHONE
+      - VENDEUR_EMAIL
+      - VENDEUR_PASSWORD
+    boutique_integrations_set: "{{ boutique_integrations | default({}) }}"
+  pre_tasks:
+    - name: Check the shop's secrets
+      ansible.builtin.assert:
+        that:
+          - boutique_registry_username | default('') | length > 0
+          - boutique_registry_token | default('') | length > 0
+          - boutique_database_password | default('') is match(boutique_value_pattern)
+          - boutique_database_password | default('') | length >= 20
+          - boutique_cookie_secret | default('') is match(boutique_value_pattern)
+          - boutique_cookie_secret | default('') | length >= 32
+          - boutique_revalidation_secret | default('') is match(boutique_value_pattern)
+          - boutique_revalidation_secret | default('') | length >= 32
+          - boutique_superadmin_password | default('') is match(boutique_value_pattern)
+          - boutique_superadmin_password | default('') | length >= 20
+          - boutique_mcp_oauth_token_secret | default('') is match(boutique_value_pattern)
+          - boutique_mcp_oauth_token_secret | default('') | length >= 32
+          - boutique_integrations_set is mapping
+          - boutique_integrations_set.keys() | difference(boutique_integration_names) | length == 0
+          - boutique_integrations_set.values() | map('string') | reject('match', boutique_value_pattern) | list | length == 0
+        fail_msg: >-
+          vault/boutique/vault.yml needs boutique_registry_username and boutique_registry_token (a GitHub
+          token with read:packages, for the private images), boutique_database_password and
+          boutique_superadmin_password (at least 20 characters), boutique_cookie_secret,
+          boutique_revalidation_secret and boutique_mcp_oauth_token_secret (openssl rand -base64 32 each);
+          boutique_integrations, when set, maps some of {{ boutique_integration_names | join(', ') }} to
+          their values. Every value is made of letters, digits and ._~:/+=@!,-
+        quiet: true
+
+    # The images are private, like the repository
+    - name: Log in to GitHub's container registry
+      community.docker.docker_login:
+        registry_url: ghcr.io
+        username: "{{ boutique_registry_username }}"
+        password: "{{ boutique_registry_token }}"
+
+  roles:
+    - role: compose_service
+      vars:
+        compose_service_name: boutique
+        compose_service_proxy: true
+        compose_service_directory: Boutique
+        # TrueNAS datasets: their permissions are enforced on every deploy
+        compose_service_directories:
+          - path: Postgres   # Postgres (Alpine) runs as 70 and refuses a folder others can read
+            owner: "70"
+            group: "70"
+            mode: "0700"
+          # The server and the worker run as node (1000): photos, their
+          # originals, invoices and shipping labels
+          - path: Assets
+            owner: "1000"
+            group: "1000"
+            mode: "0750"
+          - path: Assets_originals
+            owner: "1000"
+            group: "1000"
+            mode: "0750"
+          - path: Invoices
+            owner: "1000"
+            group: "1000"
+            mode: "0750"
+          - path: Labels
+            owner: "1000"
+            group: "1000"
+            mode: "0750"
+        compose_service_external_networks:
+          - name: databases   # shared with Databasus
+            internal: true
+        compose_service_environment:
+          POSTGRES_DB: boutique
+          POSTGRES_USER: boutique
+          POSTGRES_PASSWORD: "{{ boutique_database_password }}"
+          # One domain for the shop and its APIs (the storefront image is built for it)
+          SERVER_PUBLIC_URL: https://test.minitrainstore.fr
+          STOREFRONT_URL: https://test.minitrainstore.fr
+          CORS_ORIGINS: https://test.minitrainstore.fr
+          ASSET_URL_PREFIX: https://test.minitrainstore.fr/assets/
+          COOKIE_SECRET: "{{ boutique_cookie_secret }}"
+          REVALIDATION_SECRET: "{{ boutique_revalidation_secret }}"
+          # The OAuth issuer, an origin without a path: its /.well-known lives there
+          MCP_PUBLIC_URL: https://boutique-mcp.anneraud.fr
+          MCP_OAUTH_TOKEN_SECRET: "{{ boutique_mcp_oauth_token_secret }}"
+          # Created on the first start only
+          SUPERADMIN_USERNAME: superadmin
+          SUPERADMIN_PASSWORD: "{{ boutique_superadmin_password }}"
+          # Optional integrations, from boutique_integrations
+          SMTP_HOST: "{{ boutique_integrations_set.SMTP_HOST | default('') }}"
+          SMTP_PORT: "{{ boutique_integrations_set.SMTP_PORT | default('') }}"
+          SMTP_SECURE: "{{ boutique_integrations_set.SMTP_SECURE | default('') }}"
+          SMTP_USER: "{{ boutique_integrations_set.SMTP_USER | default('') }}"
+          SMTP_PASSWORD: "{{ boutique_integrations_set.SMTP_PASSWORD | default('') }}"
+          STRIPE_SECRET_KEY: "{{ boutique_integrations_set.STRIPE_SECRET_KEY | default('') }}"
+          STRIPE_WEBHOOK_SECRET: "{{ boutique_integrations_set.STRIPE_WEBHOOK_SECRET | default('') }}"
+          TURNSTILE_SECRET_KEY: "{{ boutique_integrations_set.TURNSTILE_SECRET_KEY | default('') }}"
+          MONDIAL_RELAY_API_LOGIN: "{{ boutique_integrations_set.MONDIAL_RELAY_API_LOGIN | default('') }}"
+          MONDIAL_RELAY_API_PASSWORD: "{{ boutique_integrations_set.MONDIAL_RELAY_API_PASSWORD | default('') }}"
+          MONDIAL_RELAY_CUSTOMER_ID: "{{ boutique_integrations_set.MONDIAL_RELAY_CUSTOMER_ID | default('') }}"
+          MONDIAL_RELAY_API_URL: "{{ boutique_integrations_set.MONDIAL_RELAY_API_URL | default('') }}"
+          MONDIAL_RELAY_BRAND_CODE: "{{ boutique_integrations_set.MONDIAL_RELAY_BRAND_CODE | default('') }}"
+          MONDIAL_RELAY_PERMALINK_ENS: "{{ boutique_integrations_set.MONDIAL_RELAY_PERMALINK_ENS | default('') }}"
+          MONDIAL_RELAY_SENDER_PHONE: "{{ boutique_integrations_set.MONDIAL_RELAY_SENDER_PHONE | default('') }}"
+          VENDEUR_EMAIL: "{{ boutique_integrations_set.VENDEUR_EMAIL | default('') }}"
+          VENDEUR_PASSWORD: "{{ boutique_integrations_set.VENDEUR_PASSWORD | default('') }}"
+        compose_service_dns_records:
+          - record: test.minitrainstore.fr
+            visibility: private
+          - record: boutique-mcp.anneraud.fr
+            visibility: private
