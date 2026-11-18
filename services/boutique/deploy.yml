@@ -2,7 +2,7 @@
 # Mini Train Store's shop (Vendure): server, worker and storefront from the
 # private images of MiniTrainStore/boutique, on the private test site
 # test.minitrainstore.fr, with its MCP server on the private host
-# boutique-mcp.anneraud.fr (MCPHub connects to it with OAuth). The secrets are
+# mcp.test.minitrainstore.fr (MCPHub connects to it with OAuth). The secrets are
 # in vault/boutique/vault.yml; see the documentation's Assistants page.
 - name: Deploy the shop
   hosts: boutique
@@ -115,7 +115,7 @@
           COOKIE_SECRET: "{{ boutique_cookie_secret }}"
           REVALIDATION_SECRET: "{{ boutique_revalidation_secret }}"
           # The OAuth issuer, an origin without a path: its /.well-known lives there
-          MCP_PUBLIC_URL: https://boutique-mcp.anneraud.fr
+          MCP_PUBLIC_URL: https://mcp.test.minitrainstore.fr
           MCP_OAUTH_TOKEN_SECRET: "{{ boutique_mcp_oauth_token_secret }}"
           # Created on the first start only
           SUPERADMIN_USERNAME: superadmin
@@ -141,5 +141,5 @@
         compose_service_dns_records:
           - record: test.minitrainstore.fr
             visibility: private
-          - record: boutique-mcp.anneraud.fr
+          - record: mcp.test.minitrainstore.fr
             visibility: private

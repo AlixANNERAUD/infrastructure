@@ -38,7 +38,7 @@ cp services/proxy/policy.yml "$directory/dynamic/policy.yml"
 # The default certificate is refused (sniStrict) and the ACME server is
 # unreachable on purpose, so the tested names get a self-signed certificate
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=check.test \
-    -addext "subjectAltName=DNS:anneraud.fr,DNS:*.anneraud.fr,DNS:*.bruxelles.anneraud.fr,DNS:*.dera.page,DNS:*.xila.dev,DNS:*.minitrainstore.fr" \
+    -addext "subjectAltName=DNS:anneraud.fr,DNS:*.anneraud.fr,DNS:*.bruxelles.anneraud.fr,DNS:*.dera.page,DNS:*.xila.dev,DNS:*.minitrainstore.fr,DNS:*.test.minitrainstore.fr" \
     -keyout "$directory/dynamic/check.key" -out "$directory/dynamic/check.crt" 2> /dev/null
 cat > "$directory/dynamic/check.yml" <<'EOF'
 tls:
@@ -284,12 +284,12 @@ expected = {
     # Traefik from a Docker gateway, as this check's requests do: they take the second router, so the first
     # one's allowlist cannot be tested by a request from here
     "boutique-mcp": {
-        "stand_in": "boutique-server", "service": "boutique-server", "rule": "Host(`boutique-mcp.anneraud.fr`)",
-        "middlewares": internal, "url": "http:3000", "request": False,
+        "stand_in": "boutique-server", "service": "boutique-server", "rule": "Host(`mcp.test.minitrainstore.fr`)",
+        "middlewares": internal, "url": "http:3000", "request": False, "zone": "test.minitrainstore.fr",
     },
     "boutique-mcp-conteneurs": {
         "stand_in": "boutique-server", "service": "boutique-server", "url": "http:3000",
-        "rule": "Host(`boutique-mcp.anneraud.fr`) && ClientIP(`172.16.0.0/12`)",
+        "rule": "Host(`mcp.test.minitrainstore.fr`) && ClientIP(`172.16.0.0/12`)",
     },
     "semaphore": {"stand_in": "deploiement-semaphore", "rule": "Host(`deploiement.anneraud.fr`)", "middlewares": internal, "url": "http:3000"},
     "openbao": {
@@ -475,8 +475,8 @@ status, _ = request("anneraud.fr", "/check")
 check(status == 301, f"https://anneraud.fr/check answers {status} instead of the redirect to www")
 # The MCP server's host serves the whole server, OAuth metadata included
 for path in ("/mcp/admin", "/.well-known/oauth-authorization-server", "/dashboard/mcp/authorize"):
-    status, body = request("boutique-mcp.anneraud.fr", path)
-    check(status == 200 and "Hostname: boutique-server" in body, f"https://boutique-mcp.anneraud.fr{path} answers {status} from {body[:40]!r}")
+    status, body = request("mcp.test.minitrainstore.fr", path)
+    check(status == 200 and "Hostname: boutique-server" in body, f"https://mcp.test.minitrainstore.fr{path} answers {status} from {body[:40]!r}")
 
 
 def winner(host, path):

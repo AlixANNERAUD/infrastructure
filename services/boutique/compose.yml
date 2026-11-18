@@ -3,7 +3,7 @@
 # The test site test.minitrainstore.fr is private for now (LAN and VPN only):
 # its APIs, Dashboard, photos and invoices go to the server, every other path
 # to the storefront. Its MCP server (/mcp/admin, OAuth) is never served there:
-# only on its own private host, boutique-mcp.anneraud.fr, its OAuth issuer.
+# only on its own private host, mcp.test.minitrainstore.fr, its OAuth issuer.
 
 # Container logs are unbounded by default and would fill the disk
 x-logging: &logging
@@ -112,15 +112,19 @@ services:
       - traefik.http.routers.boutique-server.service=boutique-server
       # The MCP server's host, the OAuth issuer: the whole server (MCP, OAuth,
       # /.well-known, and the consent page in the Dashboard), LAN and VPN only
-      - traefik.http.routers.boutique-mcp.rule=Host(`boutique-mcp.anneraud.fr`)
+      - traefik.http.routers.boutique-mcp.rule=Host(`mcp.test.minitrainstore.fr`)
       - traefik.http.routers.boutique-mcp.entrypoints=web-secure
+      # The only router that orders *.test.minitrainstore.fr's certificate
       - traefik.http.routers.boutique-mcp.tls=true
+      - traefik.http.routers.boutique-mcp.tls.certresolver=letsencrypt
+      - traefik.http.routers.boutique-mcp.tls.domains[0].main=test.minitrainstore.fr
+      - traefik.http.routers.boutique-mcp.tls.domains[0].sans=*.test.minitrainstore.fr
       - traefik.http.routers.boutique-mcp.middlewares=internal-allowlist@file
       - traefik.http.routers.boutique-mcp.service=boutique-server
       # MCPHub, on this host, reaches that name through the LAN address: Docker
       # sends it back to Traefik from a 172.x gateway, which the allowlist
       # refuses. Containers of this host only: OAuth still guards the MCP
-      - traefik.http.routers.boutique-mcp-conteneurs.rule=Host(`boutique-mcp.anneraud.fr`) && ClientIP(`172.16.0.0/12`)
+      - traefik.http.routers.boutique-mcp-conteneurs.rule=Host(`mcp.test.minitrainstore.fr`) && ClientIP(`172.16.0.0/12`)
       - traefik.http.routers.boutique-mcp-conteneurs.entrypoints=web-secure
       - traefik.http.routers.boutique-mcp-conteneurs.tls=true
       - traefik.http.routers.boutique-mcp-conteneurs.service=boutique-server
