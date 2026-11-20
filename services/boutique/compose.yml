@@ -14,7 +14,7 @@ x-logging: &logging
 
 # Server and worker share the image and the settings
 x-server: &server
-  image: ghcr.io/minitrainstore/server:sha-2f8e15a
+  image: ghcr.io/minitrainstore/server:sha-f252567
   logging: *logging
   restart: unless-stopped
   environment:
@@ -128,6 +128,15 @@ services:
       - traefik.http.routers.boutique-mcp-conteneurs.entrypoints=web-secure
       - traefik.http.routers.boutique-mcp-conteneurs.tls=true
       - traefik.http.routers.boutique-mcp-conteneurs.service=boutique-server
+      # The storefront's image optimiser (/_next/image) fetches the photos from
+      # the site's own address, through Traefik from a Docker gateway, which the
+      # allowlist refuses. Photos only, for containers of this host; above the
+      # site's server router, whose longer rule would otherwise win
+      - traefik.http.routers.boutique-assets-conteneurs.rule=Host(`test.minitrainstore.fr`) && PathPrefix(`/assets`) && ClientIP(`172.16.0.0/12`)
+      - traefik.http.routers.boutique-assets-conteneurs.priority=1000
+      - traefik.http.routers.boutique-assets-conteneurs.entrypoints=web-secure
+      - traefik.http.routers.boutique-assets-conteneurs.tls=true
+      - traefik.http.routers.boutique-assets-conteneurs.service=boutique-server
 
   # Job queue: e-mails, invoice PDFs, search index
   worker:
@@ -154,7 +163,7 @@ services:
         condition: service_healthy
 
   storefront:
-    image: ghcr.io/minitrainstore/storefront:sha-2f8e15a
+    image: ghcr.io/minitrainstore/storefront:sha-f252567
     logging: *logging
     restart: unless-stopped
     environment:
