@@ -38,7 +38,7 @@ cp services/proxy/policy.yml "$directory/dynamic/policy.yml"
 # The default certificate is refused (sniStrict) and the ACME server is
 # unreachable on purpose, so the tested names get a self-signed certificate
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=check.test \
-    -addext "subjectAltName=DNS:anneraud.fr,DNS:*.anneraud.fr,DNS:*.bruxelles.anneraud.fr,DNS:*.dera.page,DNS:*.xila.dev" \
+    -addext "subjectAltName=DNS:anneraud.fr,DNS:*.anneraud.fr,DNS:*.bruxelles.anneraud.fr,DNS:*.dera.page,DNS:*.xila.dev,DNS:*.minitrainstore.fr,DNS:*.test.minitrainstore.fr" \
     -keyout "$directory/dynamic/check.key" -out "$directory/dynamic/check.crt" 2> /dev/null
 cat > "$directory/dynamic/check.yml" <<'EOF'
 tls:
@@ -272,6 +272,25 @@ expected = {
         "rule": "(Host(`maison.anneraud.fr`)) && Method(`POST`) && (PathRegexp(`(?i)^/auth/login_flow`))",
     },
     "mcphub": {"stand_in": "mcphub-mcphub", "rule": "Host(`mcphub.anneraud.fr`)", "middlewares": internal, "url": "http:3000"},
+    # The shop's private test site: its server paths, the rest to the storefront
+    "boutique": {"stand_in": "boutique-storefront", "rule": "Host(`test.minitrainstore.fr`)", "middlewares": internal, "url": "http:3001"},
+    "boutique-server": {
+        "stand_in": "boutique-server", "middlewares": internal, "url": "http:3000",
+        "rule": "Host(`test.minitrainstore.fr`) && (" + " || ".join(
+            f"PathPrefix(`{prefix}`)" for prefix in ("/shop-api", "/admin-api", "/dashboard", "/assets", "/invoices", "/mailbox", "/payments")
+        ) + ")",
+    },
+    # Its MCP server's private host, the whole server. The containers of the host (MCPHub) come back through
+    # Traefik from a Docker gateway, as this check's requests do: they take the second router, so the first
+    # one's allowlist cannot be tested by a request from here
+    "boutique-mcp": {
+        "stand_in": "boutique-server", "service": "boutique-server", "rule": "Host(`mcp.test.minitrainstore.fr`)",
+        "middlewares": internal, "url": "http:3000", "request": False, "zone": "test.minitrainstore.fr",
+    },
+    "boutique-mcp-conteneurs": {
+        "stand_in": "boutique-server", "service": "boutique-server", "url": "http:3000",
+        "rule": "Host(`mcp.test.minitrainstore.fr`) && ClientIP(`172.16.0.0/12`)",
+    },
     "semaphore": {"stand_in": "deploiement-semaphore", "rule": "Host(`deploiement.anneraud.fr`)", "middlewares": internal, "url": "http:3000"},
     "openbao": {
         "stand_in": "secrets_xila-openbao", "rule": "Host(`vault.xila.dev`)", "middlewares": internal,
@@ -438,7 +457,7 @@ def request(host, path, method="GET"):
 
 
 for name, expectation in expected.items():
-    if "tier" in expectation:
+    if "tier" in expectation or not expectation.get("request", True):
         continue
     rule = expectation["rule"]
     host = re.search(r"Host\(`([^`]+)`\)", rule).group(1)
@@ -454,6 +473,35 @@ for name, expectation in expected.items():
         check(status not in (403, 404, 429), f"https://{host}{path} answers {status}")
 status, _ = request("anneraud.fr", "/check")
 check(status == 301, f"https://anneraud.fr/check answers {status} instead of the redirect to www")
+# The MCP server's host serves the whole server, OAuth metadata included
+for path in ("/mcp/admin", "/.well-known/oauth-authorization-server", "/dashboard/mcp/authorize"):
+    status, body = request("mcp.test.minitrainstore.fr", path)
+    check(status == 200 and "Hostname: boutique-server" in body, f"https://mcp.test.minitrainstore.fr{path} answers {status} from {body[:40]!r}")
+
+
+def winner(host, path):
+    """The router Traefik picks for a request, among those of a host: the longest matching rule. Their rules are
+    Host, optionally && one PathPrefix or several joined by ||, which this reads; the site's allowlist keeps
+    requests from here out, so this is checked on the rules rather than by a request."""
+    matching = []
+    for name, entry in routers.items():
+        rule = entry.get("rule", "")
+        if f"Host(`{host}`)" not in rule:
+            continue
+        prefixes = re.findall(r"PathPrefix\(`([^`]+)`\)", rule)
+        check(set(re.findall(r"\b([A-Za-z]+)\(", rule)) <= {"Host", "PathPrefix"}, f"router {name} has a rule this check cannot read: {rule}")
+        if not prefixes or any(path.startswith(prefix) for prefix in prefixes):
+            matching.append((entry.get("priority") or len(rule), name))
+    return max(matching)[1] if matching else None
+
+
+# The shop's MCP server and its OAuth are never served on the shop's own host: those paths fall to the storefront
+for path in ("/mcp/admin", "/mcp/shop", "/mcp/oauth/token", "/.well-known/oauth-authorization-server",
+             "/.well-known/oauth-protected-resource/mcp/admin", "/dashboard/mcp/authorize"):
+    picked = winner("test.minitrainstore.fr", path)
+    expected_router = "boutique-server@docker" if path.startswith("/dashboard") else "boutique@docker"
+    check(picked == expected_router, f"https://test.minitrainstore.fr{path} goes to {picked}, not {expected_router}")
+check(winner("test.minitrainstore.fr", "/shop-api") == "boutique-server@docker", "the shop's API does not go to its server")
 
 
 # Login POSTs (any case) are refused with 429 once the client's burst is spent, and only them. The burst and
