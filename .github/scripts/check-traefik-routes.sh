@@ -222,8 +222,12 @@ for name, entry in sorted(routers.items()):
     check(entry["status"] == "enabled", f"router {name} is {entry['status']}: {entry.get('error')}")
     check(entry.get("entryPoints") == ["web-secure"], f"router {name} has the entrypoints {entry.get('entryPoints')}")
     check("tls" in entry, f"router {name} has no TLS")
-    # The default priority, the rule's length, so that longer rules (paths, logins) win
-    check(entry.get("priority", 0) in (0, len(entry.get("rule", ""))), f"router {name} has the priority {entry.get('priority')}")
+    # The default priority, the rule's length, so that longer rules (paths, logins) win. A router limited to
+    # the host's containers (ClientIP) may sit above its site's router, which it narrows
+    check(
+        entry.get("priority", 0) in (0, len(entry.get("rule", ""))) or "ClientIP(" in entry.get("rule", ""),
+        f"router {name} has the priority {entry.get('priority')}",
+    )
 
 
 def seconds(duration):
@@ -290,6 +294,11 @@ expected = {
     "boutique-mcp-conteneurs": {
         "stand_in": "boutique-server", "service": "boutique-server", "url": "http:3000",
         "rule": "Host(`mcp.test.minitrainstore.fr`) && ClientIP(`172.16.0.0/12`)",
+    },
+    # The storefront's image optimiser fetches the site's photos through Traefik from a Docker gateway too
+    "boutique-assets-conteneurs": {
+        "stand_in": "boutique-server", "service": "boutique-server", "url": "http:3000", "priority": 1000,
+        "rule": "Host(`test.minitrainstore.fr`) && PathPrefix(`/assets`) && ClientIP(`172.16.0.0/12`)",
     },
     "semaphore": {"stand_in": "deploiement-semaphore", "rule": "Host(`deploiement.anneraud.fr`)", "middlewares": internal, "url": "http:3000"},
     "openbao": {
@@ -486,7 +495,8 @@ def winner(host, path):
     matching = []
     for name, entry in routers.items():
         rule = entry.get("rule", "")
-        if f"Host(`{host}`)" not in rule:
+        # Routers limited to the host's containers (ClientIP) never serve the visitors this models
+        if f"Host(`{host}`)" not in rule or "ClientIP(" in rule:
             continue
         prefixes = re.findall(r"PathPrefix\(`([^`]+)`\)", rule)
         check(set(re.findall(r"\b([A-Za-z]+)\(", rule)) <= {"Host", "PathPrefix"}, f"router {name} has a rule this check cannot read: {rule}")
