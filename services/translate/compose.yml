@@ -7,7 +7,7 @@ x-logging: &logging
 
 services:
   app:
-    image: tolgee/tolgee:v3.241.3
+    image: tolgee/tolgee:v3.246.0
     logging: *logging
     restart: unless-stopped
     volumes:
@@ -61,7 +61,7 @@ services:
       - traefik.http.middlewares.tolgee-login-rate-limit.ratelimit.sourcecriterion.ipstrategy.ipv6subnet=64
 
   database:
-    image: postgres:18.6
+    image: postgres:18.7
     logging: *logging
     restart: unless-stopped
     environment:
@@ -74,7 +74,7 @@ services:
       - internal
 
   pgbackups:
-    image: prodrigestivill/postgres-backup-local:18-debian-d257e5d
+    image: prodrigestivill/postgres-backup-local:18-alpine-d257e5d
     logging: *logging
     restart: always
     # user: postgres:postgres # Optional: see below

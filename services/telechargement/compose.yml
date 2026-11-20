@@ -73,7 +73,7 @@ services:
 
   # Indexers, synced to Radarr and Sonarr; solves Cloudflare challenges with FlareSolverr
   prowlarr:
-    image: ghcr.io/home-operations/prowlarr:3.0.1.5752@sha256:83cc967a3b7b754634e31773d4d58ea606714490b7e8592d41b608f7c249afe6
+    image: ghcr.io/home-operations/prowlarr:3.0.2.5780@sha256:58fa5dbed20738ce0a72077315e818eeb731cb4b4a5173c4a837d343a9573750
     logging: *logging
     restart: unless-stopped
     user: "568:568"
@@ -116,7 +116,7 @@ services:
       sortie:
 
   radarr:
-    image: ghcr.io/home-operations/radarr:7.0.2.10888@sha256:69ea515df6e2a3ea1490cfa127ffaaf9597a9db84fffa2fa150a6fae98fe04cb
+    image: ghcr.io/home-operations/radarr:7.0.3.10918@sha256:55d3cf8a4c4c531bb8b5c1ba88eb270d4435e01e228fbdb16cdfc910a17e3b06
     logging: *logging
     restart: unless-stopped
     user: "568:3010"
@@ -144,7 +144,7 @@ services:
       - traefik.http.services.radarr.loadbalancer.server.port=8080
 
   sonarr:
-    image: ghcr.io/home-operations/sonarr:5.0.0.2941@sha256:93b0923dd12afd43247739e19dac59d74c52a15ea12e036b7ced264cffb42574
+    image: ghcr.io/home-operations/sonarr:5.0.0.2997@sha256:05acf764e72fa458b5edf236771d7a08d1f120fce509d4fb8a4e799fae29fda7
     logging: *logging
     restart: unless-stopped
     user: "568:3010"
@@ -174,7 +174,7 @@ services:
   # Subtitles for Radarr's and Sonarr's media; its configuration is still on
   # the unencrypted dataset (Donnees/Applications)
   bazarr:
-    image: ghcr.io/home-operations/bazarr:1.6.2@sha256:b8434a7339ebd9c2bfe4464c28db79944e0f52f47da85345fc7e0563c19f83ac
+    image: ghcr.io/home-operations/bazarr:1.6.2@sha256:6c40dfa683f767d28d1dc502837ed0a5a57682a84231f03e704e2b3f61b25a46
     logging: *logging
     restart: unless-stopped
     user: "568:3010"
