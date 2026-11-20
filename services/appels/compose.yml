@@ -77,7 +77,7 @@ services:
   # and need a relay when one side is behind a strict NAT (mobile networks).
   # Synapse hands out credentials derived from the shared secret
   turn:
-    image: docker.io/coturn/coturn:4.19.1
+    image: docker.io/coturn/coturn:4.19.2
     logging: *logging
     restart: unless-stopped
     # The image finds the public address itself; port 3478 is NetBird's STUN

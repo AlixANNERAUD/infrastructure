@@ -7,7 +7,7 @@ x-logging: &logging
 
 services:
   semaphore:
-    image: semaphoreui/semaphore:v2.19.17
+    image: semaphoreui/semaphore:v2.20.24
     logging: *logging
     restart: unless-stopped
     user: ${USER_ID}:${GROUP_ID}

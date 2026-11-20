@@ -9,7 +9,7 @@ x-logging: &logging
 
 services:
   victoriametrics:
-    image: victoriametrics/victoria-metrics:v1.155.0
+    image: victoriametrics/victoria-metrics:v1.156.0
     logging: *logging
     restart: unless-stopped
     user: "${USER_ID}:${GROUP_ID}"
@@ -39,7 +39,7 @@ services:
   # Grafana reads them through its VictoriaLogs data source; the port is never
   # published
   victorialogs:
-    image: victoriametrics/victoria-logs:v1.53.0
+    image: victoriametrics/victoria-logs:v1.54.0
     logging: *logging
     restart: unless-stopped
     user: "${USER_ID}:${GROUP_ID}"
@@ -68,7 +68,7 @@ services:
       - traefik.http.services.vigie-logs.loadbalancer.server.port=9428
 
   grafana:
-    image: grafana/grafana:13.3.0
+    image: grafana/grafana:13.3.1
     logging: *logging
     restart: unless-stopped
     user: "${USER_ID}:${GROUP_ID}"
@@ -125,7 +125,7 @@ services:
   # requests carrying its own bearer token. Started only once both tokens are
   # in the vault (COMPOSE_PROFILES), never open without the second one
   mcp:
-    image: grafana/mcp-grafana:2.1.1
+    image: grafana/mcp-grafana:2.3.0
     logging: *logging
     restart: unless-stopped
     profiles: [mcp]

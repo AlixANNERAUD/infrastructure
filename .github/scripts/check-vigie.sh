@@ -170,7 +170,7 @@ fi
 # probe answered with the home page, a 404, and one of Traefik's own lines.
 # Vector (started with the exporters) reads what containers write once it
 # runs, so the lines repeat
-docker run -d --name traefik busybox:1.37.0 sh -c 'while true; do
+docker run -d --name traefik busybox:1.38.0 sh -c 'while true; do
     echo "{\"ClientHost\":\"203.0.113.7\",\"RequestHost\":\"simrepo.check.test\",\"RequestMethod\":\"GET\",\"RequestPath\":\"/.git/index\",\"DownstreamStatus\":200,\"DownstreamContentSize\":3973,\"RouterName\":\"star-repo@docker\",\"ServiceName\":\"star-repo@docker\",\"request_User-Agent\":\"check-vigie\"}"
     echo "{\"ClientHost\":\"198.51.100.9\",\"RequestHost\":\"vigie.check.test\",\"RequestMethod\":\"GET\",\"RequestPath\":\"/missing\",\"DownstreamStatus\":404,\"DownstreamContentSize\":19,\"RouterName\":\"vigie@docker\",\"ServiceName\":\"vigie@docker\",\"request_User-Agent\":\"check-vigie\"}"
     echo "time=\"2026-11-08T12:00:00Z\" level=info msg=\"check-vigie plain line\""

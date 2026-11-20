@@ -7,7 +7,7 @@ x-logging: &logging
 
 services:
   mcphub:
-    image: samanhappy/mcphub:1.1.10
+    image: samanhappy/mcphub:1.2.6
     logging: *logging
     restart: unless-stopped
     environment:
@@ -48,7 +48,7 @@ services:
       - traefik.http.services.mcphub.loadbalancer.server.port=3000
 
   postgres:
-    image: postgres:18.6-alpine
+    image: postgres:18.7-alpine
     logging: *logging
     restart: unless-stopped
     environment:
