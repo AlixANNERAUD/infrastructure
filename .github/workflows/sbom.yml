@@ -1,0 +1,140 @@
+---
+name: SBOM
+
+# Sends the SBOMs to nanobom (organization alix_anneraud), one project per kind
+# of dependency: infrastructure-docker (the deployed images),
+# infrastructure-python (uv.lock) and infrastructure-actions (the workflows).
+# nanobom checks them against OSV after each upload and every night, so this
+# only runs when they change. Each upload replaces its project's components,
+# so only main uploads.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - services/*/compose.yml
+      - uv.lock
+      - .github/workflows/**
+      - .github/scripts/sbom-images.py
+
+permissions:
+  contents: read
+
+# A newer push replaces the components anyway
+concurrency:
+  group: sbom
+  cancel-in-progress: true
+
+env:
+  NANOBOM_URL: https://vulnerabilites.anneraud.fr
+  NANOBOM_ORGANIZATION: alix_anneraud
+
+jobs:
+  repository:
+    name: ${{ matrix.project }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: infrastructure-python
+            cataloger: python
+            token: NANOBOM_TOKEN_PYTHON
+          - project: infrastructure-actions
+            cataloger: github-actions
+            token: NANOBOM_TOKEN_ACTIONS
+    steps:
+      # Without the submodules: the vault is private, the website has its own
+      - uses: actions/checkout@v7.0.1
+
+      - uses: anchore/sbom-action/download-syft@v0.24.3
+        id: syft
+
+      - name: Generate the SBOM
+        run: >-
+          "$SYFT" scan dir:. --override-default-catalogers "$CATALOGER"
+          --exclude './.venv/**' --exclude './.ansible/**'
+          --output cyclonedx-json=sbom.json
+        env:
+          SYFT: ${{ steps.syft.outputs.cmd }}
+          CATALOGER: ${{ matrix.cataloger }}
+
+      - uses: AlixANNERAUD/nanobom-action@v1.2.0
+        with:
+          url: ${{ env.NANOBOM_URL }}
+          token: ${{ secrets[matrix.token] }}
+          organization: ${{ env.NANOBOM_ORGANIZATION }}
+          project: ${{ matrix.project }}
+          sbom: sbom.json
+
+  list:
+    name: List the images
+    runs-on: ubuntu-24.04
+    outputs:
+      images: ${{ steps.list.outputs.images }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+
+      - id: list
+        run: echo "images=$(uv run --locked python .github/scripts/sbom-images.py list)" >> "$GITHUB_OUTPUT"
+
+  # One SBOM per image, merged below into a single upload
+  image:
+    name: ${{ matrix.image.image }}
+    needs: list
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      # Docker Hub limits anonymous pulls
+      max-parallel: 8
+      matrix:
+        image: ${{ fromJSON(needs.list.outputs.images) }}
+    steps:
+      - uses: anchore/sbom-action/download-syft@v0.24.3
+        id: syft
+
+      # Straight from the registry, without Docker
+      - name: Generate the SBOM
+        run: '"$SYFT" scan "registry:$IMAGE" --output cyclonedx-json=sbom.json'
+        env:
+          SYFT: ${{ steps.syft.outputs.cmd }}
+          IMAGE: ${{ matrix.image.image }}
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: sbom-${{ matrix.image.key }}
+          path: sbom.json
+          retention-days: 1
+
+  docker:
+    name: infrastructure-docker
+    needs: image
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: sbom-*
+          path: images
+
+      # Each image depends on its packages: nanobom shows which image brought a
+      # vulnerable one, and the job summary lists the containers of each image
+      - name: Merge the SBOMs
+        run: uv run --locked python .github/scripts/sbom-images.py merge images sbom.json
+
+      - uses: AlixANNERAUD/nanobom-action@v1.2.0
+        with:
+          url: ${{ env.NANOBOM_URL }}
+          token: ${{ secrets.NANOBOM_TOKEN_DOCKER }}
+          organization: ${{ env.NANOBOM_ORGANIZATION }}
+          project: infrastructure-docker
+          sbom: sbom.json
