@@ -49,6 +49,8 @@ uv run ansible-lint
 
 All of them must pass; CI (`.github/workflows/lint.yml`) runs them on every PR and push to `main`. CI has no vault password, so ansible-lint runs against empty placeholder vault files — playbooks must not depend on vault values to parse.
 
+`.github/workflows/sbom.yml` uploads SBOMs to nanobom (`vulnerabilites.anneraud.fr`, organization `alix_anneraud`) on pushes to `main`, one project per kind of dependency, each with its own project token as a secret: `infrastructure-python` (`uv.lock`, `NANOBOM_TOKEN_PYTHON`), `infrastructure-actions` (the workflows, `NANOBOM_TOKEN_ACTIONS`) and `infrastructure-docker` (every image of the `compose.yml` files but the private ones in `PRIVATE_IMAGES`, `NANOBOM_TOKEN_DOCKER`). `.github/scripts/sbom-images.py` merges the images' SBOMs into one, where each image depends on its packages so that nanobom shows which image brought a vulnerable one.
+
 ansible-lint warns `args[module]` on the Cloudflare playbooks: a false positive, `zone` comes from `module_defaults`.
 
 ## Conventions
