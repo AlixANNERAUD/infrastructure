@@ -14,7 +14,7 @@ x-logging: &logging
 
 # Server and worker share the image and the settings
 x-server: &server
-  image: ghcr.io/minitrainstore/server:sha-1d69f88
+  image: ghcr.io/minitrainstore/server:sha-2f8e15a
   logging: *logging
   restart: unless-stopped
   environment:
@@ -154,7 +154,7 @@ services:
         condition: service_healthy
 
   storefront:
-    image: ghcr.io/minitrainstore/storefront:sha-1d69f88
+    image: ghcr.io/minitrainstore/storefront:sha-2f8e15a
     logging: *logging
     restart: unless-stopped
     environment:
