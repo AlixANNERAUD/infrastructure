@@ -14,7 +14,7 @@ x-logging: &logging
 # own network, reaches rclone.
 services:
   rclone:
-    image: rclone/rclone:1.75.2
+    image: rclone/rclone:1.76.0
     logging: *logging
     restart: unless-stopped
     mem_limit: 512m
@@ -52,7 +52,7 @@ services:
   # run), never started on its own. Root reads every file, through the one
   # capability that bypasses read permissions
   restic:
-    image: restic/restic:0.19.1
+    image: restic/restic:0.20.0
     logging: *logging
     profiles: [run]
     read_only: true

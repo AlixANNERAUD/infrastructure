@@ -12,7 +12,7 @@ services:
   # dashboard as USER_ID: it keeps only the capabilities that takes. One
   # stack per person (NAME), each with its own folder, user and address
   hermes:
-    image: nousresearch/hermes-agent:v0.23.1
+    image: nousresearch/hermes-agent:v0.23.3
     container_name: ${NAME}
     logging: *logging
     restart: unless-stopped

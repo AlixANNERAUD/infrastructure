@@ -17,7 +17,7 @@ services:
   # Host CPU, memory, load, filesystems, ZFS ARC and pool states, read from
   # the host's /proc and mounts (pid host, root filesystem read-only)
   node-exporter:
-    image: prom/node-exporter:v1.12.1
+    image: prom/node-exporter:v1.13.1
     logging: *logging
     restart: unless-stopped
     mem_limit: 128m
@@ -61,7 +61,7 @@ services:
   # host's own network traffic (its root container, id /, read from
   # /rootfs/proc/1/net/dev: node_exporter only sees its own network namespace)
   cadvisor:
-    image: ghcr.io/google/cadvisor:v0.60.6
+    image: ghcr.io/google/cadvisor:v0.61.1
     logging: *logging
     restart: unless-stopped
     mem_limit: 512m
@@ -98,7 +98,7 @@ services:
   # VictoriaLogs, as vector.yaml (rendered by deploy.yml) sends it. Root
   # without any capability, as it reads the root-owned vector.yaml
   vector:
-    image: timberio/vector:0.60.0-distroless-static
+    image: timberio/vector:0.62.0-distroless-static
     logging: *logging
     restart: unless-stopped
     mem_limit: 128m

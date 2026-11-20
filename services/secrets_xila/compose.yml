@@ -7,7 +7,7 @@ x-logging: &logging
 
 services:
   openbao:
-    image: openbao/openbao:2.7.2
+    image: openbao/openbao:2.7.3
     logging: *logging
     user: "568:568"
     command: ["server", "-config=/openbao/config/config.hcl"]
