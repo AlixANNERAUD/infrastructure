@@ -5,9 +5,10 @@
 # metrics and check what Grafana provisioned: datasource, dashboards and alert
 # rules, that the rules evaluate as expected and that the exporters' metrics
 # answer every query of the Hosts dashboard. Traefik's access log (a stand-in
-# container named traefik) goes through Vector (services/metriques, laid out as
-# on Luxembourg) into VictoriaLogs, and must read back with its fields from
-# VictoriaLogs, through Grafana's plugin and through the MCP server.
+# container named traefik) and CrowdSec's bans (a stand-in named crowdsec) go
+# through Vector (services/metriques, laid out as on Luxembourg) into
+# VictoriaLogs, and must read back with their fields from VictoriaLogs, through
+# Grafana's plugin and through the MCP server.
 # With CHECK_ZFS_POOL set to the name of a healthy ZFS pool on this machine,
 # node_exporter must read its state and free space, and no pool alert fires.
 set -euo pipefail
@@ -33,7 +34,7 @@ cleanup() {
     fi
     COMPOSE_PROFILES=mcp compose down --volumes --timeout 5 > /dev/null 2>&1 || true
     exporters down --volumes --timeout 5 > /dev/null 2>&1 || true
-    docker rm -f traefik > /dev/null 2>&1 || true
+    docker rm -f traefik crowdsec > /dev/null 2>&1 || true
     docker network rm "$network" "$metrics_network" protection-metrics traefik-metrics > /dev/null 2>&1 || true
     rm -rf "$directory"
     exit "$status"
@@ -167,13 +168,21 @@ if [ "$ready" != true ]; then
 fi
 
 # Traefik's access log, as a stand-in container named traefik writes it: a
-# probe answered with the home page, a 404, and one of Traefik's own lines.
+# probe answered with the home page, a refused POST, and one of Traefik's own
+# lines. CrowdSec's, as a stand-in named crowdsec writes it: a ban of the
+# second address, as models.Alert.FormatAsStrings words it, and a line that
+# isn't a decision.
 # Vector (started with the exporters) reads what containers write once it
 # runs, so the lines repeat
 docker run -d --name traefik busybox:1.37.0 sh -c 'while true; do
     echo "{\"ClientHost\":\"203.0.113.7\",\"RequestHost\":\"simrepo.check.test\",\"RequestMethod\":\"GET\",\"RequestPath\":\"/.git/index\",\"DownstreamStatus\":200,\"DownstreamContentSize\":3973,\"RouterName\":\"star-repo@docker\",\"ServiceName\":\"star-repo@docker\",\"request_User-Agent\":\"check-vigie\"}"
-    echo "{\"ClientHost\":\"198.51.100.9\",\"RequestHost\":\"vigie.check.test\",\"RequestMethod\":\"GET\",\"RequestPath\":\"/missing\",\"DownstreamStatus\":404,\"DownstreamContentSize\":19,\"RouterName\":\"vigie@docker\",\"ServiceName\":\"vigie@docker\",\"request_User-Agent\":\"check-vigie\"}"
+    echo "{\"ClientHost\":\"198.51.100.9\",\"RequestHost\":\"vigie.check.test\",\"RequestMethod\":\"POST\",\"RequestPath\":\"/missing\",\"DownstreamStatus\":404,\"DownstreamContentSize\":19,\"RouterName\":\"vigie@docker\",\"ServiceName\":\"vigie@docker\",\"request_User-Agent\":\"check-vigie\"}"
     echo "time=\"2026-11-08T12:00:00Z\" level=info msg=\"check-vigie plain line\""
+    sleep 2
+done' > /dev/null
+docker run -d --name crowdsec busybox:1.37.0 sh -c 'while true; do
+    echo "time=\"2026-11-08T12:00:00Z\" level=info msg=\"(check-machine/crowdsec) crowdsecurity/http-probing by ip 198.51.100.9 (FR/3215) : 4h ban on Ip 198.51.100.9\""
+    echo "time=\"2026-11-08T12:00:00Z\" level=info msg=\"check-vigie crowdsec noise\""
     sleep 2
 done' > /dev/null
 uv run python - "$logs" <<'EOF'
@@ -199,11 +208,12 @@ for _ in range(45):
         found, plain = records(probe), records('"check-vigie plain line"')
     except OSError:
         found, plain = [], []
-    if found and plain:
+    bans = records('{container_name="crowdsec"} ClientHost:="198.51.100.9"') if found and plain else []
+    if found and plain and bans:
         break
     time.sleep(2)
 else:
-    sys.exit("Traefik's access log did not reach VictoriaLogs within 90 seconds")
+    sys.exit("Traefik's access log or CrowdSec's ban did not reach VictoriaLogs within 90 seconds")
 failures = []
 record = found[0]
 expected = {
@@ -221,6 +231,16 @@ if "label" in record or any(field.startswith("label.") for field in record):
     failures.append(f"the container's labels are stored: {sorted(record)}")
 if "level=info" not in plain[0].get("_msg", ""):
     failures.append(f"Traefik's own line lost its text: {plain[0]}")
+ban = bans[0]
+expected_ban = {
+    "_msg": "ban 198.51.100.9 4h (crowdsecurity/http-probing)", "scenario": "crowdsecurity/http-probing",
+    "duration": "4h", "action": "ban", "scope": "Ip", "origin": "check-machine/crowdsec", "host": "luxembourg",
+}
+for field, value in expected_ban.items():
+    if str(ban.get(field)) != value:
+        failures.append(f"CrowdSec's ban: field {field} is {ban.get(field)!r} instead of {value!r}")
+if records('"check-vigie crowdsec noise"'):
+    failures.append("a CrowdSec line that isn't a decision is stored")
 if records('ClientHost:="198.51.100.9" DownstreamStatus:=200'):
     failures.append("the 404 matches a filter on status 200")
 # Every query of the Traefik logs dashboard, with its text boxes at * and
@@ -243,11 +263,15 @@ for values in ({}, {"client": "198.51.100.9", "domain": "vigie.check.test", "sta
             except urllib.error.HTTPError as error:
                 failures.append(f"panel {panel['title']} ({values or 'any'}): {error.code} {error.read().decode()[:200]}")
                 continue
+            if values and 'container_name="crowdsec"' in target["expr"]:
+                if "http-probing" not in body:
+                    failures.append(f"panel {panel['title']} does not find the ban: {body[:200]}")
+                continue
             if values and target["queryType"] == "instant" and ("/missing" not in body or "/.git/index" in body):
                 failures.append(f"panel {panel['title']} does not find only the 404: {body[:200]}")
             if values and target["queryType"] != "instant" and '"result":[]' in body.replace(" ", ""):
                 failures.append(f"panel {panel['title']} has no data for the 404: {body[:200]}")
-print("\n".join(failures) or "Vector ships Traefik's access log to VictoriaLogs with its fields")
+print("\n".join(failures) or "Vector ships Traefik's access log and CrowdSec's bans to VictoriaLogs with their fields")
 sys.exit(1 if failures else 0)
 EOF
 

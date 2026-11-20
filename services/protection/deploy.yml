@@ -27,6 +27,8 @@
             destination: config/acquis.d/traefik.yaml
           - source: matrix_whitelist.yaml
             destination: config/parsers/s02-enrich/matrix-whitelist.yaml
+          - source: profiles.yaml   # longer bans for repeat offenders
+            destination: config/profiles.yaml
         compose_service_templates:
           - source: trusted_hosts.yaml.j2
             destination: config/postoverflows/s01-whitelist/trusted-hosts.yaml
