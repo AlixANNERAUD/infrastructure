@@ -14,7 +14,7 @@ x-logging: &logging
 
 # Server and worker share the image and the settings
 x-server: &server
-  image: ghcr.io/minitrainstore/server:sha-f252567
+  image: ghcr.io/minitrainstore/server:sha-6c58860
   logging: *logging
   restart: unless-stopped
   environment:
@@ -163,15 +163,20 @@ services:
         condition: service_healthy
 
   storefront:
-    image: ghcr.io/minitrainstore/storefront:sha-f252567
+    image: ghcr.io/minitrainstore/storefront:sha-6c58860
     logging: *logging
     restart: unless-stopped
     environment:
       VENDURE_SHOP_API_URL: http://server:3000/shop-api
       VENDURE_PUBLIC_URL: ${SERVER_PUBLIC_URL}
       REVALIDATION_SECRET: ${REVALIDATION_SECRET}
+      # Public address of the shop, read at runtime: canonical URLs, sitemap, structured data,
+      # and robots.txt (a test. host is kept out of search engines)
+      SITE_URL: ${STOREFRONT_URL}
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3001/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      # robots.txt and not /: a probe must not regenerate cached pages (it froze its own
+      # localhost address into them)
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3001/robots.txt').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 10s
       timeout: 5s
       retries: 30
