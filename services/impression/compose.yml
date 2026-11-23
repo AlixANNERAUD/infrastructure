@@ -29,7 +29,6 @@ services:
       # docker exec impression-recto-1 /app/recto create-administrator --username <name>)
       RECTO_OIDC_ISSUER: https://authentification.anneraud.fr
       RECTO_OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?run the deploy with the Zitadel credentials}
-      RECTO_OIDC_SCOPES: urn:zitadel:iam:org:projects:roles
       RECTO_OIDC_ADMINISTRATOR_CLAIM: urn:zitadel:iam:org:project:roles
       RECTO_OIDC_ADMINISTRATOR_VALUE: impression-admin
       RECTO_OIDC_GROUPS_CLAIM: urn:zitadel:iam:org:project:roles
