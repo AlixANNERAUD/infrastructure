@@ -12,7 +12,7 @@ services:
   # the LAN through its macvlan address, where it announces itself (DNS-SD)
   # and serves devices on its TLS-only LAN listener (8631)
   recto:
-    image: ghcr.io/alixanneraud/recto:0.1.3
+    image: ghcr.io/alixanneraud/recto:0.1.4
     logging: *logging
     restart: unless-stopped
     user: "${USER_ID}:${GROUP_ID}"
