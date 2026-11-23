@@ -46,6 +46,21 @@ applications = {
     redirect_uris = ["https://maison.anneraud.fr/auth/oidc/callback"]
   }
 
+  # recto (impression.anneraud.fr), services/impression: a public client.
+  # Only people with the impression role can log in; impression-admin makes
+  # an administrator, read from the roles claim of the ID token
+  impression = {
+    project = "Impression"
+    roles = [
+      { key = "impression", display_name = "Impression" },
+      { key = "impression-admin", display_name = "Impression administrator" },
+    ]
+    require_role         = true
+    userinfo_in_id_token = true
+    redirect_uris        = ["https://impression.anneraud.fr/auth/callback"]
+    post_logout_uris     = ["https://impression.anneraud.fr/auth/signed-out"]
+  }
+
   # Semaphore (deploiement.anneraud.fr): a confidential client, which reads the
   # email from the ID token ("claim 'email' missing" otherwise)
   deploiement = {

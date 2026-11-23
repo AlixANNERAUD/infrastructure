@@ -1,0 +1,6 @@
+---
+# recto's own address on the LAN (services/impression), in Home Assistant's
+# macvlan network (maison.yml) but outside the single address Docker hands
+# out there: devices find recto at it (DNS-SD) and print and scan on its LAN
+# listener (port 8631). Keep it out of the router's DHCP range
+impression_lan_address: 192.168.0.25

@@ -28,6 +28,8 @@
   ansible.builtin.import_playbook: services/vigie/deploy.yml
 - name: Maison (Home Assistant)
   ansible.builtin.import_playbook: services/maison/deploy.yml
+- name: Impression (recto)
+  ansible.builtin.import_playbook: services/impression/deploy.yml
 - name: Matrix (anneraud.fr)
   ansible.builtin.import_playbook: services/matrix_anneraud/deploy.yml
 - name: Matrix (dera.page)
