@@ -761,7 +761,7 @@ dev = [
     { name = "docker", specifier = ">=7.1" },
     { name = "keyring", specifier = ">=25.7.0" },
     { name = "molecule", specifier = ">=26.11.0" },
-    { name = "oci-cli", specifier = ">=3.96" },
+    { name = "oci-cli", specifier = ">=3.96.3" },
     { name = "yamllint", specifier = ">=1.38" },
 ]
 
@@ -1151,7 +1151,7 @@ wheels = [
 
 [[package]]
 name = "oci"
-version = "2.191.0"
+version = "2.192.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1166,14 +1166,14 @@ dependencies = [
     { name = "pytz" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bf/7b/39c474784e0535b42929ac4ab04f540beb8988542d67d7f7f5410c8d2b95/oci-2.191.0.tar.gz", hash = "sha256:9831e669a9d07768f96bc5a71f57477ad8c7129bcd757ecf9c9c70fa9dfb61b1", size = 17467564, upload-time = "2026-11-10T09:30:39.57Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/54/bc/ee36b0bdc9e6d0da5ac35392d1138a594ae8ac431bde39a9354270b962e1/oci-2.192.0.tar.gz", hash = "sha256:f7bd3df4022ce4485c6b8d5a8e1cc3c9e06b1a12d679b4d1523d1784308abb73", size = 17475073, upload-time = "2026-11-17T06:58:16.342Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/17/51eaab7194d2521dd3997da7fab4f4026ff403fd4488081513de21332eba/oci-2.191.0-py3-none-any.whl", hash = "sha256:f149bc6e49d5e11a781d1085b222079eb3eefe59732bb1db9409d6b45a873194", size = 37789177, upload-time = "2026-11-10T09:30:33.62Z" },
+    { url = "https://files.pythonhosted.org/packages/89/8d/17d8a87b0ceb9c4701abae3d841cc79721b331b43507d8c6d427594b36eb/oci-2.192.0-py3-none-any.whl", hash = "sha256:0a2598eb1dce3ee4cf3474a240cdfe5e061a5e2fbc834cd035f30f2cad65c9ef", size = 37806717, upload-time = "2026-11-17T06:58:09.517Z" },
 ]
 
 [[package]]
 name = "oci-cli"
-version = "3.96.2"
+version = "3.96.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "arrow" },
@@ -1191,9 +1191,9 @@ dependencies = [
     { name = "six" },
     { name = "terminaltables" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ed/f7/95610bb2ee55b73e8e49f4af60a72e769545e39810dff551fc92aa952152/oci_cli-3.96.2.tar.gz", hash = "sha256:d58ed2ec5af0c3a1f4c8f9660ff25b1cef417c2ed7b715592f904674dec96d64", size = 8575607, upload-time = "2026-11-10T20:18:28.351Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e5/b4/e4bb478f90baacade3b1a5716e6a632109096e928314278455334a094cec/oci_cli-3.96.3.tar.gz", hash = "sha256:a23991f482c4425c232775c53252db4776ebe5787aeb2ab6d5925a1ae6b96f4f", size = 4528659, upload-time = "2026-11-17T08:34:58.121Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1d/87/3bc25740524d3446d010d97dd6d56b2e612d54f78d562fceaa9950ddb712/oci_cli-3.96.2-py3-none-any.whl", hash = "sha256:7b0b57b74ff8a2a44511163dd6c856724283d259e99cda27b00c9818ad71d573", size = 28413525, upload-time = "2026-11-10T20:18:23.045Z" },
+    { url = "https://files.pythonhosted.org/packages/0f/25/fbcd1bf1fbf45c0239e5fa1426f5ba2e323d4a5f56f6d2ca488b1359ba88/oci_cli-3.96.3-py3-none-any.whl", hash = "sha256:9a592a91b9ac7f84efa4dc4a039085baa0fbf5af6aa02f9f6b2b7b25d02fdd2c", size = 5905812, upload-time = "2026-11-17T08:34:55.049Z" },
 ]
 
 [[package]]
