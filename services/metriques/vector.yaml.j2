@@ -2,13 +2,16 @@
 # CrowdSec) to Vigie's VictoriaLogs (services/vigie), one record per request
 # with Traefik's fields: ClientHost, RequestHost, RequestPath, DownstreamStatus,
 # DownstreamContentSize, RouterName, ServiceName, request_User-Agent...
+# CrowdSec's decisions too (container crowdsec), one record per ban with the
+# banned address in ClientHost, so that one filter finds an address's
+# requests and its bans
 data_dir: /var/lib/vector
 
 sources:
   traefik:
     type: docker_logs
     docker_host: http://socket-proxy:2375
-    include_containers: [traefik]
+    include_containers: [traefik, crowdsec]
 
 transforms:
   access:
@@ -22,17 +25,34 @@ transforms:
       del(.image)
       del(.source_type)
       .host = "{{ inventory_hostname }}"
-      # Access log lines become their fields, with a short message; Traefik's
-      # own log lines keep their text
-      parsed, error = parse_json(.message)
-      if error == null && is_object(parsed) {
-        access = object!(parsed)
-        . = merge(., access)
-        method = string(access.RequestMethod) ?? "-"
-        name = string(access.RequestHost) ?? "-"
-        path = string(access.RequestPath) ?? "-"
-        status = to_string(access.DownstreamStatus) ?? "-"
-        .message = method + " " + name + " " + path + " " + status
+      if .container_name == "crowdsec" {
+        # Only its decisions, which it logs as (models.Alert.FormatAsStrings):
+        # (<machine>/crowdsec) crowdsecurity/http-probing by ip 203.0.113.7 (CL/7418) : 4h ban on Ip 203.0.113.7
+        # Its other lines are dropped
+        decision, error = parse_regex(.message, r'\((?P<origin>[^)]*)\) (?P<scenario>.+?) by (?:ip|range) \S+(?: \([^)]*\))? : (?P<duration>\S+) (?P<action>\S+) on (?P<scope>\S+) (?P<value>[^"\s]+)')
+        if error != null {
+          abort
+        }
+        .ClientHost = decision.value
+        .scenario = decision.scenario
+        .duration = decision.duration
+        .action = decision.action
+        .scope = decision.scope
+        .origin = decision.origin
+        .message = string!(decision.action) + " " + string!(decision.value) + " " + string!(decision.duration) + " (" + string!(decision.scenario) + ")"
+      } else {
+        # Access log lines become their fields, with a short message; Traefik's
+        # own log lines keep their text
+        parsed, error = parse_json(.message)
+        if error == null && is_object(parsed) {
+          access = object!(parsed)
+          . = merge(., access)
+          method = string(access.RequestMethod) ?? "-"
+          name = string(access.RequestHost) ?? "-"
+          path = string(access.RequestPath) ?? "-"
+          status = to_string(access.DownstreamStatus) ?? "-"
+          .message = method + " " + name + " " + path + " " + status
+        }
       }
 
 sinks:

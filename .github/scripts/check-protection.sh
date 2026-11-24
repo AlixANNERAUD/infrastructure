@@ -310,6 +310,21 @@ if ! wait_for 90 answers "$scanner" 403; then
     exit 1
 fi
 echo "ok    CrowdSec read Traefik's access log and banned a scanning address"
+# Vector (services/metriques/vector.yaml.j2) ships the bans to Vigie by reading
+# the line CrowdSec logs for each decision: it must keep that form
+ban_line=$(docker logs crowdsec 2>&1 | grep -F "by ip $scanner" | tail -1)
+if ! grep -qE "\([^)]*\) .+ by ip $scanner( \([^)]*\))? : [0-9][^ ]* ban on Ip $scanner" <<< "$ban_line"; then
+    echo "CrowdSec's ban line is no longer what Vector reads: ${ban_line:-none}"
+    exit 1
+fi
+echo "ok    CrowdSec logs its ban as Vector reads it"
+# A first offence gets 4h (services/protection/profiles.yaml)
+expiration=$(cscli decisions list --ip "$scanner" -o json | jq -r '.[0].decisions[0].duration')
+if [[ "$expiration" != 3h5* ]]; then
+    echo "$scanner's first ban expires in $expiration instead of about 4h"
+    exit 1
+fi
+echo "ok    a first offence is banned for 4h"
 for client in "$trusted_home" "$trusted_peer_client"; do
     if [ -n "$(cscli decisions list --ip "$client" -o raw | tail -n +2)" ]; then
         echo "$client, a trusted host's address, is banned after its scan:"
