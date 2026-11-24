@@ -28,6 +28,11 @@ resource "zitadel_project" "project" {
 
   # Zitadel refuses the login of someone without a role on the project
   project_role_check = anytrue([for application in values(var.applications) : application.require_role if application.project == each.value])
+
+  # Sends the user's roles on the project (urn:zitadel:iam:org:project:roles) in UserInfo.
+  # Without it they only come for scopes naming each role or the project's audience, which
+  # no service here asks for, so nobody would get the administrator role of Vigie or recto
+  project_role_assertion = true
 }
 
 resource "zitadel_project_role" "role" {

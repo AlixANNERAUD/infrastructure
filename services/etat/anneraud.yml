@@ -351,6 +351,17 @@ endpoints:
     alerts:
       - type: homeassistant
 
+  - name: Impression (recto)
+    group: Services
+    url: "https://impression.anneraud.fr/health"
+    interval: 10m
+    conditions:
+      - "[STATUS] == 200"
+      - "[CERTIFICATE_EXPIRATION] > 336h"
+      - "[BODY] == ok"
+    alerts:
+      - type: homeassistant
+
   - name: Conteneurs Bruxelles (Portainer)
     group: Administration
     url: "https://conteneurs.bruxelles.anneraud.fr/api/status"

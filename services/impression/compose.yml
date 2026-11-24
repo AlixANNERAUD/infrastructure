@@ -1,0 +1,133 @@
+# Container logs are unbounded by default and would fill the disk
+x-logging: &logging
+  driver: local
+  options:
+    max-size: "20m"
+    max-file: "3"
+
+services:
+  # recto (https://github.com/AlixANNERAUD/recto): print and scan from the
+  # browser, and from computers and phones without a driver (AirPrint, IPP
+  # Everywhere, eSCL). Reached through Traefik on its proxy network, and on
+  # the LAN through its macvlan address, where it announces itself (DNS-SD)
+  # and serves devices on its TLS-only LAN listener (8631)
+  recto:
+    image: ghcr.io/alixanneraud/recto:0.1.4
+    logging: *logging
+    restart: unless-stopped
+    user: "${USER_ID}:${GROUP_ID}"
+    depends_on:
+      - cups
+    environment:
+      RECTO_PUBLIC_URL: https://impression.anneraud.fr
+      RECTO_TIMEZONE: Europe/Paris
+      RECTO_DEFAULT_MEDIA: iso_a4_210x297mm
+      # Zitadel: people need the impression role (the project refuses the
+      # others), and impression-admin makes an administrator. Local accounts
+      # stay on, as the break-glass login: while none has a password, recto
+      # sends everyone to Zitadel (create one with
+      # docker exec impression-recto-1 /app/recto create-administrator --username <name>)
+      RECTO_OIDC_ISSUER: https://authentification.anneraud.fr
+      RECTO_OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?run the deploy with the Zitadel credentials}
+      RECTO_OIDC_ADMINISTRATOR_CLAIM: urn:zitadel:iam:org:project:roles
+      RECTO_OIDC_ADMINISTRATOR_VALUE: impression-admin
+      RECTO_OIDC_GROUPS_CLAIM: urn:zitadel:iam:org:project:roles
+      # Traefik overwrites X-Forwarded-For, so sign-in limits count per client
+      RECTO_TRUST_FORWARDED_HEADERS: "true"
+      RECTO_CUPS_URL: http://cups:631
+      RECTO_CUPS_ADMIN_SOCKET: /run/cups/cups.sock
+      RECTO_SCAN_OUTPUT_DIR: /scans
+      # Devices that found recto on the LAN connect here, over TLS
+      RECTO_LAN_LISTEN_ADDRESS: 0.0.0.0:8631
+      RECTO_DNSSD: "true"
+      RECTO_DNSSD_NAME: Impression
+      # Scan apps that send no password (Image Capture, Windows Scan) may scan
+      # from the LAN on the scanners open to everyone
+      RECTO_ESCL_OPEN_NETWORKS: ${LAN_SUBNET}
+      RECTO_LOG_FORMAT: json
+    volumes:
+      # The database (SQLite), the documents devices send until released, and
+      # the LAN listener's certificate, which devices remember
+      - ./Data:/data
+      - ./Scans:/scans
+      # Read-only is enough to connect to a socket
+      - cups-socket:/run/cups:ro
+      # Only the backends of network scanners: Debian's list probes every
+      # backend, which is slow in a container
+      - ./Sane/dll.conf:/etc/sane.d/dll.conf:ro
+    read_only: true
+    tmpfs:
+      - /tmp   # scan results, deleted after an hour
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      default:   # CUPS, Zitadel
+      proxy:
+      lan:
+        ipv4_address: ${LAN_ADDRESS}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${PROXY_NETWORK}
+      - traefik.http.routers.impression.rule=Host(`impression.anneraud.fr`)
+      - traefik.http.routers.impression.entrypoints=web-secure
+      - traefik.http.routers.impression.tls=true
+      - traefik.http.routers.impression.middlewares=internal-allowlist@file
+      - traefik.http.routers.impression.service=impression
+      - traefik.http.services.impression.loadbalancer.server.port=8080
+      # A device's personal printer address holds its password in the path
+      # (/device/...): its own router, left out of the access log that Vector
+      # ships to Vigie and CrowdSec reads
+      # yamllint disable-line rule:line-length
+      - traefik.http.routers.impression-devices.rule=Host(`impression.anneraud.fr`) && PathPrefix(`/device/`)
+      - traefik.http.routers.impression-devices.entrypoints=web-secure
+      - traefik.http.routers.impression-devices.tls=true
+      - traefik.http.routers.impression-devices.middlewares=internal-allowlist@file
+      - traefik.http.routers.impression-devices.service=impression
+      - traefik.http.routers.impression-devices.observability.accessLogs=false
+
+  # Drives the printers (their drivers, queues and jobs); recto is its only
+  # client. Never published nor on the LAN: a client reaching it directly
+  # would print around recto's accounts and quotas
+  cups:
+    image: olbat/cupsd:2026-08-03
+    logging: *logging
+    restart: unless-stopped
+    # The image has no recto account, which cups-files.conf makes an
+    # administrator over the local socket: CUPS matches the peer's uid with
+    # the passwd entry of the name recto sends, so it carries recto's uid.
+    # Its group stays 65532 whatever the uid: every account whose main group
+    # has that number is an administrator. The image has no entrypoint, its
+    # command is cupsd -f (check again when the image changes)
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        grep -q '^recto:' /etc/group || echo 'recto:x:65532:' >> /etc/group
+        grep -q '^recto:' /etc/passwd || echo 'recto:x:${USER_ID}:65532:recto:/nonexistent:/usr/sbin/nologin' >> /etc/passwd
+        exec /usr/sbin/cupsd -f
+    volumes:
+      # The printers added from recto (printers.conf and the PPDs live in
+      # /etc/cups); a named volume, as it starts from the image's files. The
+      # files mounted over it are the ones this repository controls
+      - cups-configuration:/etc/cups
+      - ./Cups/cupsd.conf:/etc/cups/cupsd.conf:ro
+      - ./Cups/cups-files.conf:/etc/cups/cups-files.conf:ro
+      - cups-spool:/var/spool/cups
+      - cups-socket:/run/cups
+    networks:
+      - default   # recto, and the printers on the LAN through the host
+
+networks:
+  proxy:
+    name: "${PROXY_NETWORK}"
+    external: true
+  # The LAN, created by services/maison (inventory/host_vars/bruxelles/maison.yml)
+  lan:
+    name: "${LAN_NETWORK}"
+    external: true
+
+volumes:
+  cups-configuration:
+  cups-spool:
+  cups-socket:

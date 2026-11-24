@@ -1,0 +1,73 @@
+---
+# recto (impression.anneraud.fr, LAN and VPN only): printing and scanning
+# from the browser and from devices without a driver, with CUPS behind it.
+# Printers are added from recto's Printers page, so their addresses stay out
+# of this repository. Sign-in is Zitadel (the impression role, and
+# impression-admin for administrators), with local accounts as the break-glass
+- name: Deploy Impression (recto)
+  hosts: impression
+  become: true
+  vars_files:
+    - ../../vault/ansible/vault.yml
+    - ../../vault/cloudflare/vault.yml
+  pre_tasks:
+    # recto joins the LAN through Home Assistant's macvlan network, with an
+    # address of its own outside the range Docker hands out there
+    - name: Look up the LAN network
+      community.docker.docker_network_info:
+        name: "{{ maison_macvlan.name }}"
+      register: impression_lan_network
+
+    - name: Check that the LAN network exists
+      ansible.builtin.assert:
+        that: impression_lan_network.exists
+        fail_msg: "The LAN network {{ maison_macvlan.name }} is missing: deploy services/maison/deploy.yml first, it creates it."
+        quiet: true
+
+    # Without the Zitadel credentials the client id is empty and the stack
+    # refuses to start, unless a previous deploy left one in .env
+    - name: Get recto's Zitadel login
+      ansible.builtin.include_role:
+        name: zitadel
+        tasks_from: login
+      vars:
+        zitadel_login_application: impression
+        zitadel_login_environment_file: "{{ services_root }}/Impression/.env"
+        zitadel_login_client_id_variable: OIDC_CLIENT_ID
+
+  roles:
+    - role: compose_service
+      vars:
+        compose_service_name: impression
+        compose_service_directory: Impression
+        # recto's user in its image; the cups container gives its recto
+        # account the same uid
+        compose_service_user: 65532
+        compose_service_proxy: true
+        # TrueNAS datasets: their permissions are enforced on every deploy
+        compose_service_directories:
+          - path: Data   # recto refuses a LAN key others can read
+            owner: "65532"
+            group: "65532"
+            mode: "0700"
+          - path: Scans
+            owner: "65532"
+            group: "65532"
+            mode: "0750"
+          - Cups
+          - Sane
+        compose_service_files:
+          - source: cupsd.conf
+            destination: Cups/cupsd.conf
+          - source: cups-files.conf
+            destination: Cups/cups-files.conf
+          - source: dll.conf
+            destination: Sane/dll.conf
+        compose_service_environment:
+          OIDC_CLIENT_ID: "{{ zitadel_login_client_id }}"
+          LAN_NETWORK: "{{ maison_macvlan.name }}"
+          LAN_SUBNET: "{{ maison_macvlan.subnet }}"
+          LAN_ADDRESS: "{{ impression_lan_address }}"
+        compose_service_dns_records:
+          - record: impression.anneraud.fr
+            visibility: private
