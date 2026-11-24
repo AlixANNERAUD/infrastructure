@@ -5,11 +5,11 @@ terraform {
   required_providers {
     zitadel = {
       source  = "zitadel/zitadel"
-      version = "= 3.8.7"
+      version = "3.8.8"
     }
     random = {
       source  = "hashicorp/random"
-      version = "= 3.6.3"
+      version = "3.9.1"
     }
   }
 
