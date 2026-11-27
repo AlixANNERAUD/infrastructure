@@ -12,7 +12,7 @@ dev = [
     "docker>=7.1",
     "keyring>=25.7.0",
     "molecule>=26.11.0",
-    "oci-cli>=3.96",
+    "oci-cli>=3.96.3",
     "yamllint>=1.38",
 ]
 
