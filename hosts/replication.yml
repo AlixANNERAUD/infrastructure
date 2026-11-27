@@ -96,57 +96,34 @@
         enabled: true
         daemon_reload: true
 
+# TrueNAS keeps its users in its own database and rewrites their files from it:
+# the replication account and its authorized keys are set through its API
+# (midclt), never in /etc or ~/.ssh
 - name: Set up replication on Bruxelles
   hosts: bruxelles
   become: true
   vars:
-    # Created in the TrueNAS interface: https://www.anneraud.fr/documentation/sauvegardes
     replication_user: replication
     replication_directory: "{{ services_root }}/Replication"
   vars_files:
     - ../vault/ansible/vault.yml
     - ../vault/replication/vault.yml
   tasks:
-    - name: Look up the replication user
-      ansible.builtin.getent:
-        database: passwd
-        key: "{{ replication_user }}"
-        fail_key: false
-
-    - name: Explain how to create the replication user
-      ansible.builtin.debug:
-        msg:
-          - "Create the {{ replication_user }} user in the TrueNAS interface (Credentials > Users), then run this playbook again:"
-          - Home folder on the pool, shell /usr/bin/sh (not nologin, the forced command runs through it), no sudo, password login disabled
-      when: ansible_facts.getent_passwd[replication_user] is none
-
-    - name: Skip Bruxelles until the replication user exists
-      ansible.builtin.meta: end_host
-      when: ansible_facts.getent_passwd[replication_user] is none
-
+    # Holds no secret: the API key is in its own file, readable by the replication account only
     - name: Create the replication folder
       ansible.builtin.file:
         path: "{{ replication_directory }}"
         state: directory
         owner: root
-        group: "{{ replication_user }}"
-        mode: "0750"
-
-    - name: Store the TrueNAS API key
-      ansible.builtin.copy:
-        dest: "{{ replication_directory }}/api_key"
-        content: "{{ bruxelles_api_key }}"
-        owner: "{{ replication_user }}"
-        group: "{{ replication_user }}"
-        mode: "0400"
-      no_log: true
+        group: root
+        mode: "0755"
 
     - name: Install the forced command
       ansible.builtin.copy:
         dest: "{{ replication_directory }}/run-replication.sh"
         owner: root
-        group: "{{ replication_user }}"
-        mode: "0750"
+        group: root
+        mode: "0755"
         content: |
           #!/bin/sh
           # Forced command of the replication SSH keys: runs one TrueNAS replication
@@ -159,26 +136,83 @@
           esac
           exec midclt -K "$(cat {{ replication_directory }}/api_key)" call --job --job-print description replication.run "$1"
 
-    - name: Read the replication user's authorized keys
-      ansible.builtin.slurp:
-        src: "{{ ansible_facts.getent_passwd[replication_user][4] }}/.ssh/authorized_keys"
-      register: replication_authorized_keys
-      failed_when: false
+    - name: Read the replication account
+      ansible.builtin.command:
+        argv: [midclt, call, user.query, "{{ [['username', '=', replication_user]] | to_json }}"]
+      register: replication_accounts
+      changed_when: false
+      check_mode: false
 
-    - name: Build the expected authorized keys
+    - name: List the replication clients
       ansible.builtin.set_fact:
-        replication_expected_keys: "{{ replication_expected_keys | default([]) + [replication_key_line] }}"
-      vars:
-        replication_key_line: >-
-          command="{{ replication_directory }}/run-replication.sh {{ hostvars[item].bruxelles_replication_identifier }}",restrict
-          {{ hostvars[item].replication_public_key.content | b64decode | trim }}
+        replication_clients: >-
+          {{ replication_clients | default([]) + [{
+               'name': item,
+               'identifier': hostvars[item].bruxelles_replication_identifier,
+               'public_key': hostvars[item].replication_public_key.content | b64decode | trim
+                             if hostvars[item].replication_public_key is defined else ''}] }}
       loop: "{{ groups['replication'] }}"
-      when: hostvars[item].replication_public_key is defined
 
-    - name: Explain which keys to add in the TrueNAS interface
-      ansible.builtin.debug:
-        msg: "{{ ['Add these lines to Credentials > Users > ' ~ replication_user ~ ' > Authorized Keys:'] + replication_missing_keys }}"
+    - name: Build the authorized keys
+      ansible.builtin.include_tasks: replication/tasks/authorized_keys.yml
       vars:
-        replication_current_keys: "{{ replication_authorized_keys.content | default('') | b64decode }}"
-        replication_missing_keys: "{{ replication_expected_keys | default([]) | reject('in', replication_current_keys) | list }}"
-      when: replication_missing_keys | length > 0
+        replication_current_keys: >-
+          {{ (replication_account.sshpubkey | default('', true)).splitlines() | map('trim') | reject('equalto', '') | list
+             if replication_account | length > 0 else [] }}
+        replication_account: "{{ replication_accounts.stdout | from_json | first | default({}) }}"
+
+    - name: Warn about the clients whose key was not read
+      ansible.builtin.debug:
+        msg: >-
+          Could not read the key of {{ replication_unread_clients | join(', ') }}: their current line is kept if
+          it names the same task, otherwise they have none. Run the playbook again when they are switched on
+      when: replication_unread_clients | length > 0
+
+    # The home folder holds the authorized keys, which TrueNAS writes there:
+    # it must be on a pool. The forced command runs through the account's shell
+    - name: Create the replication account
+      ansible.builtin.command:
+        argv:
+          - midclt
+          - call
+          - user.create
+          - "{{ replication_account | to_json }}"
+      changed_when: true
+      when: replication_accounts.stdout | from_json | length == 0
+      vars:
+        replication_account:
+          username: "{{ replication_user }}"
+          full_name: Replication clients (hosts/replication.yml)
+          group_create: true
+          home: "{{ replication_directory }}"
+          home_create: true
+          shell: /usr/bin/sh
+          password_disabled: true
+          smb: false
+          sshpubkey: "{{ replication_authorized_keys | join('\n') }}"
+
+    - name: Set the replication account's authorized keys
+      ansible.builtin.command:
+        argv:
+          - midclt
+          - call
+          - user.update
+          - "{{ replication_account.id }}"
+          - "{{ {'sshpubkey': replication_authorized_keys | join('\n')} | to_json }}"
+      changed_when: true
+      vars:
+        replication_account: "{{ replication_accounts.stdout | from_json | first | default({}) }}"
+        replication_current_keys: >-
+          {{ (replication_account.sshpubkey | default('', true)).splitlines() | map('trim') | reject('equalto', '') | list }}
+      when:
+        - replication_account | length > 0
+        - replication_current_keys | sort != replication_authorized_keys | sort
+
+    - name: Store the TrueNAS API key
+      ansible.builtin.copy:
+        dest: "{{ replication_directory }}/api_key"
+        content: "{{ bruxelles_api_key }}"
+        owner: "{{ replication_user }}"
+        group: "{{ replication_user }}"
+        mode: "0400"
+      no_log: true

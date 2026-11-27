@@ -1,0 +1,48 @@
+---
+# Builds the authorized keys of Bruxelles' replication account from made-up
+# clients: no host needed
+- name: Test the authorized keys of the replication account
+  hosts: localhost
+  gather_facts: false
+  vars:
+    replication_directory: /mnt/Pool/Services/Replication
+    replication_current_keys:
+      - command="/mnt/Pool/Services/Replication/run-replication.sh 6",restrict ssh-ed25519 OLD-PARIS replication@paris
+      - command="/mnt/Pool/Services/Replication/run-replication.sh 7",restrict ssh-ed25519 PRISTINA replication@pristina
+      # A client removed from the group
+      - command="/mnt/Pool/Services/Replication/run-replication.sh 9",restrict ssh-ed25519 GONE replication@gone
+      # Task 17 must not keep the line of task 1
+      - command="/mnt/Pool/Services/Replication/run-replication.sh 1",restrict ssh-ed25519 ONE replication@one
+  tasks:
+    - name: Build the keys with every key read
+      ansible.builtin.include_tasks: ../tasks/authorized_keys.yml
+      vars:
+        replication_clients:
+          - {name: paris, identifier: "6", public_key: ssh-ed25519 NEW-PARIS replication@paris}
+          - {name: pristina, identifier: "7", public_key: ssh-ed25519 PRISTINA replication@pristina}
+
+    - name: Check that each client has its new line and the removed client none
+      ansible.builtin.assert:
+        that:
+          - replication_authorized_keys == [paris_line, pristina_line]
+          - replication_unread_clients == []
+      vars:
+        paris_line: command="/mnt/Pool/Services/Replication/run-replication.sh 6",restrict ssh-ed25519 NEW-PARIS replication@paris
+        pristina_line: command="/mnt/Pool/Services/Replication/run-replication.sh 7",restrict ssh-ed25519 PRISTINA replication@pristina
+
+    - name: Build the keys with a client switched off
+      ansible.builtin.include_tasks: ../tasks/authorized_keys.yml
+      vars:
+        replication_clients:
+          - {name: paris, identifier: "6", public_key: ssh-ed25519 NEW-PARIS replication@paris}
+          - {name: pristina, identifier: "7", public_key: ""}
+          - {name: other, identifier: "17", public_key: ""}
+
+    - name: Check that the switched-off client keeps its current line
+      ansible.builtin.assert:
+        that:
+          - replication_authorized_keys == [paris_line, pristina_line]
+          - replication_unread_clients == ['pristina', 'other']
+      vars:
+        paris_line: command="/mnt/Pool/Services/Replication/run-replication.sh 6",restrict ssh-ed25519 NEW-PARIS replication@paris
+        pristina_line: command="/mnt/Pool/Services/Replication/run-replication.sh 7",restrict ssh-ed25519 PRISTINA replication@pristina

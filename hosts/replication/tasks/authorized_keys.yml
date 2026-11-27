@@ -1,0 +1,31 @@
+---
+# Builds the authorized keys of Bruxelles' replication account: one line per
+# client, which binds its key to its replication task through the forced
+# command. A client whose key was not read (switched off, or left out with
+# --limit) keeps its current line, so that a run never locks it out. Lines of
+# clients no longer in the group are left out, so their keys stop working.
+#
+# Inputs:
+#   replication_clients: [{name, identifier, public_key}], public_key empty when not read
+#   replication_current_keys: the lines of the account's authorized keys now
+#   replication_directory: the folder of run-replication.sh
+# Outputs:
+#   replication_authorized_keys: the lines to set
+#   replication_unread_clients: the names of the clients whose key was not read
+- name: Start from no line
+  ansible.builtin.set_fact:
+    replication_authorized_keys: []
+    replication_unread_clients: []
+
+- name: Write the line of each client, or keep its current one
+  ansible.builtin.set_fact:
+    replication_authorized_keys: >-
+      {{ replication_authorized_keys
+         + ([replication_prefix ~ item.public_key] if item.public_key
+            else replication_current_keys | select('match', replication_prefix | regex_escape) | list) }}
+    replication_unread_clients: "{{ replication_unread_clients + ([] if item.public_key else [item.name]) }}"
+  vars:
+    replication_prefix: 'command="{{ replication_directory }}/run-replication.sh {{ item.identifier }}",restrict '
+  loop: "{{ replication_clients }}"
+  loop_control:
+    label: "{{ item.name }}"
