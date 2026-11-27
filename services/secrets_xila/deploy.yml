@@ -29,6 +29,9 @@
         - {path: "{{ openbao_root_directory }}/tls", mode: "0750", owner: "{{ openbao_container_uid }}", group: "{{ openbao_container_gid }}"}
         - {path: "{{ openbao_root_directory }}/data", mode: "0700", owner: "{{ openbao_container_uid }}", group: "{{ openbao_container_gid }}"}
         - {path: "{{ openbao_root_directory }}/logs", mode: "0700", owner: "{{ openbao_container_uid }}", group: "{{ openbao_container_gid }}"}
+        # The unseal keys that the TPM keeps sealed, and the image that unseals OpenBao with them
+        - {path: "{{ openbao_root_directory }}/cles", mode: "0700", owner: root, group: root}
+        - {path: "{{ openbao_root_directory }}/deverrouillage", mode: "0755", owner: root, group: root}
 
     - name: Install OpenBao Compose configuration
       ansible.builtin.copy:
@@ -37,6 +40,15 @@
         owner: root
         group: root
         mode: "0640"
+
+    - name: Install the unseal image's files
+      ansible.builtin.copy:
+        src: "deverrouillage/{{ item }}"
+        dest: "{{ openbao_root_directory }}/deverrouillage/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: [Dockerfile, deverrouillage.sh]
 
     - name: Configure OpenBao server
       ansible.builtin.template:
@@ -80,6 +92,14 @@
           - subjectAltName=DNS:vault.xila.dev
       when: not openbao_tls_files.results[0].stat.exists
       changed_when: true
+      register: openbao_tls_generated
+
+    # The unseal container checks OpenBao's key, not its certificate, which is
+    # self-signed and expires after a year
+    - name: Write OpenBao's public key
+      ansible.builtin.command:
+        argv: [openssl, pkey, -in, "{{ openbao_root_directory }}/tls/tls.key", -pubout, -out, "{{ openbao_root_directory }}/tls/public.pem"]
+        creates: "{{ omit if openbao_tls_generated is changed else openbao_root_directory ~ '/tls/public.pem' }}"
 
     - name: Protect OpenBao TLS files
       ansible.builtin.file:
@@ -88,6 +108,13 @@
         group: "{{ openbao_container_gid }}"
         mode: "0440"
       loop: [tls.crt, tls.key]
+
+    - name: Let the unseal container read OpenBao's public key
+      ansible.builtin.file:
+        path: "{{ openbao_root_directory }}/tls/public.pem"
+        owner: root
+        group: root
+        mode: "0444"
 
     # Its own network, shared only with Traefik, as compose_service_proxy
     # gives the other stacks
@@ -113,6 +140,8 @@
       community.docker.docker_compose_v2:
         project_src: "{{ openbao_root_directory }}"
         pull: missing
+        # The unseal image is built here, from deverrouillage/
+        build: always
         recreate: always
         state: present
         wait: true

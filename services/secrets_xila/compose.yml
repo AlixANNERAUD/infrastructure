@@ -24,6 +24,7 @@ services:
       - "8200"
     networks:
       - proxy
+      - deverrouillage
     labels:
       - traefik.enable=true
       - traefik.docker.network=${PROXY_NETWORK}
@@ -53,7 +54,40 @@ services:
       retries: 5
       start_period: 30s
 
+  # Unseals OpenBao with the unseal keys that Bruxelles' TPM keeps sealed in
+  # cles/, after each restart (deverrouillage/deverrouillage.sh). Seal the keys
+  # once with: docker compose run --rm deverrouillage sceller
+  deverrouillage:
+    build: ./deverrouillage
+    logging: *logging
+    restart: unless-stopped
+    # /dev/tpmrm0 belongs to root (mode 0600) and TrueNAS has no udev rule to
+    # change that: root opens it as its owner, without any capability
+    user: "0:0"
+    devices:
+      - /dev/tpmrm0
+    environment:
+      OPENBAO_NAME: vault.xila.dev
+    volumes:
+      - ./cles:/cles
+      # Checks that it sends the keys to OpenBao
+      - ./tls/public.pem:/openbao.pem:ro
+    # Reaches OpenBao only: no route out of this network
+    networks:
+      - deverrouillage
+    depends_on:
+      - openbao
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1m
+
 networks:
   proxy:
     name: "${PROXY_NETWORK}"
     external: true
+  deverrouillage:
+    internal: true
